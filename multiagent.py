@@ -511,7 +511,7 @@ def deploy_task_impl(task_id: str, tasksession_id: str, droplet_ip: str = None, 
     # Run deployment workflow
     print("=" * 70)
     print(" TASK DEPLOYMENT AGENT - DEPLOY SPECIFIC TASK")
-    print("    Find Task → Download Files → Upload to Droplet → Execute → Update DB")
+    print("    Find Task -> Download Files -> Upload to Droplet -> Execute -> Update DB")
     print("=" * 70)
     print(f" Task ID: {task_id}")
     
@@ -564,7 +564,7 @@ def reset_task_impl(task_id: str, droplet_ip: str, script_path: str, env: str = 
     try:
         print("=" * 70)
         print(" TASK RESET AGENT - RESET AND UNDEPLOY TASK")
-        print("    Execute Script → Update Database → Mark as Undeployed")
+        print("    Execute Script -> Update Database -> Mark as Undeployed")
         print("=" * 70)
         print(f" Task ID: {task_id}")
         print(f" Droplet IP: {droplet_ip}")
@@ -648,12 +648,12 @@ def deploy_task(competency_id: str, task_id: str, droplet_ip: str, deploy_existi
     print("=" * 70)
     if task_id:
         print(" TASK DEPLOYMENT AGENT - DEPLOY SPECIFIC TASK")
-        print("    Find Task → Download Files → Upload to Droplet → Execute → Update DB")
+        print("    Find Task -> Download Files -> Upload to Droplet -> Execute -> Update DB")
         print("=" * 70)
         print(f" Task ID: {task_id}")
     else:
         print(" TASK DEPLOYMENT AGENT - DEPLOY EXISTING TASKS")
-        print("    Search Tasks → Download Files → Upload to Droplets → Execute → Update DB")
+        print("    Search Tasks -> Download Files -> Upload to Droplets -> Execute -> Update DB")
         print("=" * 70)
         print(f" Competency ID: {competency_id}")
     
@@ -717,7 +717,7 @@ def reset_task(task_id: str, droplet_ip: str, script_path: str, env: str = "dev"
     try:
         print("=" * 70)
         print(" TASK RESET AGENT - RESET AND UNDEPLOY TASK")
-        print("    Execute Script → Update Database → Mark as Undeployed")
+        print("    Execute Script -> Update Database -> Mark as Undeployed")
         print("=" * 70)
         print(f" Task ID: {task_id}")
         print(f" Droplet IP: {droplet_ip}")
@@ -1533,7 +1533,7 @@ def deploy_existing_task(competency_input: str, droplet_ip: str = None, env: str
         print(" SUCCESSFUL DEPLOYMENTS:")
         for result in deployment_results:
             if result["status"] == "success":
-                print(f"   • {result['task_name']} → {result['droplet_ip']}")
+                print(f"   • {result['task_name']} -> {result['droplet_ip']}")
                 print(f"     Competencies: {', '.join(result['competencies']) if result['competencies'] else 'None found'}")
                 print(f"     SSH: {result['ssh_access']}")
                 print(f"     Directory: {result['remote_directory']}")
@@ -1543,7 +1543,7 @@ def deploy_existing_task(competency_input: str, droplet_ip: str = None, env: str
         print(" FAILED/PARTIAL DEPLOYMENTS:")
         for result in deployment_results:
             if result["status"] in ["failed", "partial"]:
-                print(f"   • {result['task_name']} → {result['droplet_ip']} ({result.get('reason', 'Unknown error')})")
+                print(f"   • {result['task_name']} -> {result['droplet_ip']} ({result.get('reason', 'Unknown error')})")
                 print(f"     Competencies: {', '.join(result['competencies']) if result['competencies'] else 'None found'}")
         print()
     # Return True if at least one deployment was successful
@@ -1984,7 +1984,7 @@ def upload_answer_files_to_repo(repo_name: str, answer_code_data: Dict):
 
 if __name__ == "__main__":
     cli = click.Group()
-    cli.add_command(generate_tasks)
-    cli.add_command(deploy_task)
-    cli.add_command(reset_task)
+    cli.add_command(generate_tasks, name="generate_tasks")
+    cli.add_command(deploy_task, name="deploy_task")
+    cli.add_command(reset_task, name="reset_task")
     cli()
