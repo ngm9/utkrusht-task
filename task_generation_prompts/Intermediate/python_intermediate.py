@@ -197,3 +197,11 @@ The README.md MUST contain the following sections with fully populated, task-spe
 9. **Task name** must be short, under 50 characters, kebab-case.
 10. **Select a different real-world scenario** each time for variety.
 """
+
+PROMPT_REGISTRY = {
+    "Python (INTERMEDIATE)": [
+        PROMPT_PYTHON_INTERMEDIATE_CONTEXT,
+        PROMPT_PYTHON_INTERMEDIATE_INPUT_AND_ASK,
+        PROMPT_PYTHON_INTERMEDIATE,
+    ]
+}

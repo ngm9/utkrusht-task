@@ -1,26 +1,30 @@
 PROMPT_FASTAPI_POSTGRESQL_INPUT_AND_ASK = """
-# GOAL:
-As a technical architect super experienced in Python FastAPI and PostgreSQL, you are given a list of real world scenarios and proficiency levels for FastAPI And PostgreSQL. 
-Your job is to generate an entire task definition, including code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end.
-
-Now that you've seen the instructions and examples, you are ready to generate a task definition for Python FastAPI and PostgreSQL given the following inputs:
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Python FastAPI and PostgreSQL assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
 
-INPUT ROLE CONTEXT: 
+INPUT ROLE CONTEXT:
 {role_context}
 
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
-CRITICAL: The task complexity must be appropriate for the given skill and years of experience . The candidate should be able to complete in the allocated time. Use the real-world scenarios to determine the business context and technical focus.
 
-Can you now generate a task definition for Python FastAPI and Postgres given the above inputs, following the instructions given above? 
-Use the following prompt to narrow down your response: 
-{question_prompt}
+CRITICAL TASK GENERATION REQUIREMENTS:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
+- Ensure the candidate can realistically complete the task in the allocated time
+- Select a different real-world scenario each time to ensure variety in task generation
+- The task must reflect authentic challenges that would be encountered in the role described in the role context
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
+
+1. What will the task be about? (Describe the business domain, technical context, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of Python FastAPI and PostgreSQL implementation required, the expected deliverables, and how it aligns with the given proficiency level)
+
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 
 PROMPT_FASTAPI_POSTGRESQL_CONTEXT = """
@@ -36,11 +40,11 @@ Based on this information, could you summarize what you understand about the com
 """
 
 PROMPT_FASTAPI_POSTGRESQL_INSTRUCTIONS = """
-# GOAL:
-As a technical architect super experienced in PostgreSQL database design, administration, and Python FastAPI integration, you are given a list of real world scenarios and proficiency levels for PostgreSQL. 
+## GOAL
+As a technical architect super experienced in PostgreSQL database design, administration, and Python FastAPI integration, you are given a list of real world scenarios and proficiency levels for PostgreSQL.
 Your job is to generate an entire task definition, including code files (complete REST API structure using Python FastAPI), database schema, Docker setup, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve database-related problems end to end.
 
-# CONTEXT & CANDIDATE EXPECTATION:
+## CONTEXT & CANDIDATE EXPECTATION:
 The candidate will receive a PARTIALLY FUNCTIONAL FastAPI application that is connected to PostgreSQL database but WITHOUT complete implementation. The FastAPI application includes:
 - Basic REST API endpoint structure with skeleton implementations
 - Database connection and configuration setup
@@ -57,9 +61,9 @@ The candidate's RESPONSIBILITY includes:
 - **CRITICAL**: Writing comprehensive database queries to support business logic in API endpoints
 - Using provided database credentials to connect via database client tools
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the task 
+### Nature of the Task
 - Task must ask to implement complex database schemas from scratch with advanced relationships, constraints, and indexes
 - **CRITICAL**: The FastAPI application should have SKELETON endpoints that require completion - candidates MUST implement both database schema AND FastAPI endpoint logic.
 - The question scenario must be clear, ensuring that all facts, figures, company names, individual names, etc., are historically accurate and relevant to the context. 
@@ -303,7 +307,7 @@ NEVER generate empty content - always provide substantial business context that 
   - Instructions to run the run.sh file (deployment is automated)
   - Pre-written schema or API implementation examples (candidates must complete from skeleton code)
 
-# REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task Name",
@@ -340,12 +344,12 @@ NEVER generate empty content - always provide substantial business context that 
 """
 
 PROMPT_FASTAPI_POSTGRESQL_OPTIMIZATION_INSTRUCTIONS_INTER ="""
-# GOAL:
-As a technical architect super experienced in PostgreSQL database and Python FastAPI integration, you are given a list of real world scenarios and proficiency levels for PostgreSQL. 
+## GOAL
+As a technical architect super experienced in PostgreSQL database and Python FastAPI integration, you are given a list of real world scenarios and proficiency levels for PostgreSQL.
 Your job is to generate a task, with the given specifications, so that a candidate is presented with a functional API and some initial schema but either with logical bugs or performance issues that require intermediate-level database optimization skills.
 The candidate's responsibility is to identify the issue and fix it. So you'll have to be careful about not giving away the solution or even hinting at it in your task definitions.
 
-# CONTEXT & CANDIDATE EXPECTATION:
+## CONTEXT & CANDIDATE EXPECTATION:
 The candidate will receive a FULLY FUNCTIONAL FastAPI application that is already connected to PostgreSQL database with existing schema and data. The FastAPI application includes:
 - Complete REST API endpoints with business logic implemented but with suboptimal database queries requiring intermediate-level optimization
 - Full database connection and configuration setup
@@ -355,9 +359,9 @@ The candidate will receive a FULLY FUNCTIONAL FastAPI application that is alread
 
 The candidate's responsibility is to fix an issue with the database according to the task requirements and then make any code changes in the app to support the fixes. - A part of the task completion is to watch the candidate implement PostgreSQL optimization best practices and improve database performance at an intermediate level (3-5 years experience).
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the task 
+### Nature of the Task
 - Task name MUST be within 50 words and clearly describe the intermediate-level optimization scenario
 - Task must provide a working application with existing database schema, data, and intentionally suboptimal queries/database design requiring intermediate-level optimization skills
 - **CRITICAL**: The FastAPI application should be FULLY functional but performing poorly due to complex database inefficiencies that require sophisticated analysis and optimization techniques
@@ -540,7 +544,7 @@ Generate a comprehensive .gitignore file suitable for PostgreSQL and FastAPI dev
 **CRITICAL REQUIREMENT**: This section MUST contain 2-3 meaningful sentences describing the business scenario and the specific complex performance problems affecting the application that need intermediate-level database optimization involving multiple tables, complex queries, and advanced optimization strategies.
 NEVER generate empty content - always provide substantial business context that explains what complex performance issues exist and why advanced optimization is critical for business operations.
 
-### Guidance
+### Helpful Tips
 Write in clear and comprehensive language so intermediate-level candidates clearly understand the complex performance challenges:
   - Explain what kinds of complex performance issues exist in the database (e.g., slow multi-table joins, missing composite indexes, complex query optimization, or poor relationship structures)
   - Point out which parts of the database might be causing delays or slowness involving multiple tables and complex operations, but do not provide the actual solution
@@ -575,7 +579,7 @@ Write in clear and comprehensive language so intermediate-level candidates clear
   - Instructions to run the run.sh file (deployment is automated)
   - Specific optimization solutions (candidates must analyze and implement advanced improvements)
 
-# REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task Name (within 50 words)",
@@ -610,3 +614,10 @@ Write in clear and comprehensive language so intermediate-level candidates clear
     }}
 }}
 """
+PROMPT_REGISTRY = {
+    "PostgreSQL (INTERMEDIATE), Python - FastAPI (INTERMEDIATE)": [
+        PROMPT_FASTAPI_POSTGRESQL_CONTEXT,
+        PROMPT_FASTAPI_POSTGRESQL_INPUT_AND_ASK,
+        PROMPT_FASTAPI_POSTGRESQL_OPTIMIZATION_INSTRUCTIONS_INTER,
+    ]
+}

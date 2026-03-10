@@ -1,26 +1,29 @@
 PROMPT_POSTGRESQL_INPUT_AND_ASK = """
-# GOAL:
-As a technical architect super experienced in PostgreSQL, you are given a list of real world scenarios and proficiency levels for FastAPI And PostgreSQL. 
-Your job is to generate an entire task definition, including code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end.
-
-Now that you've seen the instructions and examples, you are ready to generate a task definition for Python FastAPI and PostgreSQL given the following inputs:
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a PostgreSQL assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
 
-INPUT ROLE CONTEXT: 
+INPUT ROLE CONTEXT:
 {role_context}
 
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
-CRITICAL: The task complexity must be appropriate for the given skill and years of experience . The candidate should be able to complete in the allocated time. Use the real-world scenarios to determine the business context and technical focus.
+CRITICAL TASK GENERATION REQUIREMENTS:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
+- Ensure the candidate can realistically complete the task in the allocated time
+- Select a different real-world scenario each time to ensure variety in task generation
+- The task must reflect authentic challenges that would be encountered in the role described in the role context
 
-Can you now generate a task definition for Postgres given the above inputs, following the instructions given above? 
-Use the following prompt to narrow down your response: 
-{question_prompt}
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+1. What will the task be about? (Describe the business domain, data context, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of SQL or database fix required, the expected deliverables, and how it aligns with BASIC PostgreSQL proficiency)
+
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 
 PROMPT_POSTGRESQL_CONTEXT = """
@@ -36,12 +39,12 @@ Based on this information, could you summarize what you understand about the com
 """
 
 PROMPT_POSTGRESQL_BASIC_INSTRUCTIONS="""
-# GOAL:
-As a database architect super experienced in PostgreSQL, you are given a list of real world scenarios and proficiency levels for PostgreSQL. 
+## GOAL
+As a database architect super experienced in PostgreSQL, you are given a list of real world scenarios and proficiency levels for PostgreSQL.
 Your job is to generate a task, with the given specifications, so that a candidate is presented with a functional database with initial schema and data but with basic logical bugs or simple performance issues that require foundational-level database skills.
 The candidate's responsibility is to identify the database issues and fix them directly in PostgreSQL. You must be careful about not giving away the solution or even hinting at it in your task definitions.
 
-# CONTEXT & CANDIDATE EXPECTATION:
+## CONTEXT & CANDIDATE EXPECTATION
 The candidate will receive a FULLY FUNCTIONAL PostgreSQL database that is already deployed with existing schema and data. The database includes:
 - Pre-populated tables with realistic data
 - Simple inefficient queries, missing basic indexes, or fundamental schema issues
@@ -50,9 +53,9 @@ The candidate will receive a FULLY FUNCTIONAL PostgreSQL database that is alread
 
 The candidate's responsibility is to analyze the database, identify basic performance issues, and implement PostgreSQL optimizations directly using SQL commands, psql, or any database client tool of their choice.
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the task 
+### Nature of the Task
 - Task name MUST be within 50 words and clearly describe the basic-level optimization scenario
 - Task must provide a working database with existing schema, data, and intentionally suboptimal design requiring foundational-level optimization skills
 - **CRITICAL**: The PostgreSQL database should be FULLY populated and functional but performing poorly due to simple database inefficiencies that require basic analysis and optimization techniques
@@ -198,7 +201,7 @@ Generate a comprehensive .gitignore file suitable for PostgreSQL development tas
  - The README.md contains the following sections:
    - Task Overview
    - Database Access
-   - Guidance
+   - Helpful Tips
    - Objectives
    - How to Verify
 - The README.md file content MUST be fully populated with meaningful, specific content relevant to basic-level optimization challenges
@@ -216,7 +219,7 @@ NEVER generate empty content - always provide substantial business context that 
   - Mention can use any preferred database client tools (e.g., pgAdmin, DBeaver, psql, DataGrip) for basic performance analysis
   - For the host, use a placeholder indicating the droplet IP (e.g., <DROPLET_IP>) rather than an actual IP address
 
-### Guidance
+### Helpful Tips
   - **Basic database context** and foundational guidance points for PostgreSQL optimization
   - **Technical basics** covering PostgreSQL indexing fundamentals, simple query optimization, basic performance considerations
   - **Important considerations** for basic query performance and data integrity
@@ -240,7 +243,7 @@ NEVER generate empty content - always provide substantial business context that 
   - Specific optimization solutions (candidates must analyze and implement basic improvements)
   - Step-by-step optimization guides
 
-# REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task Name (within 50 words)",
@@ -255,6 +258,7 @@ NEVER generate empty content - always provide substantial business context that 
       "sample_queries.sql": "Sample queries that demonstrate the basic performance problems before optimization - these should include EXPLAIN output examples showing poor performance"
    }},
    "outcomes": "Expected results after completion in 2-3 lines focusing on measurable basic performance improvements and optimized database operations requiring foundational-level skills. Use simple english.",
+   "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific database optimization goal, and (3) the expected outcome emphasizing measurable performance improvements.",
    "pre_requisites": "Bullet-point list of tools, knowledge, and environment required to complete the basic-level optimization task. Mention things like Docker, Docker Compose, PostgreSQL client tools (pgAdmin/DBeaver/psql), basic SQL knowledge, understanding of EXPLAIN, foundational PostgreSQL concepts (indexes, simple queries, data types), etc.",
    "answer": "High-level solution approach focusing on basic database optimization strategies and foundational-level performance tuning techniques for the given simple performance issues. Include specific basic optimization techniques like: which simple indexes to create, basic query improvements needed, simple schema changes required, etc.",
    "hints": "A single line hint on what a good basic-level approach to analyze and optimize the database performance could include. These hints must NOT give away the specific optimizations needed, but gently nudge the candidate toward basic database performance analysis practices suitable for foundational-level skills (e.g., 'Start by checking if frequently queried columns have indexes').",
@@ -265,15 +269,23 @@ NEVER generate empty content - always provide substantial business context that 
 }}
 
 
-## CRITICAL NOTES:
-1. **NO API CODE**: Do not generate any FastAPI, Flask, or any application code. Focus purely on PostgreSQL database optimization
-2. **DATABASE ONLY**: Candidates will work directly with the PostgreSQL database using SQL commands and database client tools
-3. **BASIC LEVEL**: Ensure complexity matches 1-2 years of PostgreSQL experience
-4. **MEASURABLE PROBLEMS**: Performance issues must be clearly measurable and observable through query execution times
-5. **REALISTIC DATA**: Include sufficient data volume to make basic performance problems evident
-6. **BUSINESS CONTEXT**: Always ground the task in a realistic business scenario
-7. **NO SOLUTIONS IN CODE**: Do not include optimized queries, correct indexes, or any solutions in the generated files
-8. **VERIFICATION**: Provide clear methods to verify optimization success through measurable metrics
-9. **SIMPLICITY**: Keep the number of tables (2-4), relationships, and queries simple for foundational-level candidates
-10. **FUNDAMENTAL CONCEPTS**: Focus on core PostgreSQL concepts like basic indexes, simple joins, WHERE clauses, and primary/foreign keys
+## CRITICAL REMINDERS
+1. **Output must be valid JSON only** — no markdown, no explanations, no code fences
+2. **NO API CODE**: Do not generate any FastAPI, Flask, or any application code. Focus purely on PostgreSQL database optimization
+3. **DATABASE ONLY**: Candidates will work directly with the PostgreSQL database using SQL commands and database client tools
+4. **BASIC LEVEL**: Ensure complexity matches 1-2 years of PostgreSQL experience
+5. **MEASURABLE PROBLEMS**: Performance issues must be clearly measurable and observable through query execution times
+6. **REALISTIC DATA**: Include sufficient data volume to make basic performance problems evident
+7. **BUSINESS CONTEXT**: Always ground the task in a realistic business scenario
+8. **NO SOLUTIONS IN CODE**: Do not include optimized queries, correct indexes, or any solutions in the generated files
+9. **VERIFICATION**: Provide clear methods to verify optimization success through measurable metrics
+10. **SIMPLICITY**: Keep the number of tables (2-4), relationships, and queries simple for foundational-level candidates
+11. **FUNDAMENTAL CONCEPTS**: Focus on core PostgreSQL concepts like basic indexes, simple joins, WHERE clauses, and primary/foreign keys
 """
+PROMPT_REGISTRY = {
+    "PostgreSQL (BASIC)": [
+        PROMPT_POSTGRESQL_CONTEXT,
+        PROMPT_POSTGRESQL_INPUT_AND_ASK,
+        PROMPT_POSTGRESQL_BASIC_INSTRUCTIONS,
+    ]
+}

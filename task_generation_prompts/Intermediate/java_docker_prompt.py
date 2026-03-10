@@ -12,39 +12,41 @@ Based on this information, could you summarize what you understand about the com
 """
 
 PROMPT_JAVA_DOCKER_INTERMEDIATE_INPUT_AND_ASK = """
-# GOAL:
-As a technical architect with deep experience in Java and Docker, you are given a list of real-world scenarios and proficiency levels for backend service development and deployment. 
-Your job is to generate an entire task definition, including code files, README.md, expected outcomes, etc., that can be effectively used to assess the candidate's ability to design, build, containerize, and run intermediate-level Java applications using Docker.
-
-Now that you've seen the instructions and examples, you are ready to generate a task definition for Java + Docker given the following inputs:
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Java and Docker assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
 
-INPUT ROLE CONTEXT: 
+INPUT ROLE CONTEXT:
 {role_context}
 
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
-CRITICAL: The task complexity must match an intermediate level (2–4 years experience). Focus on tasks like developing a REST API with multiple endpoints, using environment variables for configuration, writing efficient Dockerfiles, and orchestrating multiple services with docker-compose. Avoid advanced Kubernetes orchestration or large-scale distributed systems.
 
-REPOSITORY NAMING: When generating the GitHub repository name in the resources section, ensure it is short, descriptive, and under 50 characters. Use kebab-case (lowercase with hyphens). Examples: "springboot-docker-microservice", "java-rest-compose", "containerized-backend-app".
+CRITICAL TASK GENERATION REQUIREMENTS:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
+- Ensure the candidate can realistically complete the task in the allocated time
+- Select a different real-world scenario each time to ensure variety in task generation
+- The task must reflect authentic challenges that would be encountered in the role described in the role context
 
-Can you now generate a task definition for Java + Docker given the above inputs, following the instructions given above? 
-Use the following prompt to narrow down your response: 
-{question_prompt}
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+1. What will the task be about? (Describe the business domain, technical context, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of Java and Docker implementation required, the expected deliverables, and how it aligns with the given proficiency level)
+
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 
 PROMPT_JAVA_DOCKER_OPTIMIZATION_INSTRUCTIONS_INTER = """
-# GOAL:
-As a technical architect super experienced in Docker containerization and deployment, you are given a list of real world scenarios and proficiency levels for Docker. 
+## GOAL
+As a technical architect super experienced in Docker containerization and deployment, you are given a list of real world scenarios and proficiency levels for Docker.
 Your job is to generate a task, with the given specifications, so that a candidate is presented with a Java application that needs to be properly containerized and deployed using Docker with focus on Docker configuration, optimization, and deployment practices that require intermediate-level Docker skills.
 The candidate's primary responsibility is to create, configure, and optimize the Docker setup. So you'll have to be careful about not giving away the solution or even hinting at it in your task definitions.
 
-# CONTEXT & CANDIDATE EXPECTATION:
+## CONTEXT & CANDIDATE EXPECTATION:
 The candidate will receive a basic Java application (Spring Boot) with minimal or incomplete Docker configuration. The application includes:
 - Complete REST API endpoints with business logic already implemented and functional
 - Basic or missing Docker setup requiring the candidate to create proper Dockerfile and docker-compose.yml
@@ -55,9 +57,9 @@ The candidate will receive a basic Java application (Spring Boot) with minimal o
 
 The candidate's primary responsibility is to focus on Docker implementation and optimization (90%) with minimal Java configuration changes (10%) only as needed to ensure proper containerization. The task completion involves demonstrating Docker best practices, efficient containerization, proper deployment strategies, and optimization techniques at an intermediate level (3-5 years experience in Docker).
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the task 
+### Nature of the Task 
 - Task name MUST be within 50 words and clearly describe the intermediate-level Docker containerization and deployment scenario
 - Task must provide a working Java application that needs proper Docker containerization and deployment setup
 - **CRITICAL**: The Java application should be FULLY functional and well-optimized, requiring only minimal configuration changes for Docker compatibility
@@ -306,7 +308,7 @@ Provide verification approaches that help candidates validate their solutions wi
   - Code snippets or configuration examples
   - Phrases like "you should implement", "make sure to add", "configure the following"
 
-# REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task Name (within 50 words) - must focus on Docker containerization and deployment",
@@ -339,3 +341,10 @@ Provide verification approaches that help candidates validate their solutions wi
     }}
 }}
 """
+PROMPT_REGISTRY = {
+    "Docker (INTERMEDIATE), Java (INTERMEDIATE)": [
+        PROMPT_JAVA_DOCKER_INTERMEDIATE_CONTEXT,
+        PROMPT_JAVA_DOCKER_INTERMEDIATE_INPUT_AND_ASK,
+        PROMPT_JAVA_DOCKER_OPTIMIZATION_INSTRUCTIONS_INTER,
+    ]
+}

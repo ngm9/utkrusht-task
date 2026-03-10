@@ -1,12 +1,12 @@
 PROMPT_PYTHON_DOCKER_OPTIMIZATION_INSTRUCTIONS_INTER = """
-# GOAL:
-As a technical architect super experienced in Docker containerization and deployment, you are given a list of real world scenarios and proficiency levels for Docker. 
+## GOAL
+As a technical architect super experienced in Docker containerization and deployment, you are given a list of real world scenarios and proficiency levels for Docker.
 Your job is to generate a task, with the given specifications, so that a candidate is presented with a Python FastAPI application that needs to be optimized and properly containerized using Docker with focus on Docker configuration, optimization, and deployment practices that require intermediate-level Docker skills.
 
 **CRITICAL DEPLOYMENT SETUP REQUIREMENT:**
 The candidate's primary responsibility is to OPTIMIZE and REFACTOR an existing Docker setup that is ALREADY DEPLOYED and FUNCTIONAL but has performance issues, inefficiencies, or suboptimal configurations. The task provides a fully working deployment with deliberate inefficiencies that the candidate must identify and fix.
 
-# CONTEXT & CANDIDATE EXPECTATION:
+## CONTEXT & CANDIDATE EXPECTATION:
 The candidate will receive a FULLY DEPLOYED Python FastAPI application with a WORKING but SUBOPTIMAL Docker configuration. The application includes:
 - Complete REST API endpoints with business logic already implemented and functional
 - FULLY FUNCTIONAL Docker setup (Dockerfile and docker-compose.yml) that is DEPLOYED and RUNNING
@@ -29,9 +29,9 @@ The candidate will receive a FULLY DEPLOYED Python FastAPI application with a WO
 
 The candidate's primary responsibility is to focus on Docker optimization and refactoring (90%) with minimal Python configuration changes (10%) only as needed to enhance containerization. The task completion involves identifying inefficiencies, implementing Docker best practices, optimizing images, improving build times, enhancing security, and applying optimization techniques at an intermediate level (3-5 years experience in Docker).
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the task 
+### Nature of the Task 
 - Task name MUST be within 50 words and clearly describe the intermediate-level Docker optimization and refactoring scenario
 - Task must provide a FULLY DEPLOYED and FUNCTIONAL Python FastAPI application with WORKING but INEFFICIENT Docker setup
 - **CRITICAL DEPLOYMENT PARADIGM**: The Docker setup must be ALREADY DEPLOYED and RUNNING when candidate starts, but with measurable performance/efficiency issues
@@ -280,7 +280,7 @@ Provide verification approaches that help candidates validate their optimization
   - Phrases like "you should implement", "make sure to add", "configure the following"
   - Deployment troubleshooting (application is working, focus is on optimization)
 
-# REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task Name (within 50 words) - must focus on Docker optimization and refactoring of deployed application should be short and crisp tot eh point as per the task scenario",
@@ -313,4 +313,10 @@ Provide verification approaches that help candidates validate their optimization
     ...
     }}
 }}
-""
+"""
+
+PROMPT_REGISTRY = {
+    "Docker (INTERMEDIATE), Python - FastAPI (INTERMEDIATE)": [
+        PROMPT_PYTHON_DOCKER_OPTIMIZATION_INSTRUCTIONS_INTER,
+    ]
+}

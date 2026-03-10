@@ -277,3 +277,11 @@ Practical guidance without revealing implementations:
 14. **Include all standard CRA files**: public/index.html, public/manifest.json, public/robots.txt; entry point must be src/index.js
 15. **Must use react-scripts** for start, build, and test
 """
+
+PROMPT_REGISTRY = {
+    "ReactJs": [
+        PROMPT_REACT_BEGINNER_CONTEXT,
+        PROMPT_REACT_BEGINNER_INPUT_AND_ASK,
+        PROMPT_REACT_BEGINNER,
+    ]
+}

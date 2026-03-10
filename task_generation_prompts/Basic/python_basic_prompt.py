@@ -219,3 +219,11 @@ Practical guidance without revealing implementations:
 11. **Task name** must be short, descriptive, under 50 characters, kebab-case
 12. **Select a different real-world scenario** each time for variety
 """
+
+PROMPT_REGISTRY = {
+    "Python (BASIC)": [
+        PROMPT_PYTHON_BASIC_CONTEXT,
+        PROMPT_PYTHON_BASIC_INPUT_AND_ASK,
+        PROMPT_PYTHON_BASIC,
+    ]
+}

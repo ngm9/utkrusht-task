@@ -11,40 +11,42 @@ Based on this information, could you summarize what you understand about the com
 """
 
 PROMPT_REACT_INTERMEDIATE_INPUT_AND_ASK = """
-# GOAL:
-As a technical architect super experienced in react.js, you are given a list of real world scenarios and proficiency levels for react.js development. 
-Your job is to generate an entire task definition, including code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end.
-
-Now that you've seen the instructions and examples, you are ready to generate a task definition for react.js given the following inputs:
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a React.js assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
 
-INPUT ROLE CONTEXT: 
+INPUT ROLE CONTEXT:
 {role_context}
 
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
-CRITICAL: The task complexity must be appropriate for the given skill and years of experience. The candidate should be able to complete in the allocated time. Use the real-world scenarios to determine the business context and technical focus.
 
-REPOSITORY NAMING: When generating the GitHub repository name in the resources section, ensure it is short, descriptive, and under 50 characters. Use kebab-case (lowercase with hyphens). Examples: "nextjs-product-search", "typescript-dashboard", "react-inventory-app".
+CRITICAL TASK GENERATION REQUIREMENTS:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
+- Ensure the candidate can realistically complete the task in the allocated time
+- Select a different real-world scenario each time to ensure variety in task generation
+- The task must reflect authentic challenges that would be encountered in the role described in the role context
 
-Can you now generate a task definition for reactJS given the above inputs, following the instructions given above? 
-Use the following prompt to narrow down your response: 
-{question_prompt}
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+1. What will the task be about? (Describe the business domain, technical context, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of React.js implementation or fix required, the expected deliverables, and how it aligns with the given proficiency level)
+
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 
 PROMPT_REACT_INTERMEDIATE_INSTRUCTIONS = """
-# GOAL:
-As a technical architect super experienced in React and modern JavaScript ecosystem, you are given a list of real world scenarios and proficiency levels for React development. 
+## GOAL
+As a technical architect super experienced in React and modern JavaScript ecosystem, you are given a list of real world scenarios and proficiency levels for React development.
 Your job is to generate an entire task definition, including code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end at an intermediate level.
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the task 
+### Nature of the Task 
 - Task must ask to implement a feature from scratch, refactor existing code, or fix complex bugs in the existing codebase.
 - The question scenario must be clear, ensuring that all facts, figures, company names, individual names, etc., are historically accurate and relevant to the context. 
 - Generate enough starter code that gives the candidate a good starting point to start solving the task
@@ -102,7 +104,7 @@ The output should be a valid json schema:
   - Code files should demonstrate partial architecture that candidate needs to complete/extend
   - Include realistic folder structure (components/, hooks/, utils/, constants/, etc.)
 
-# REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task Name",
@@ -170,7 +172,7 @@ Create a comprehensive gitignore file that covers all standard exclusions for in
 **CRITICAL REQUIREMENT**: This section MUST contain 3-4 meaningful sentences describing the business scenario, current situation, and why architectural considerations matter for this use case. 
 NEVER generate empty content - always provide substantial business context that explains what the candidate is working on and why proper architecture is crucial.
 
-### Guidance
+### Helpful Tips
   - Project context and guidance points suitable for intermediate level React developers
   - Architectural considerations and design pattern suggestions
   - Important considerations for the implementation focusing on:
@@ -209,3 +211,10 @@ NEVER generate empty content - always provide substantial business context that 
   - Component names or specific implementation strategies that would reveal the solution
   - Folder structure decisions that would dictate the architectural approach
 """
+PROMPT_REGISTRY = {
+    "ReactJs (INTERMEDIATE)": [
+        PROMPT_REACT_INTERMEDIATE_CONTEXT,
+        PROMPT_REACT_INTERMEDIATE_INPUT_AND_ASK,
+        PROMPT_REACT_INTERMEDIATE_INSTRUCTIONS,
+    ]
+}

@@ -11,40 +11,42 @@ Based on this information, could you summarize what you understand about the com
 """
 
 PROMPT_GOLANG_INPUT_AND_ASK = """
-# GOAL:
-As a technical architect with deep experience in Go (Golang), you are given a list of real-world scenarios and proficiency levels for Go backend development. 
-Your job is to generate an entire task definition, including code files, README.md, expected outcomes, etc., that can be effectively used to assess the candidate's ability to think, design, build, implement, debug, and deliver a complete solution end to end in Go.
-
-Now that you've seen the instructions and examples, you are ready to generate a task definition for Go given the following inputs:
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Go (Golang) assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
 
-INPUT ROLE CONTEXT: 
+INPUT ROLE CONTEXT:
 {role_context}
 
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
-CRITICAL: The task complexity must be appropriate for the given skill and years of experience. The candidate should be able to complete it within the allocated time. Use the real-world scenarios to determine both the business context and technical focus.
 
-REPOSITORY NAMING: When generating the GitHub repository name in the resources section, ensure it is short, descriptive, and under 50 characters. Use kebab-case (lowercase with hyphens). Examples: "go-rest-api", "golang-concurrency-task" , etc.
+CRITICAL TASK GENERATION REQUIREMENTS:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
+- Ensure the candidate can realistically complete the task in the allocated time
+- Select a different real-world scenario each time to ensure variety in task generation
+- The task must reflect authentic challenges that would be encountered in the role described in the role context
 
-Can you now generate a task definition for Go given the above inputs, following the instructions given above? 
-Use the following prompt to narrow down your response: 
-{question_prompt}
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+1. What will the task be about? (Describe the business domain, technical context, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of Go implementation or fix required, the expected deliverables, and how it aligns with the given Go proficiency level)
+
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 
 PROMPT_GO_INTERMEDIATE_INSTRUCTIONS="""
-## GOAL:
+## GOAL
 As a technical architect super experienced in Go and modern Go ecosystem, you are given a list of real world scenarios and proficiency levels for Go development. 
 Your job is to generate an entire task definition, including code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end at an intermediate level.
 
-## INSTRUCTIONS:
+## INSTRUCTIONS
 
-### Nature of the task 
+### Nature of the Task 
 - Task must ask to implement a feature from scratch, refactor existing code, or fix complex bugs in the existing codebase.
 - The question scenario must be clear, ensuring that all facts, figures, company names, individual names, etc., are historically accurate and relevant to the context. 
 - Generate enough starter code that gives the candidate a good starting point to start solving the task
@@ -104,7 +106,7 @@ The output should be a valid json schema:
   - Code files should demonstrate partial architecture that candidate needs to complete/extend
   - Include realistic folder structure (cmd/app/, internal/service/, internal/repository/, internal/model/, pkg/utils/, etc.)
 
-## REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 {{
    "name": "Task Name",
    "question": "A detailed description of the task scenario including the specific ask from the candidate — what needs to be implemented/refactored/fixed? Include architectural considerations and requirements.",
@@ -245,3 +247,10 @@ Make sure you do not include the following in the README.md file:
   - Specific Go standard library recommendations that would reveal the solution approach
   
   """
+PROMPT_REGISTRY = {
+    "Golang (INTERMEDIATE)": [
+        PROMPT_GOLANG_CONTEXT,
+        PROMPT_GOLANG_INPUT_AND_ASK,
+        PROMPT_GO_INTERMEDIATE_INSTRUCTIONS,
+    ]
+}

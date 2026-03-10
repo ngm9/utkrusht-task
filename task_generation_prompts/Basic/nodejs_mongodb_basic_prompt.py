@@ -42,12 +42,12 @@ Based on this information, could you summarize what you understand about the com
 
 
 PROMPT_NODEJS_MONGODB_OPTIMIZATION_INSTRUCTIONS ="""
-# GOAL:
-As a technical architect experienced in MongoDB database and Node.js REST API integration, you are given a list of real world scenarios and proficiency levels for MongoDB. 
+## GOAL
+As a technical architect experienced in MongoDB database and Node.js REST API integration, you are given a list of real world scenarios and proficiency levels for MongoDB.
 Your job is to generate a task, with the given specifications, so that a candidate is presented with a functional REST API and some initial schema but either with logical bugs or performance issues that require basic-level database optimization skills.
 The candidate's responsibility is to identify the issue and fix it. So you'll have to be careful about not giving away the solution or even hinting at it in your task definitions.
 
-# CONTEXT & CANDIDATE EXPECTATION:
+## CONTEXT & CANDIDATE EXPECTATION:
 The candidate will receive a FULLY FUNCTIONAL Node.js Express/Fastify REST API application that is already connected to MongoDB with existing schema and data. The Node.js application includes:
 - Complete REST API endpoints with business logic implemented but with straightforward inefficiencies in database queries AND basic API endpoint performance issues requiring basic-level optimization
 - Full database connection and configuration setup
@@ -69,9 +69,9 @@ The candidate's responsibility is to fix an issue with the database according to
 - Optimizing basic middleware execution
 - Improving basic request validation
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the task 
+### Nature of the Task 
 - Task name MUST be within 50 characters and clearly describe the basic-level optimization scenario for BOTH MongoDB queries AND Node.js API endpoints
 - Task must provide a working application with existing database schema, data, and intentionally clear suboptimal queries/database design/API endpoint implementations requiring basic-level optimization skills
 - **CRITICAL**: The Node.js Express/Fastify application should be FULLY functional but performing poorly due to:
@@ -308,7 +308,7 @@ Define goals focusing on outcomes for the optimization task:
 - Specific optimization solutions or code snippets
 - Phrases like "you should implement", "add the following code"
 
-# REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task Name (within 50 characters, mentioning BOTH MongoDB and Node.js optimization at basic level)",
@@ -352,3 +352,10 @@ Define goals focusing on outcomes for the optimization task:
       }}
 }}
 """
+PROMPT_REGISTRY = {
+    "MongoDB (BASIC), NodeJs (BASIC)": [
+        PROMPT_NODEJS_MONGODB_CONTEXT,
+        PROMPT_NODEJS_MONGODB_INPUT_AND_ASK,
+        PROMPT_NODEJS_MONGODB_OPTIMIZATION_INSTRUCTIONS,
+    ]
+}

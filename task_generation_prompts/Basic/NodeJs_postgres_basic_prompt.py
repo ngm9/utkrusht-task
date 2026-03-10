@@ -19,12 +19,12 @@ CRITICAL TASK GENERATION REQUIREMENTS:
 - Select a different real-world scenario each time to ensure variety in task generation
 - The task must reflect authentic challenges that would be encountered in the role described in the role context
 
-Now proceed with the full task generation. Use the following prompt to narrow down your response:
-{question_prompt}
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
-REPOSITORY NAMING: When generating the GitHub repository name in the resources section, ensure it is short, descriptive, and under 50 characters. Use kebab-case (lowercase with hyphens). Examples: "nextjs-product-search", "nodejs-postgres-inventory", "react-inventory-app".
+1. What will the task be about? (Describe the business domain, technical context, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of database schema design and Node.js integration required, the expected deliverables, and how it aligns with the given PostgreSQL and Node.js proficiency level)
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 
 PROMPT_NODEJS_POSTGRESQL_CONTEXT = """
@@ -40,11 +40,11 @@ Based on this information, could you summarize what you understand about the com
 """
 
 PROMPT_NODEJS_POSTGRESQL_INSTRUCTIONS = """
-# GOAL:
-As a technical architect super experienced in PostgreSQL database design, administration, and Node.js integration, you are given a list of real world scenarios and proficiency levels for PostgreSQL. 
+## GOAL
+As a technical architect super experienced in PostgreSQL database design, administration, and Node.js integration, you are given a list of real world scenarios and proficiency levels for PostgreSQL.
 Your job is to generate an entire task definition, including code files (complete REST API structure using Node.js Express), database schema, Docker setup, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve database-related problems end to end.
 
-# CONTEXT & CANDIDATE EXPECTATION:
+## CONTEXT & CANDIDATE EXPECTATION:
 The candidate will receive a FULLY FUNCTIONAL Node.js Express application with complete REST API endpoints. The Node.js application includes:
 - Complete REST API endpoints with business logic implemented
 - Express server setup with middleware and error handling
@@ -65,9 +65,9 @@ The candidate's responsibility is:
 - Using provided database credentials to connect via database client tools
 - Modifying Node.js endpoints to work with their designed database schema
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the task 
+### Nature of the Task
 - Task must ask to implement database schemas from scratch and integrate with Node.js endpoints
 - **CRITICAL**: The Node.js application should have COMPLETE API endpoints but NO database integration - candidates must implement database connection and integration from scratch.
 - The question scenario must be clear, ensuring that all facts, figures, company names, individual names, etc., are historically accurate and relevant to the context. 
@@ -290,7 +290,7 @@ Verification approaches for schema design and Node.js integration:
 - Step-by-step implementation instructions or exact code solutions or schema examples
 - Phrases like "you should implement", "add the following code"
 
-# REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 {{
    "name": "task-name-in-kebab-case",
    "question": "A short description of the task scenario including the specific business requirements that need a database schema designed from scratch AND integrated with existing Node.js API endpoints — what business problem needs to be solved through database design and Node.js integration?",
@@ -322,3 +322,10 @@ Verification approaches for schema design and Node.js integration:
     }}
 }}
 """
+PROMPT_REGISTRY = {
+    "NodeJs, PostgreSQL": [
+        PROMPT_NODEJS_POSTGRESQL_CONTEXT,
+        PROMPT_NODEJS_POSTGRESQL_INPUT_AND_ASK,
+        PROMPT_NODEJS_POSTGRESQL_INSTRUCTIONS,
+    ]
+}

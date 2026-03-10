@@ -10,7 +10,7 @@ Roles and Responsibilities:
 Based on this information, could you summarize what you understand about the company and role requirements?
 """
 PROMPT_RAG_INPUT_AND_ASK_BASIC = """
-Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Pandas/NumPy assessment task.
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a RAG (Retrieval-Augmented Generation) assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
@@ -39,7 +39,7 @@ Before we proceed to the detailed task generation instructions, please confirm y
 Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 PROMPT_RAG_BASIC = """
-# GOAL:
+## GOAL
 As a technical architect experienced in Docker containerization and RAG (Retrieval-Augmented Generation) systems, you are given real-world scenarios and proficiency levels for Docker. Your job is to generate a deployment-ready task for basic-level Docker practitioners (1-2 years experience) where a candidate receives a RAG application that is already fully containerized and deployable, and where the candidate must improve and harden the deployment and/or RAG pipeline based on the scenario.
 
 **CRITICAL**: You MUST strictly follow the provided real-world task scenarios (input_scenarios) to frame the task. The business context, domain, RAG use case, and technical requirements should directly align with the given scenario. The balance between Docker containerization work and RAG pipeline improvement will naturally depend on the specific scenario requirements.
@@ -47,7 +47,7 @@ As a technical architect experienced in Docker containerization and RAG (Retriev
 **very important**: so the task should be completely build according to the task scenarios that will provided the task that is to be done by the candidate that should not be implemented already in teh code files
 The candidate's primary responsibility is to understand, validate, and improve an existing Dockerized RAG system appropriate to the scenario. This may involve refining containerization (best practices, observability, configuration) and/or enhancing RAG retrieval quality or generation as dictated by the scenario. Do NOT generate broken configurations; do NOT give away solutions or hint at implementations in task definitions.
 
-# CONTEXT & CANDIDATE EXPECTATION:
+## CONTEXT & CANDIDATE EXPECTATION
 The candidate receives a RAG application with a working baseline, whose quality and robustness vary by scenario. The application includes:
 - A basic but functional RAG system that is already deployable and working end-to-end
 - ChromaDB vector database with pre-populated, queryable data
@@ -458,7 +458,7 @@ Use action words: "Consider", "Think about", "Review", "Explore"
 - Code snippets or configuration examples revealing implementations
 - Specific implementation details
 
-# REQUIRED OUTPUT JSON:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task name (within 50 characters), e.g., 'Improve Medical RAG System Retrieval Quality'",
@@ -483,6 +483,7 @@ Use action words: "Consider", "Think about", "Review", "Explore"
       "init-scripts/sample_data.json": "Domain-specific sample data (20-50+ documents) with id, text, metadata"
    }},
   "outcomes": "Bullet-point list in simple, non-technical language understandable by HR. Must include: 'Write production level clean code with best practices including proper design patterns, naming conventions, exception handling, logging and observability.' and 'Deploy ChromaDB vector database through Docker with persistent storage and pre-populated data ready for querying.'",
+   "short_overview": "Bullet-point list in simple language describing: (1) the high-level problem in a business context, (2) the specific goal, and (3) the expected outcome emphasizing maintainability and scalability.",
    "pre_requisites": "Docker, Docker Compose, basic Python, basic RAG understanding, ChromaDB concepts, vector database knowledge, Git, curl, API concepts",
    "answer": "High-level solution describing approach. Focus on RAG concepts, ChromaDB deployment with default embeddings, data initialization flow, and persistent volume at /data. Emphasize the three-service architecture with simplified startup order and retry logic: ChromaDB → init → RAG app. Mention improvements in retrieval strategies, deployment robustness, or observability as relevant to scenario. Note the use of lightweight default embeddings and optimized Docker layer caching.",
    "hints": "Single line suggesting focus area(s). Must NOT reveal implementations. Can mention ChromaDB containerization with persistent volume, service networking, initialization retry logic, and RAG retrieval quality improvements using default embeddings.",
@@ -496,4 +497,24 @@ Use action words: "Consider", "Think about", "Review", "Explore"
      "terminology_7": "Persistent Volume - Docker storage mechanism that retains data across container restarts and recreations"
    }}
 }}
+
+## CRITICAL REMINDERS
+
+1. **Output must be valid JSON only** — no markdown, no explanations, no code fences
+2. **name** must be short, descriptive, within 50 characters
+3. **code_files** must include README.md, .gitignore, requirements.txt, Docker files, run.sh, kill.sh, and all source files
+4. **README.md** must follow the structure above with Task Overview, Objectives, Application Access, How to Verify, Helpful Tips
+5. **RAG system** must be COMPLETE and deployable — candidates improve it, not fix broken deployment
+6. **outcomes** and **short_overview** must be bullet-point lists in simple language
+7. **hints** must be a single line; **definitions** must include relevant RAG/Docker terms
+8. **Task must be completable within the allocated time** for BASIC proficiency (1-2 years)
+9. **NO solutions revealed** in starter code — system must work but have room for improvement
+10. **All paths** must reference /root/task as the base directory
 """
+PROMPT_REGISTRY = {
+    "Retrieval_Augmented_Generation (BASIC)": [
+        PROMPT_RAG_CONTEXT_BASIC,
+        PROMPT_RAG_INPUT_AND_ASK_BASIC,
+        PROMPT_RAG_BASIC,
+    ]
+}

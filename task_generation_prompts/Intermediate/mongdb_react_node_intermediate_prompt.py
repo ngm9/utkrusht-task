@@ -1,45 +1,49 @@
 PROMPT_FULLSTACK_INPUT_AND_ASK = """
-# GOAL:
-As a technical architect super experienced in NodeJs, ReactJs and MongoDB, you are given a real world scenarios and proficiency levels for NodeJS , ReactJS and MongoDB. 
-Your job is to generate an entire task definition, including code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end.
-
-Now that you've seen the instructions and examples, you are ready to generate a task definition for NodeJs, ReactJs and MongoDB given the following inputs:
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Node.js, React.js, and MongoDB full-stack assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
 
-INPUT ROLE CONTEXT: 
+INPUT ROLE CONTEXT:
 {role_context}
 
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
-CRITICAL: The task complexity must be appropriate for the given skill and years of experience . The candidate should be able to complete in the allocated time. Use the real-world scenarios to determine the business context and technical focus.
 
-Can you now generate a task definition for Python FastAPI and Postgres given the above inputs, following the instructions given above? 
-Use the following prompt to narrow down your response: 
-{question_prompt}
+CRITICAL TASK GENERATION REQUIREMENTS:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
+- Ensure the candidate can realistically complete the task in the allocated time
+- Select a different real-world scenario each time to ensure variety in task generation
+- The task must reflect authentic challenges that would be encountered in the role described in the role context
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
+
+1. What will the task be about? (Describe the business domain, technical context, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of full-stack implementation or optimization required, the expected deliverables, and how it aligns with the given proficiency level)
+
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 
 PROMPT_FULLSTACK_CONTEXT ="""
-# GOAL:
-As a full-stack architecture expert experienced in MongoDB, NodeJs, and ReactJs, you are given a list of real world scenarios and proficiency levels for full-stack development. 
+## GOAL
+As a full-stack architecture expert experienced in MongoDB, NodeJs, and ReactJs, you are given a list of real world scenarios and proficiency levels for full-stack development.
 Your job is to generate a task, with the given specifications, so that a candidate is presented with a functional full-stack application appropriate to the scenario (either with skeleton code requiring feature implementation, or with existing code requiring performance optimization).
 
 The candidate's responsibility is to analyze the application and either BUILD complete features from the provided structure or OPTIMIZE the application across the entire stack. You must be careful about not giving away the solution or even hinting at it in your task definitions.
 
-# CONTEXT & CANDIDATE EXPECTATION:
+## CONTEXT & CANDIDATE EXPECTATION:
 The candidate will receive a full-stack application that is either:
 - A skeleton with folder structure, configuration, and empty stubs for feature implementation
 - A working application with intentional inefficiencies or performance bottlenecks
 
 In either case, the application includes MongoDB schema (documented or pre-populated), backend APIs (stubs or functional with issues), and frontend components (stubs or with performance problems). The candidate must analyze the requirements/performance issues and implement necessary changes across all layers.
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the task 
+### Nature of the Task 
 - Task name MUST be within 50 words and clearly describe the intermediate-level full-stack scenario
 - Task must provide an appropriate full-stack application structure based on the scenario requirements
 - The question scenario must be clear, ensuring that all facts, figures, company names, individual names, etc., are historically accurate and relevant to the context
@@ -244,7 +248,7 @@ NEVER generate empty content - always provide substantial business context.
   - Provide MongoDB connection details (host, port, database name, username, password)
   - For the host, use a placeholder indicating the droplet IP (e.g., <DROPLET_IP>)
 
-### Guidance
+### Helpful Tips
 - Architecture best practices and design patterns appropriate to task scenario
 - Performance considerations and optimization strategies
 - MongoDB schema design and query optimization approaches
@@ -276,7 +280,7 @@ NEVER generate empty content - always provide substantial business context.
   - Step-by-step guides
   - Code snippets showing solutions
 
-# REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task Name (within 50 words)",
@@ -303,19 +307,43 @@ NEVER generate empty content - always provide substantial business context.
       "frontend/public/*": "Static assets",
       "sample_queries.js": "Sample queries, API calls, and test documentation"
    }},
-   "outcomes": "Expected results after completion (2-3 lines) with measurable improvements or completed features across the full-stack application. Use simple english.",
-   "pre_requisites": "Bullet-point list of tools, knowledge, and environment required to complete the intermediate-level full-stack task. Include Docker, Docker Compose, MongoDB, Node.js/Express, React fundamentals, performance tools, API testing tools, profiling tools, and full-stack architecture knowledge.",
-   "answer": "High-level solution approach focusing on architecture decisions, design patterns, optimization strategies, and implementation techniques across all layers appropriate to the scenario. Include specific approaches for MongoDB, backend optimization, and React improvements.",
+   "outcomes": "Bullet-point list in simple language describing measurable improvements or completed features across the full-stack application. Must include: 'Design and implement intermediate-level MongoDB schema with appropriate indexing and aggregation, integrate with a Node.js/Express backend using efficient query patterns, and build or optimize React components to deliver a performant, production-ready full-stack application' and 'Write clean, well-structured code following intermediate-level best practices: proper error handling, separation of concerns, connection pooling, query optimization, and React performance patterns'",
+   "short_overview": "Bullet-point list in simple language describing: (1) the business scenario and current state of the full-stack application (what works and what is missing or slow), (2) what the candidate must build or optimize across all three layers (MongoDB schema/queries, Express API, React components), and (3) the expected outcome emphasizing production-quality, scalable, and maintainable full-stack code",
+   "pre_requisites": "Bullet-point list of tools, knowledge, and environment required to complete the intermediate-level full-stack task. Include: Docker, Docker Compose, MongoDB (Compass, mongosh), Node.js 18+/Express, React (hooks, routing, state management), performance profiling tools (React DevTools, MongoDB explain()), API testing tools (Postman, curl), full-stack architecture knowledge (REST API design, database schema design, query optimization), Git for version control",
+   "answer": "High-level solution approach focusing on architecture decisions, design patterns, optimization strategies, and implementation techniques across all layers appropriate to the scenario. Include specific approaches for: MongoDB schema design and indexing strategy, aggregation pipeline design, Express API structure and query optimization (pagination, filtering, N+1 resolution, caching), and React component optimization (memoization, lazy loading, state management, request deduplication).",
    "hints": "A single line hint on what a good intermediate-level approach to analyze and improve the full-stack application could include. This hint must NOT give away specific solutions, but gently nudge toward comprehensive analysis and best practices suitable for intermediate-level skills.",
    "definitions": {{
-      "terminology_1": "definition_1",
-      "terminology_2": "definition_2",
       "N+1 Query Problem": "A performance issue where an application makes one query to fetch parent records, then N additional queries to fetch related data for each parent record, resulting in N+1 total queries",
       "React Component Memoization": "Optimization technique using React.memo to prevent unnecessary re-renders of components when props haven't changed",
       "Aggregation Pipeline": "MongoDB feature that processes documents through multiple stages (match, group, sort, project) to transform and analyze data efficiently",
       "Code-Splitting": "Process of breaking JavaScript bundle into smaller chunks that are loaded on-demand, reducing initial load time",
       "Connection Pooling": "Management of database connections to reuse them instead of creating new connections for each request, improving performance"
-   }}
+   }},
+   "criterias": [
+      {{"name": "React Framework", "proficiency": "INTERMEDIATE", "competency_id": "a1b2c3d4-e5f6-4g7h-8i9j-0k1l2m3n4o5p"}},
+      {{"name": "NodeJs", "proficiency": "INTERMEDIATE", "competency_id": "f4a2e937-b85b-4b81-b28b-8f6b49d9599c"}},
+      {{"name": "MongoDB", "proficiency": "INTERMEDIATE", "competency_id": "11987eb0-6be9-45ff-9193-295be37d17a1"}}
+   ]
 }}
 
 """
+
+PROMPT_FULLSTACK_INTERMEDIATE_CONTEXT = """
+Let me provide you with some context about the company and role:
+
+Company Context:
+{organization_background}
+
+Roles and Responsibilities:
+{role_context}
+
+Based on this information, could you summarize what you understand about the company and role requirements for this intermediate-level full-stack engineering position?
+"""
+
+PROMPT_REGISTRY = {
+    "MongoDB (INTERMEDIATE), NodeJs (INTERMEDIATE), React Framework (INTERMEDIATE)": [
+        PROMPT_FULLSTACK_INTERMEDIATE_CONTEXT,
+        PROMPT_FULLSTACK_INPUT_AND_ASK,
+        PROMPT_FULLSTACK_CONTEXT,
+    ]
+}

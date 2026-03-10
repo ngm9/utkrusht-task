@@ -12,40 +12,41 @@ Based on this information, could you summarize what you understand about the com
 """
 
 PROMPT_GOLANG_DOCKER_BASIC_INPUT_AND_ASK = """
-# GOAL:
-As a technical architect with strong experience in Golang and Docker, you are given a list of real-world scenarios and proficiency levels for backend service development and containerization. 
-Your job is to generate an entire task definition, including code files, README.md, expected outcomes, etc., that can be effectively used to assess the candidate's ability to write, containerize, and run simple Golang applications using Docker.
-
-Now that you've seen the instructions and examples, you are ready to generate a task definition for Golang + Docker given the following inputs:
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Golang and Docker assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
 
-INPUT ROLE CONTEXT: 
+INPUT ROLE CONTEXT:
 {role_context}
 
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
-CRITICAL: The task complexity must match a beginner level (1–2 years experience). Focus on tasks like building a small REST API, containerizing it with Docker, and running it locally. Avoid complex system designs, advanced networking, or Kubernetes usage.
+CRITICAL TASK GENERATION REQUIREMENTS:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
+- Ensure the candidate can realistically complete the task in the allocated time
+- Select a different real-world scenario each time to ensure variety in task generation
+- The task must reflect authentic challenges that would be encountered in the role described in the role context
 
-REPOSITORY NAMING: When generating the GitHub repository name in the resources section, ensure it is short, descriptive, and under 50 characters. Use kebab-case (lowercase with hyphens). Examples: "golang-docker-api", "golang-container-app", "simple-rest-docker".
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
-Can you now generate a task definition for Golang + Docker given the above inputs, following the instructions given above? 
-Use the following prompt to narrow down your response: 
-{question_prompt}
+1. What will the task be about? (Describe the business domain, technical context, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of Docker containerization required, the expected deliverables, and how it aligns with BASIC Golang and Docker proficiency)
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 PROMPT_GOLANG_DOCKER_BASIC_INSTRUCTIONS = """
-# GOAL:
+## GOAL
 As a technical architect experienced in Docker containerization, you are given real-world scenarios and proficiency levels for Docker. Your job is to generate a deployment-ready task for basic-level Docker practitioners (1-2 years experience) where a candidate receives a functional Golang application that needs proper containerization using Docker fundamentals.
 
 **CRITICAL**: You MUST strictly follow the provided real-world task scenarios (input_scenarios) to frame the task. The business context, domain, and technical requirements should directly align with the given scenario while focusing primarily on Docker containerization (85%) with minimal Golang configuration changes (15%).
 
 The candidate's primary responsibility is to understand, configure, and apply basic Docker concepts. Be careful not to give away solutions or hint at implementations in task definitions.
 
-# CONTEXT & CANDIDATE EXPECTATION:
+## CONTEXT & CANDIDATE EXPECTATION
 The candidate receives a complete, working Golang REST API application with basic Docker setup requiring fundamental Docker knowledge to properly containerize. The application includes:
 - Fully functional REST API endpoints with all business logic implemented
 - Complete Golang code requiring NO modifications
@@ -55,9 +56,9 @@ The candidate receives a complete, working Golang REST API application with basi
 
 **PRIMARY FOCUS**: The candidate works on Docker containerization (85%) with minimal configuration adjustments (15%) only for Docker compatibility. The task demonstrates understanding of Docker basics, container lifecycle, basic optimization, and deployment practices suitable for 1-2 years Docker experience.
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the Task
+### Nature of the Task
 - **MANDATORY**: The task MUST be derived from and aligned with the provided input_scenarios. Use the scenario's business context, domain, technical stack, and requirements as the foundation
 - **CRITICAL**: While the scenario provides the business context, ensure the PRIMARY focus (85%) remains on Docker containerization challenges, NOT Golang application development
 - Task name MUST be within 50 words describing a clear basic-level Docker containerization scenario that reflects the input scenario's context
@@ -298,7 +299,7 @@ Verification approaches without revealing implementations, using scenario-specif
 - Golang optimization instructions
 - Phrases like "you should implement", "add the following"
 
-# REQUIRED OUTPUT JSON:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task name short and concise reflecting the scenario context and focusing on the task",
@@ -321,6 +322,7 @@ Verification approaches without revealing implementations, using scenario-specif
       "config/config.go": "Configuration loading and management (or constants.go with hardcoded values for containerization)"
   }},
   "outcomes": "Expected results in 2-3 lines: successful containerization of the scenario's application, running service, basic Docker understanding demonstrated. Simple language.",
+  "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific Docker containerization goal, and (3) the expected outcome emphasizing correctness and reliability.",
   "pre_requisites": "Bullet points: Docker, Docker Compose, basic Golang familiarity (no expertise needed), Git, curl/Postman for testing scenario-specific endpoints",
   "answer": "High-level solution focusing on basic Docker concepts for the scenario: using official images, proper Dockerfile structure with multi-stage builds, docker-compose basics for the scenario's services, container networking, basic debugging. Minimal mention of configuration changes.",
   "hints": "Single line suggesting focus on Docker fundamentals for containerizing the scenario's application. Must NOT reveal specific implementations.",
@@ -329,4 +331,23 @@ Verification approaches without revealing implementations, using scenario-specif
     "terminology_2": "Container-related definition or scenario-specific technical term"
     }}
 }}
+
+## CRITICAL REMINDERS
+1. **Output must be valid JSON only** — no markdown, no explanations, no code fences
+2. **name** must be short, descriptive, within 50 words
+3. **code_files** must include README.md, .gitignore, go.mod, go.sum, Docker files, run.sh, kill.sh, and all Go source files
+4. **README.md** must follow the structure above with Task Overview, Helpful Tips, Application Access, Objectives, How to Verify
+5. **Golang code** must be COMPLETE and require NO modifications — only Docker setup is needed
+6. **outcomes** and **short_overview** must be bullet-point lists in simple language
+7. **hints** must be a single line; **definitions** must include relevant Docker/Go terms
+8. **Task must be completable within the allocated time** for BASIC proficiency (1-2 years)
+9. **NO TODO comments** in Go code — all application logic must be implemented
+10. **All paths** must reference /root/task as the base directory
 """
+PROMPT_REGISTRY = {
+    "Docker (BASIC), Golang (BASIC)": [
+        PROMPT_GOLANG_DOCKER_BASIC_CONTEXT,
+        PROMPT_GOLANG_DOCKER_BASIC_INPUT_AND_ASK,
+        PROMPT_GOLANG_DOCKER_BASIC_INSTRUCTIONS,
+    ]
+}

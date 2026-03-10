@@ -39,12 +39,12 @@ Roles and Responsibilities:
 Based on this information, could you summarize what you understand about the company and role requirements?
 """
 PROMPT_NODEJS_MONGODB_OPTIMIZATION_INSTRUCTIONS ="""
-# GOAL:
-As a technical architect experienced in MongoDB database and Node.js REST API integration, you are given a list of real world scenarios and proficiency levels for MongoDB. 
+## GOAL
+As a technical architect experienced in MongoDB database and Node.js REST API integration, you are given a list of real world scenarios and proficiency levels for MongoDB.
 Your job is to generate a task, with the given specifications, so that a candidate is presented with a functional REST API and some initial schema but with subtle performance issues that require intermediate-level database optimization skills.
 The candidate's responsibility is to identify the issue and fix it. So you'll have to be careful about not giving away the solution or even hinting at it in your task definitions.
 
-# CONTEXT & CANDIDATE EXPECTATION:
+## CONTEXT & CANDIDATE EXPECTATION:
 The candidate will receive a FULLY FUNCTIONAL Node.js Express/Fastify REST API application that is already connected to MongoDB with existing schema and data. The Node.js application includes:
 - Complete REST API endpoints with business logic implemented but with subtle inefficiencies in database queries AND/OR API endpoint performance issues requiring intermediate-level optimization
 - Full database connection and configuration setup
@@ -72,9 +72,9 @@ The candidate's responsibility is to fix issues according to the task requiremen
 - Optimizing middleware execution
 - Improving request validation
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the task 
+### Nature of the Task 
 - Task name MUST be within 50 words and clearly describe the intermediate-level optimization scenario
 - Task must provide a working application with existing database schema, data, and intentionally subtle suboptimal queries/database design/API endpoint implementations requiring intermediate-level optimization skills
 - **CRITICAL**: The Node.js Express/Fastify application should be FULLY functional but performing poorly due to subtle issues aligned with the scenario focus
@@ -326,7 +326,7 @@ Define goals focusing on outcomes for the intermediate-level optimization task:
 - Code snippets or solution code
 - Phrases like "you should implement", "add the following code"
 
-# REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task Name (within 50 words, mentioning MongoDB and/or Node.js optimization at intermediate level based on scenario)",
@@ -371,3 +371,10 @@ Define goals focusing on outcomes for the intermediate-level optimization task:
    }}
 }}
 """
+PROMPT_REGISTRY = {
+    "MongoDB (INTERMEDIATE), NodeJs (INTERMEDIATE)": [
+        PROMPT_NODEJS_MONGODB_INTERMEDIATE_CONTEXT,
+        PROMPT_NODEJS_MONGODB_INTERMEDIATE_INPUT_AND_ASK,
+        PROMPT_NODEJS_MONGODB_OPTIMIZATION_INSTRUCTIONS,
+    ]
+}

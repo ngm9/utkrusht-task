@@ -11,11 +11,7 @@ Based on this information, could you summarize what you understand about the com
 """
 
 PROMPT_GOLANG_BASIC_INPUT_AND_ASK = """
-# GOAL:
-As a technical architect with strong foundational experience in Go (Golang), you are given a list of real-world scenarios and proficiency levels for basic-level Go development. 
-Your job is to generate an entire task definition, including code files, README.md, expected outcomes, etc., that can be effectively used to assess the candidate's ability to understand and apply Go fundamentals — including syntax, data structures, error handling, basic I/O, and simple concurrency or REST API development.
-
-Now that you've seen the instructions and examples, you are ready to generate a task definition for Go (basic level) given the following inputs:
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Go (Golang) assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
@@ -26,25 +22,31 @@ INPUT ROLE CONTEXT:
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
-CRITICAL: The task complexity must match a basic-level Go developer (typically 0–2 years of experience). Focus on tasks that test understanding of Go basics such as writing clean functions, working with slices/maps/structs, implementing simple APIs, or demonstrating lightweight concurrency (e.g., goroutines or channels). Avoid complex topics like advanced concurrency patterns, microservices orchestration, or large-scale design.
+CRITICAL TASK GENERATION REQUIREMENTS:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
+- Ensure the candidate can realistically complete the task in the allocated time
+- Select a different real-world scenario each time to ensure variety in task generation
+- The task must reflect authentic challenges that would be encountered in the role described in the role context
 
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
-Can you now generate a task definition for Go (basic level) given the above inputs, following the instructions given above?
-Use the following prompt to narrow down your response:
-{question_prompt}
+1. What will the task be about? (Describe the business domain, technical context, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of implementation or fix required, the expected deliverables, and how it aligns with BASIC Go proficiency)
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 
 
 PROMPT_GO_BASIC_INSTRUCTIONS="""
-## GOAL:
-As a technical architect super experienced in Go and modern Go ecosystem, you are given a list of real world scenarios and proficiency levels for Go development. 
+## GOAL
+As a technical architect super experienced in Go and modern Go ecosystem, you are given a list of real world scenarios and proficiency levels for Go development.
 Your job is to generate an entire task definition, including code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end at a basic/beginner level.
 
-## INSTRUCTIONS:
+## INSTRUCTIONS
 
-### Nature of the task 
+### Nature of the Task 
 - Task must ask to implement a straightforward feature, complete partially implemented code, or fix simple bugs in the existing codebase.
 - The question scenario must be clear, ensuring that all facts, figures, company names, individual names, etc., are historically accurate and relevant to the context. 
 - Generate enough starter code that gives the candidate a good starting point to start solving the task
@@ -107,17 +109,7 @@ Based on the real-world scenarios provided in following conversations, create a 
 - **CRITICAL**: comments in any of the code files are strictly prohibited. The code files should not contain any comments at all.
 
 
-## OUTPUT
-The output should be a valid json schema:
-  - README.md (CRITICAL - Follow exact structure specified below)
-  - go.mod (Go module definition)
-  - go.sum (Go dependencies checksum - can be empty initially)
-  - .gitignore (Standard Go project gitignore)
-  - Any code files that are to be included as a part of the task. These should not include the solution but should be a good starting point for the candidate to start solving the task.
-  - Code files should demonstrate basic structure that candidate needs to complete/extend
-  - Include simple folder structure (main.go and potentially a few helper files)
-
-## REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 {{
    "name": "Task Name",
    "question": "A detailed description of the task scenario including the specific ask from the candidate — what needs to be implemented/completed/fixed? Include clear functional requirements.",
@@ -140,6 +132,7 @@ The output should be a valid json schema:
       ...
   }},
   "outcomes": "Expected results after completion focusing on functionality and code correctness. 2-3 lines describing functional outcomes and basic code quality.",
+  "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific implementation or fix goal, and (3) the expected outcome emphasizing correctness, structure, and maintainability.",
   "pre_requisites": "Bullet-point list of basic tools and environment setup required. Include basic Go knowledge expectations like understanding packages, modules, basic data structures, error handling, etc.",
   "answer": "Clear solution approach with step-by-step guidance on fundamental concepts to apply",
   "hints": "a single line hint focusing on the fundamental Go concept or approach that could be useful. These hints must NOT give away the answer, but guide towards basic Go thinking.",
@@ -184,12 +177,12 @@ Create a comprehensive gitignore file that covers all standard exclusions for ba
 - Use concrete business context, not generic descriptions
 - **IMPORTANT**: Do NOT directly tell candidates what to implement - provide direction and guidance to help them discover solutions
 
-#### Task Overview
+### Task Overview
 
-**CRITICAL REQUIREMENT**: This section MUST contain 2-3 meaningful sentences describing the business scenario, what needs to be built, and why this functionality is useful. 
+**CRITICAL REQUIREMENT**: This section MUST contain 2-3 meaningful sentences describing the business scenario, what needs to be built, and why this functionality is useful.
 NEVER generate empty content - always provide substantial context that explains what the candidate is working on in simple, clear terms.
 
-#### Helpful Tips
+### Helpful Tips
 Provide conceptual and discovery-focused guidance that helps learners reason about the problem **without revealing specific implementations**:
   - Encourage exploration of Go’s fundamental concepts rather than prescribing exact solutions
   - Avoid mentioning any direct implementation details such as goroutines, channels, or specific library functions
@@ -212,8 +205,8 @@ Provide conceptual and discovery-focused guidance that helps learners reason abo
     * "Check how you could measure the total time for an entire process"
 
 
-#### Objectives
-  - Define clear, measurable goals that reflect successful task completion at a foundational Go level  
+### Objectives
+  - Define clear, measurable goals that reflect successful task completion at a foundational Go level
   - Describe **what** the candidate should achieve functionally, not **how** to implement it  
   - Objectives will serve to verify completion, assess understanding, and allocate points  
   - Emphasize expected behavior, correctness, and adherence to good Go coding principles  
@@ -232,7 +225,7 @@ Provide conceptual and discovery-focused guidance that helps learners reason abo
   - **CRITICAL**: Objectives must describe the *intended results* and *reasoning goals*, never the *implementation details*
 
 
-#### How to Verify
+### How to Verify
   - Specific checkpoints after implementation, what to test and how to confirm success
   - Observable behaviors or outputs to validate both functionality and basic code quality
   - Basic code quality checkpoints (proper error handling, readable code, correct data type usage)
@@ -251,7 +244,7 @@ Provide conceptual and discovery-focused guidance that helps learners reason abo
   - Guide candidates to test: functionality, edge cases, error handling, code formatting
   - **CRITICAL**: Describe what to verify and expected behaviors, not the specific implementation to check
 
-#### NOT TO INCLUDE in README: 
+### NOT TO INCLUDE in README:
 Make sure you do not include the following in the README.md file:
   - SETUP INSTRUCTIONS OR COMMANDS (go mod tidy, go build, go test, go run, etc.)
   - Direct solutions or implementation steps
@@ -263,5 +256,24 @@ Make sure you do not include the following in the README.md file:
   - Function names or specific implementation strategies that would reveal the solution
   - Phrases like "you should implement", "make sure to add", "create a function called X"
   - Specific Go standard library function names that would reveal the solution approach
-  
-  """
+
+## CRITICAL REMINDERS
+
+1. **Output must be valid JSON only** — no markdown, no explanations, no code fences
+2. **name** must be short, descriptive, kebab-case
+3. **code_files** must include README.md, .gitignore, go.mod, and Go source files
+4. **README.md** must follow the structure above with Task Overview, Helpful Tips, Objectives, How to Verify
+5. **Starter code** must be runnable but must NOT contain the solution
+6. **outcomes** and **short_overview** must be bullet-point lists in simple language
+7. **hints** must be a single line; **definitions** must include relevant Go terms
+8. **Task must be completable within the allocated time** for BASIC proficiency (0-2 years)
+9. **NO comments in code** that reveal the solution or give hints
+10. **Use Go 1.18+** conventions throughout
+"""
+PROMPT_REGISTRY = {
+    "Golang": [
+        PROMPT_GOLANG_BASIC_CONTEXT,
+        PROMPT_GO_BASIC_INSTRUCTIONS,
+        PROMPT_GOLANG_BASIC_INPUT_AND_ASK,
+    ]
+}

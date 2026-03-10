@@ -1,26 +1,30 @@
 PROMPT_POSTGRESQL_INPUT_AND_ASK = """
-# GOAL:
-As a technical architect super experienced in PostgreSQL, you are given a list of real world scenarios and proficiency levels for FastAPI And PostgreSQL. 
-Your job is to generate an entire task definition, including code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end.
-
-Now that you've seen the instructions and examples, you are ready to generate a task definition for Python FastAPI and PostgreSQL given the following inputs:
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a PostgreSQL assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
 
-INPUT ROLE CONTEXT: 
+INPUT ROLE CONTEXT:
 {role_context}
 
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
-CRITICAL: The task complexity must be appropriate for the given skill and years of experience . The candidate should be able to complete in the allocated time. Use the real-world scenarios to determine the business context and technical focus.
 
-Can you now generate a task definition for Postgres given the above inputs, following the instructions given above? 
-Use the following prompt to narrow down your response: 
-{question_prompt}
+CRITICAL TASK GENERATION REQUIREMENTS:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
+- Ensure the candidate can realistically complete the task in the allocated time
+- Select a different real-world scenario each time to ensure variety in task generation
+- The task must reflect authentic challenges that would be encountered in the role described in the role context
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
+
+1. What will the task be about? (Describe the business domain, technical context, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of PostgreSQL optimization or schema design required, the expected deliverables, and how it aligns with the given proficiency level)
+
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 
 PROMPT_POSTGRESQL_CONTEXT = """
@@ -36,12 +40,12 @@ Based on this information, could you summarize what you understand about the com
 """
 
 PROMPT_POSTGRESQL_OPTIMIZATION_INSTRUCTIONS="""
-# GOAL:
-As a database architect super experienced in PostgreSQL, you are given a list of real world scenarios and proficiency levels for PostgreSQL. 
+## GOAL
+As a database architect super experienced in PostgreSQL, you are given a list of real world scenarios and proficiency levels for PostgreSQL.
 Your job is to generate a task, with the given specifications, so that a candidate is presented with a functional database with initial schema and data but either with logical bugs or performance issues that require intermediate-level database optimization skills.
 The candidate's responsibility is to identify the database issues and fix them directly in PostgreSQL. You must be careful about not giving away the solution or even hinting at it in your task definitions.
 
-# CONTEXT & CANDIDATE EXPECTATION:
+## CONTEXT & CANDIDATE EXPECTATION:
 The candidate will receive a FULLY FUNCTIONAL PostgreSQL database that is already deployed with existing schema and data. The database includes:
 - Pre-populated tables with realistic data
 - Intentionally complex inefficient queries, missing indexes, or suboptimal schema design
@@ -50,9 +54,9 @@ The candidate will receive a FULLY FUNCTIONAL PostgreSQL database that is alread
 
 The candidate's responsibility is to analyze the database, identify performance issues, and implement PostgreSQL optimizations directly using SQL commands, psql, or any database client tool of their choice.
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the task 
+### Nature of the Task 
 - Task name MUST be within 50 words and clearly describe the intermediate-level optimization scenario
 - Task must provide a working database with existing schema, data, and intentionally suboptimal design requiring intermediate-level optimization skills
 - **CRITICAL**: The PostgreSQL database should be FULLY populated and functional but performing poorly due to complex database inefficiencies that require sophisticated analysis and optimization techniques
@@ -222,7 +226,7 @@ NEVER generate empty content - always provide substantial business context that 
   - Mention can use any preferred database client tools (e.g., pgAdmin, DBeaver, psql, DataGrip) for advanced performance analysis and query plan examination
   - For the host, use a placeholder indicating the droplet IP (e.g., <DROPLET_IP>) rather than an actual IP address
 
-### Guidance
+### Helpful Tips
   - **Advanced database context** and architectural guidance points for PostgreSQL optimization
   - **Technical architecture notes** covering PostgreSQL indexing strategies, query optimization patterns, performance tuning considerations
   - **Important considerations** for database scalability, query performance, data integrity, and maintenance overhead
@@ -246,7 +250,7 @@ NEVER generate empty content - always provide substantial business context that 
   - Specific optimization solutions (candidates must analyze and implement advanced improvements)
   - Step-by-step optimization guides
 
-# REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task Name (within 50 words)",
@@ -281,3 +285,10 @@ NEVER generate empty content - always provide substantial business context that 
 7. **NO SOLUTIONS IN CODE**: Do not include optimized queries, correct indexes, or any solutions in the generated files
 8. **VERIFICATION**: Provide clear methods to verify optimization success through measurable metrics
 """
+PROMPT_REGISTRY = {
+    "PostgreSQL (INTERMEDIATE)": [
+        PROMPT_POSTGRESQL_CONTEXT,
+        PROMPT_POSTGRESQL_INPUT_AND_ASK,
+        PROMPT_POSTGRESQL_OPTIMIZATION_INSTRUCTIONS,
+    ]
+}

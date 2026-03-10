@@ -321,3 +321,10 @@ Verification approaches for 30-minute optimizations:
 14. **Entry point must be src/index.tsx**
 15. **Must use react-scripts for all operations**
 """
+PROMPT_REGISTRY = {
+    "ReactJs - Optimization (BASIC)": [
+        PROMPT_REACT_OPTIMIZATION_CONTEXT,
+        PROMPT_REACT_OPTIMIZATION_INPUT_AND_ASK_BASIC,
+        PROMPT_REACT_OPTIMIZATION,
+    ]
+}

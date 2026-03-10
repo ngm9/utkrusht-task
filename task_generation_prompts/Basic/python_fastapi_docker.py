@@ -1,31 +1,29 @@
 PROMPT_FASTAPI_DOCKER_BASIC_INPUT_AND_ASK = """
-# GOAL:
-As a technical architect highly experienced in Python FastAPI and Docker, you are given a list of real-world scenarios and proficiency levels for FastAPI and Docker.
-Your job is to generate a complete task definition, including all necessary code files, README.md, expected outcomes, and evaluation focus areas that can effectively assess the candidate's ability to design, containerize, and deploy lightweight backend systems using FastAPI and Docker.
-
-The task should reflect realistic backend challenges involving API design, Docker image optimization, environment configuration, health checks, or resource management — depending on the scenario and experience level provided.
-
-Now that you've seen the instructions and examples, you are ready to generate a task definition for Python FastAPI and Docker given the following inputs:
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Python FastAPI and Docker assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
 
-INPUT ROLE CONTEXT: 
+INPUT ROLE CONTEXT:
 {role_context}
 
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
-CRITICAL: The task complexity must match the given skill and years of experience.
-The candidate should be able to complete it in the allocated time while demonstrating a strong understanding of FastAPI fundamentals, Dockerfile best practices, and containerized application setup.
+CRITICAL TASK GENERATION REQUIREMENTS:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
+- Ensure the candidate can realistically complete the task in the allocated time
+- Select a different real-world scenario each time to ensure variety in task generation
+- The task must reflect authentic challenges that would be encountered in the role described in the role context
 
-Use the real-world scenarios to determine the business context, technical direction, and Docker practices to focus on.
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
-Can you now generate a task definition for Python FastAPI and Docker given the above inputs, following the instructions given above? 
-Use the following prompt to narrow down your response: 
-{question_prompt}
+1. What will the task be about? (Describe the business domain, technical context, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of Docker containerization or optimization required, the expected deliverables, and how it aligns with BASIC Python FastAPI and Docker proficiency)
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 
 PROMPT_FASTAPI_DOCKER_BASIC_CONTEXT = """
@@ -43,14 +41,14 @@ especially focusing on how Docker may be used in basic FastAPI-based systems —
 
 
 PROMPT_FASTAPI_DOCKER_OPTIMIZATION_INSTRUCTIONS_BASIC = """
-# GOAL:
+## GOAL
 As a technical architect experienced in Docker containerization, you are given real-world scenarios and proficiency levels for Docker. Your job is to generate a deployment-ready task for basic-level Docker practitioners (1-2 years experience) where a candidate receives a functional FastAPI application that needs proper containerization using Docker fundamentals.
 
 **CRITICAL**: You MUST strictly follow the provided real-world task scenarios (input_scenarios) to frame the task. The business context, domain, and technical requirements should directly align with the given scenario while focusing primarily on Docker containerization (85%) with minimal Python/FastAPI configuration changes (15%).
 
 The candidate's primary responsibility is to understand, configure, and apply basic Docker concepts. Be careful not to give away solutions or hint at implementations in task definitions.
 
-# CONTEXT & CANDIDATE EXPECTATION:
+## CONTEXT & CANDIDATE EXPECTATION
 The candidate receives a complete, working FastAPI REST API application with basic Docker setup requiring fundamental Docker knowledge to properly containerize. The application includes:
 - Fully functional REST API endpoints with all business logic implemented
 - Complete Python code requiring NO modifications
@@ -60,7 +58,7 @@ The candidate receives a complete, working FastAPI REST API application with bas
 
 **PRIMARY FOCUS**: The candidate works on Docker containerization (85%) with minimal configuration adjustments (15%) only for Docker compatibility. The task demonstrates understanding of Docker basics, container lifecycle, basic optimization, and deployment practices suitable for 1-2 years Docker experience.
 
-# CRITICAL: DEPLOYMENT WITH INTENTIONAL ISSUES
+## CRITICAL: DEPLOYMENT WITH INTENTIONAL ISSUES
 
 ## Initial Deployment State (MANDATORY):
 The provided Docker setup MUST be functional BUT suboptimal with intentional issues that demonstrate need for basic optimization:
@@ -125,9 +123,9 @@ The provided Docker setup MUST be functional BUT suboptimal with intentional iss
 
 **CRITICAL**: The initial deployment should work but make the candidate think "this works, but it's clearly not production-ready" - creating obvious optimization opportunities without breaking functionality.
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the Task
+### Nature of the Task
 - **MANDATORY**: The task MUST be derived from and aligned with the provided input_scenarios. Use the scenario's business context, domain, technical stack, and requirements as the foundation
 - **CRITICAL**: While the scenario provides the business context, ensure the PRIMARY focus (85%) remains on Docker containerization challenges, NOT FastAPI application development
 - Task name MUST be within 50 words describing a clear basic-level Docker containerization scenario that reflects the input scenario's context
@@ -468,7 +466,7 @@ Provide practical guidance without revealing specific implementations:
 - Directory structure details that would dictate the implementation approach
 - Technology names that reveal solutions (gunicorn, slim, alpine, multi-stage)
 
-# REQUIRED OUTPUT JSON:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task name (within 50 words) reflecting the scenario context and focusing on basic Docker optimization",
@@ -492,6 +490,7 @@ Provide practical guidance without revealing specific implementations:
       "app/dependencies.py": "Dependency injection setup (if needed)"
   }},
   "outcomes": "Expected results in 2-3 lines: optimized Docker setup with 60%+ smaller image, faster build times, production-ready configuration, all while maintaining full functionality of the scenario's application. Include measurable improvements.",
+  "short_overview": "Bullet-point list in simple language describing: (1) the high-level problem in a business context, (2) the specific goal, and (3) the expected outcome emphasizing maintainability and scalability.",
   "pre_requisites": "Bullet points: Docker, Docker Compose, basic Python/FastAPI familiarity (no expertise needed), Git, curl/Postman for testing scenario-specific endpoints, understanding of Docker image layers and caching",
   "answer": "High-level solution focusing on basic Docker optimization for the scenario: multi-stage builds, slim base images, proper .dockerignore, layer caching optimization, production ASGI server configuration, health checks, resource limits, non-root user. Explain the intentional issues and how to fix them. Minimal mention of configuration changes.",
   "hints": "Single line suggesting focus on Docker image optimization, layer caching, and production configuration for containerizing the scenario's application. Must NOT reveal specific implementations but can mention the areas to investigate (image size, build time, server configuration).",
@@ -501,4 +500,25 @@ Provide practical guidance without revealing specific implementations:
     ...
     }}
 }}
+
+## CRITICAL REMINDERS
+
+1. **Output must be valid JSON only** — no markdown, no explanations, no code fences
+2. **name** must be short, descriptive, within 50 words
+3. **code_files** must include README.md, .gitignore, requirements.txt, Docker files, run.sh, kill.sh, and all Python source files
+4. **README.md** must follow the structure above with Task Overview, Current Issues, Helpful Tips, Application Access, Objectives, How to Verify
+5. **FastAPI application** must be COMPLETE — NO Python changes needed, only Docker optimization
+6. **outcomes** and **short_overview** must be bullet-point lists in simple language
+7. **hints** must be a single line; **definitions** must include relevant Docker/Python terms
+8. **Task must be completable within the allocated time** for BASIC proficiency (1-2 years)
+9. **INTENTIONAL ISSUES** must be obvious but non-breaking — application works but needs optimization
+10. **All paths** must reference /root/task as the base directory
 """
+
+PROMPT_REGISTRY = {
+    "Docker (BASIC), Python - FastAPI (BASIC)": [
+        PROMPT_FASTAPI_DOCKER_BASIC_CONTEXT,
+        PROMPT_FASTAPI_DOCKER_BASIC_INPUT_AND_ASK,
+        PROMPT_FASTAPI_DOCKER_OPTIMIZATION_INSTRUCTIONS_BASIC,
+    ]
+}

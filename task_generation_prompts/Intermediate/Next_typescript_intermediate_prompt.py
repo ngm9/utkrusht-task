@@ -11,13 +11,13 @@ Based on this information, could you summarize what you understand about the com
 """
 
 PROMPT_NEXTJS_TYPESCRIPT_INSTRUCTIONS = """
-# GOAL:
-As a technical architect super experienced in Next.js and TypeScript, you are given a list of real world scenarios and proficiency levels for Next.js + TypeScript. 
+## GOAL
+As a technical architect super experienced in Next.js and TypeScript, you are given a list of real world scenarios and proficiency levels for Next.js + TypeScript.
 Your job is to generate an entire task definition, including code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end at an **INTERMEDIATE LEVEL (3-5 years of experience)**.
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the task 
+### Nature of the Task 
 - Task must ask to implement a feature from scratch or fix bugs in the existing code, with **moderate complexity requiring architectural decisions**.
 - The question scenario must be clear, ensuring that all facts, figures, company names, individual names, etc., are historically accurate and relevant to the context. 
 - Generate enough starter code that gives the candidate a good starting point to start solving the task
@@ -68,7 +68,7 @@ The output should be a valid json schema:
   - **Multiple code files** that provide a solid foundation but require significant implementation from the candidate
   - Code files should not contain solution hints but should demonstrate proper project architecture
 
-# REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task Name",
@@ -129,7 +129,7 @@ The output should be a valid json schema:
 **CRITICAL REQUIREMENT**: This section MUST contain 3-4 meaningful sentences describing the complex business scenario, current technical landscape, integration requirements, and business impact. 
 NEVER generate empty content - always provide substantial business context that explains the technical challenges and business requirements the candidate needs to address.
 
-### Guidance
+### Helpful Tips
   - **Advanced project context** and architectural guidance points
   - **Technical architecture notes** covering Next.js patterns, TypeScript best practices, performance considerations
   - **Important considerations** for scalability, maintainability, user experience, and technical debt
@@ -162,29 +162,39 @@ NEVER generate empty content - always provide substantial business context that 
 """
 
 PROMPT_NEXTJS_TYPESCRIPT_INPUT_AND_ASK = """
-# GOAL:
-As a technical architect super experienced in Next.js and TypeScript, you are given a list of real world scenarios and proficiency levels for Next.js + TypeScript. 
-Your job is to generate an entire task definition, including code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end.
-
-Now that you've seen the instructions and examples, you are ready to generate a task definition for Next.js + TypeScript given the following inputs:
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Next.js and TypeScript assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
 
-INPUT ROLE CONTEXT: 
+INPUT ROLE CONTEXT:
 {role_context}
 
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
-CRITICAL: The task complexity must be appropriate for the given skill and years of experience. The candidate should be able to complete in the allocated time. Use the real-world scenarios to determine the business context and technical focus.
 
-REPOSITORY NAMING: When generating the GitHub repository name in the resources section, ensure it is short, descriptive, and under 50 characters. Use kebab-case (lowercase with hyphens). Examples: "nextjs-product-search", "typescript-dashboard", "react-inventory-app".
+CRITICAL TASK GENERATION REQUIREMENTS:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
+- Ensure the candidate can realistically complete the task in the allocated time
+- Select a different real-world scenario each time to ensure variety in task generation
+- The task must reflect authentic challenges that would be encountered in the role described in the role context
 
-Can you now generate a task definition for Next.js + TypeScript given the above inputs, following the instructions given above? 
-Use the following prompt to narrow down your response: 
-{question_prompt}
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+1. What will the task be about? (Describe the business domain, technical context, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of Next.js and TypeScript implementation or fix required, the expected deliverables, and how it aligns with the given proficiency level)
+
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 
+
+PROMPT_REGISTRY = {
+    "NextJs (INTERMEDIATE), TypeScript (INTERMEDIATE)": [
+        PROMPT_NEXTJS_TYPESCRIPT_CONTEXT,
+        PROMPT_NEXTJS_TYPESCRIPT_INPUT_AND_ASK,
+        PROMPT_NEXTJS_TYPESCRIPT_INSTRUCTIONS,
+    ]
+}

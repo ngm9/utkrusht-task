@@ -11,13 +11,13 @@ Based on this information, could you summarize what you understand about the com
 """
 
 PROMPT_NEXTJS_TYPESCRIPT_INSTRUCTIONS = """
-# GOAL:
-As a technical architect super experienced in Next.js and TypeScript, you are given a list of real world scenarios and proficiency levels for Next.js + TypeScript. 
+## GOAL
+As a technical architect super experienced in Next.js and TypeScript, you are given a list of real world scenarios and proficiency levels for Next.js + TypeScript.
 Your job is to generate an entire task definition, including code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end.
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the task 
+### Nature of the Task 
 - Task must ask to implement a feature from scratch or fix bugs in the existing code.
 - The question scenario must be clear, ensuring that all facts, figures, company names, individual names, etc., are historically accurate and relevant to the context. 
 - Generate enough starter code that gives the candidate a good starting point to start solving the task
@@ -54,24 +54,13 @@ Based on the real-world scenarios provided in following conversations, create a 
 - If the task is to implement a feature from scratch, make sure the starter code only provides a good starting point.
 - Next.js + TypeScript starter code should include basic project structure but NOT require complex infrastructure setup (advanced Docker configurations, complex CI/CD, etc.)
 
-# OUTPUT
-
-The output should be a valid json schema:
-  - README.md (CRITICAL - Follow exact structure specified below)
-  - package.json (Node.js dependencies including Next.js, TypeScript, React, and other dependencies required in the scenario)
-  - tsconfig.json (TypeScript configuration optimized for Next.js)
-  - next.config.js (Next.js configuration file)
-  - .gitignore (Ignore node_modules/, .next/, out/, .env*.local, *.log, .DS_Store)
-  - tailwind.config.js (if styling with Tailwind CSS is required)
-  - Any code files that are to be included as a part of the task. These should not include the solution but should be a good starting point for the candidate to start solving the task.
-  - code files donot have many comments that reveals the solution or giving hints to implement
-# REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task Name",
    "question": "A short description of the task scenario including the specific ask from the candidate — what needs to be fixed/implemented?",
    "code_files": {{
-      "README.md": "Candidate-facing README with Task Overview, Guidance, Objectives, and How to Verify",
+      "README.md": "Candidate-facing README with Task Overview, Helpful Tips, Objectives, and How to Verify",
       ".gitignore": "Proper Next.js and Node.js exclusions",
       "package.json": "Node.js dependencies and scripts",
       "tsconfig.json": "TypeScript configuration for Next.js",
@@ -82,6 +71,7 @@ The output should be a valid json schema:
       ...
   }},
   "outcomes": "Expected results after completion in 2-3 lines. Use simple english.",
+  "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific implementation or fix goal, and (3) the expected outcome emphasizing correctness, structure, and maintainability.",
   "pre_requisites": "Bullet-point list of tools, libraries, and environment setup required to complete the task. Mention things like Node.js 18+, npm/yarn, Git, TypeScript knowledge, Next.js familiarity, etc.",
   "answer": "High-level solution approach",
   "hints": "a single line hint on what a good approach to solve the task could include. These hints must NOT give away the answer, but gently nudge the candidate in the right direction.",
@@ -126,9 +116,9 @@ Have a sensible gitignore suited for Next.js + TypeScript projects:
 ## README.md INSTRUCTIONS:
  - The README.md contains the following sections:
    - Task Overview
-   - Guidance
+   - Helpful Tips
    - Objectives
-   - How to Verify 
+   - How to Verify
 - The README.md file content MUST be fully populated with meaningful, specific content
 - Task Overview section MUST contain the exact business scenario from the task description
 - ALL sections must have substantial content - no empty or placeholder text allowed
@@ -141,7 +131,7 @@ Have a sensible gitignore suited for Next.js + TypeScript projects:
 **CRITICAL REQUIREMENT**: This section MUST contain 2-3 meaningful sentences describing the business scenario, current situation. 
 NEVER generate empty content - always provide substantial business context that explains what the candidate is working on and why it matters.
 
-### Guidance
+### Helpful Tips
   - Project context and guidance points
   - General architectural notes and best practices
   - Important considerations for the implementation
@@ -165,33 +155,55 @@ NEVER generate empty content - always provide substantial business context that 
   - direct answers and code snippets that would give away the solution to the task
   - any routes also shouldn't be included
   - any specific files implementation details that would give away the solution to the task
-  - should not provide any perticular method or approach to implement the solution
+  - should not provide any particular method or approach to implement the solution
 
+## CRITICAL REMINDERS
+
+1. **Output must be valid JSON only** — no markdown, no explanations, no code fences
+2. **name** must be short, descriptive, kebab-case
+3. **code_files** must include README.md, .gitignore, package.json, tsconfig.json, and Next.js source files
+4. **README.md** must follow the structure above with Task Overview, Helpful Tips, Objectives, How to Verify
+5. **Starter code** must be runnable with `npm run dev` but must NOT contain the solution
+6. **outcomes** and **short_overview** must be bullet-point lists in simple language
+7. **hints** must be a single line; **definitions** must include relevant Next.js/TypeScript terms
+8. **Task must be completable within the allocated time** for BASIC proficiency
+9. **NO comments in code** that reveal the solution or give hints
+10. **Use Next.js 13+ and TypeScript** conventions throughout
 """
 
 PROMPT_NEXTJS_TYPESCRIPT_INPUT_AND_ASK = """
-# GOAL:
-As a technical architect super experienced in Next.js and TypeScript, you are given a list of real world scenarios and proficiency levels for Next.js + TypeScript. 
-Your job is to generate an entire task definition, including code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end.
-
-Now that you've seen the instructions and examples, you are ready to generate a task definition for Next.js + TypeScript given the following inputs:
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Next.js and TypeScript assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
 
-INPUT ROLE CONTEXT: 
+INPUT ROLE CONTEXT:
 {role_context}
 
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
-CRITICAL: The task complexity must be appropriate for the given skill and years of experience. The candidate should be able to complete in the allocated time. Use the real-world scenarios to determine the business context and technical focus.
+CRITICAL TASK GENERATION REQUIREMENTS:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
+- Ensure the candidate can realistically complete the task in the allocated time
+- Select a different real-world scenario each time to ensure variety in task generation
+- The task must reflect authentic challenges that would be encountered in the role described in the role context
 
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
-Can you now generate a task definition for Next.js + TypeScript given the above inputs, following the instructions given above? 
-Use the following prompt to narrow down your response: 
-{question_prompt}
+1. What will the task be about? (Describe the business domain, technical context, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of implementation or fix required, the expected deliverables, and how it aligns with BASIC Next.js and TypeScript proficiency)
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 
+
+PROMPT_REGISTRY = {
+    "NextJs (BASIC), TypeScript (BASIC)": [
+        PROMPT_NEXTJS_TYPESCRIPT_CONTEXT,
+        PROMPT_NEXTJS_TYPESCRIPT_INPUT_AND_ASK,
+        PROMPT_NEXTJS_TYPESCRIPT_INSTRUCTIONS,
+    ]
+}
