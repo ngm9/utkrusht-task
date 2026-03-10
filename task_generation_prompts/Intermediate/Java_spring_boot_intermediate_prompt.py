@@ -258,4 +258,10 @@ Provide practical guidance without revealing specific implementations:
   - Specific Spring Data JPA query method names or repository patterns that would reveal the solution
   - Spring Security configuration details or specific authentication approaches
 """
-PROMPT_REGISTRY = {}
+PROMPT_REGISTRY = {
+    "Java - Spring Boot (INTERMEDIATE)": [
+        PROMPT_JAVA_SPRING_BOOT_CONTEXT_INTERMEDIATE,
+        PROMPT_JAVA_SPRING_BOOT_INPUT_AND_ASK_INTERMEDIATE,
+        PROMPT_JAVA_SPRING_BOOT_INTERMEDIATE_INSTRUCTIONS,
+    ]
+}

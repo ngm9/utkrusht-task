@@ -247,4 +247,10 @@ Make sure you do not include the following in the README.md file:
   - Specific Go standard library recommendations that would reveal the solution approach
   
   """
-PROMPT_REGISTRY = {}
+PROMPT_REGISTRY = {
+    "Golang (INTERMEDIATE)": [
+        PROMPT_GOLANG_CONTEXT,
+        PROMPT_GOLANG_INPUT_AND_ASK,
+        PROMPT_GO_INTERMEDIATE_INSTRUCTIONS,
+    ]
+}

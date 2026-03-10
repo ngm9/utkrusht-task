@@ -334,4 +334,10 @@ Provide verification approaches that help candidates validate their optimization
   }}
 }}
 """
-PROMPT_REGISTRY = {}
+PROMPT_REGISTRY = {
+    "Docker (INTERMEDIATE), Golang (INTERMEDIATE)": [
+        PROMPT_GOLANG_DOCKER_CONTEXT,
+        PROMPT_GOLANG_DOCKER_INPUT_AND_ASK,
+        PROMPT_GOLANG_DOCKER_OPTIMIZATION_INSTRUCTIONS_INTER,
+    ]
+}

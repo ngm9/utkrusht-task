@@ -315,4 +315,8 @@ Provide verification approaches that help candidates validate their optimization
 }}
 """
 
-PROMPT_REGISTRY = {}
+PROMPT_REGISTRY = {
+    "Docker (INTERMEDIATE), Python - FastAPI (INTERMEDIATE)": [
+        PROMPT_PYTHON_DOCKER_OPTIMIZATION_INSTRUCTIONS_INTER,
+    ]
+}

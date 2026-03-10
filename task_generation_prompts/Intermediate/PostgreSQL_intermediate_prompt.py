@@ -285,4 +285,10 @@ NEVER generate empty content - always provide substantial business context that 
 7. **NO SOLUTIONS IN CODE**: Do not include optimized queries, correct indexes, or any solutions in the generated files
 8. **VERIFICATION**: Provide clear methods to verify optimization success through measurable metrics
 """
-PROMPT_REGISTRY = {}
+PROMPT_REGISTRY = {
+    "PostgreSQL (INTERMEDIATE)": [
+        PROMPT_POSTGRESQL_CONTEXT,
+        PROMPT_POSTGRESQL_INPUT_AND_ASK,
+        PROMPT_POSTGRESQL_OPTIMIZATION_INSTRUCTIONS,
+    ]
+}

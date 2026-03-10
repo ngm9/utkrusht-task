@@ -614,4 +614,10 @@ Write in clear and comprehensive language so intermediate-level candidates clear
     }}
 }}
 """
-PROMPT_REGISTRY = {}
+PROMPT_REGISTRY = {
+    "PostgreSQL (INTERMEDIATE), Python - FastAPI (INTERMEDIATE)": [
+        PROMPT_FASTAPI_POSTGRESQL_CONTEXT,
+        PROMPT_FASTAPI_POSTGRESQL_INPUT_AND_ASK,
+        PROMPT_FASTAPI_POSTGRESQL_OPTIMIZATION_INSTRUCTIONS_INTER,
+    ]
+}

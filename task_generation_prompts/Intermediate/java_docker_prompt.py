@@ -341,4 +341,10 @@ Provide verification approaches that help candidates validate their solutions wi
     }}
 }}
 """
-PROMPT_REGISTRY = {}
+PROMPT_REGISTRY = {
+    "Docker (INTERMEDIATE), Java (INTERMEDIATE)": [
+        PROMPT_JAVA_DOCKER_INTERMEDIATE_CONTEXT,
+        PROMPT_JAVA_DOCKER_INTERMEDIATE_INPUT_AND_ASK,
+        PROMPT_JAVA_DOCKER_OPTIMIZATION_INSTRUCTIONS_INTER,
+    ]
+}

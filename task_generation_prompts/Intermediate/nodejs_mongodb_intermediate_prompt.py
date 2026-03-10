@@ -371,4 +371,10 @@ Define goals focusing on outcomes for the intermediate-level optimization task:
    }}
 }}
 """
-PROMPT_REGISTRY = {}
+PROMPT_REGISTRY = {
+    "MongoDB (INTERMEDIATE), NodeJs (INTERMEDIATE)": [
+        PROMPT_NODEJS_MONGODB_INTERMEDIATE_CONTEXT,
+        PROMPT_NODEJS_MONGODB_INTERMEDIATE_INPUT_AND_ASK,
+        PROMPT_NODEJS_MONGODB_OPTIMIZATION_INSTRUCTIONS,
+    ]
+}
