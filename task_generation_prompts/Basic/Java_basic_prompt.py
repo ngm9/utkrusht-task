@@ -30,9 +30,6 @@ CRITICAL TASK GENERATION REQUIREMENTS:
 - Select a different real-world scenario each time to ensure variety in task generation
 - The task must reflect authentic challenges that would be encountered in the role described in the role context
 
-When you generate the full task, use the following to narrow down your response:
-{question_prompt}
-
 Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
 1. What will the task be about? (Describe the business domain, technical context, and problem the candidate will be solving)
@@ -41,13 +38,13 @@ Before we proceed to the detailed task generation instructions, please confirm y
 Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 PROMPT_JAVA_BASIC = """
-# GOAL:
-As a senior Java architect super experienced in Java frameworks (Spring Boot, Spring MVC, Hibernate/JPA, Maven/Gradle), you are given a list of real world scenarios and proficiency levels for Java development. 
+## GOAL
+As a senior Java architect super experienced in Java frameworks (Spring Boot, Spring MVC, Hibernate/JPA, Maven/Gradle), you are given a list of real world scenarios and proficiency levels for Java development.
 Your job is to generate an entire task definition, including code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end.
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the task 
+### Nature of the Task 
 - Task must ask to implement a feature from scratch or fix bugs in the existing code.
 - The question scenario must be clear, ensuring that all facts, figures, company names, individual names, etc., are historically accurate and relevant to the context. 
 - Generate enough starter code that gives the candidate a good starting point to start solving the task
@@ -92,15 +89,6 @@ Based on the real-world scenarios provided in following conversations, create a 
 - Java starter code should include basic project structure but NOT require complex infrastructure setup (advanced database configurations, complex security setup, microservice orchestration, etc.)
 - Focus on Spring Boot with embedded database (H2) or simple file-based persistence for simplicity
 
-# OUTPUT
-
-The output must be valid JSON only. Include:
-- README.md (CRITICAL - Follow exact structure specified below)
-- pom.xml or build.gradle (Maven/Gradle build configuration with Spring Boot dependencies)
-- .gitignore (Standard Java project gitignore)
-- application.properties or application.yml (Spring Boot configuration)
-- Java source code files as part of the task (starter code only; no solution or hint-revealing comments)
-
 ## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
@@ -130,9 +118,6 @@ The output must be valid JSON only. Include:
   }}
 }}
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN, NO EXPLANATIONS, NO CODE BLOCKS.
-
- 
 ## Code file requirements:
 - More than 1 files can be generated but make sure they are included in the JSON structure correctly.
 - Code should follow modern Java best practices and Spring framework conventions
@@ -212,3 +197,10 @@ Verification approaches for the task:
 9. **NO comments in code** that reveal the solution or give hints
 10. **Use Java 11+ and Spring Boot 2.7+ or 3.x** conventions throughout
 """
+PROMPT_REGISTRY = {
+    "Java (BASIC)": [
+        PROMPT_JAVA_BASIC_CONTEXT,
+        PROMPT_JAVA_BASIC_INPUT_AND_ASK,
+        PROMPT_JAVA_BASIC,
+    ]
+}

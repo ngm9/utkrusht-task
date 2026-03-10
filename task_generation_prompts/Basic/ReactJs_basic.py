@@ -184,3 +184,10 @@ Verification approaches after implementation:
 9. **Task name** must be short, descriptive, under 50 characters, kebab-case
 10. **Select a different real-world scenario** each time for variety
 """
+PROMPT_REGISTRY = {
+    "ReactJs (BASIC)": [
+        PROMPT_REACT_BASIC_CONTEXT,
+        PROMPT_REACT_BASIC_INPUT_AND_ASK,
+        PROMPT_REACT_BASIC,
+    ]
+}

@@ -1,26 +1,29 @@
 PROMPT_FASTAPI_POSTGRESQL_INPUT_AND_ASK = """
-# GOAL:
-As a technical architect super experienced in Python FastAPI and PostgreSQL, you are given a list of real world scenarios and proficiency levels for FastAPI And PostgreSQL. 
-Your job is to generate an entire task definition, including code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end.
-
-Now that you've seen the instructions and examples, you are ready to generate a task definition for Python FastAPI and PostgreSQL given the following inputs:
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Python FastAPI and PostgreSQL assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
 
-INPUT ROLE CONTEXT: 
+INPUT ROLE CONTEXT:
 {role_context}
 
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
-CRITICAL: The task complexity must be appropriate for the given skill and years of experience . The candidate should be able to complete in the allocated time. Use the real-world scenarios to determine the business context and technical focus.
+CRITICAL TASK GENERATION REQUIREMENTS:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
+- Ensure the candidate can realistically complete the task in the allocated time
+- Select a different real-world scenario each time to ensure variety in task generation
+- The task must reflect authentic challenges that would be encountered in the role described in the role context
 
-Can you now generate a task definition for Python FastAPI and Postgres given the above inputs, following the instructions given above? 
-Use the following prompt to narrow down your response: 
-{question_prompt}
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+1. What will the task be about? (Describe the business domain, technical context, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of implementation or fix required, the expected deliverables, and how it aligns with the given Python FastAPI and PostgreSQL proficiency level)
+
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 
 PROMPT_FASTAPI_POSTGRESQL_CONTEXT = """
@@ -36,11 +39,11 @@ Based on this information, could you summarize what you understand about the com
 """
 
 PROMPT_FASTAPI_POSTGRESQL_INSTRUCTIONS = """
-# GOAL:
-As a technical architect super experienced in PostgreSQL database design, administration, and Python FastAPI integration, you are given a list of real world scenarios and proficiency levels for PostgreSQL. 
+## GOAL
+As a technical architect super experienced in PostgreSQL database design, administration, and Python FastAPI integration, you are given a list of real world scenarios and proficiency levels for PostgreSQL.
 Your job is to generate an entire task definition, including code files (complete REST API structure using Python FastAPI), database schema, Docker setup, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve database-related problems end to end.
 
-# CONTEXT & CANDIDATE EXPECTATION:
+## CONTEXT & CANDIDATE EXPECTATION
 The candidate will receive a FULLY FUNCTIONAL FastAPI application that is already connected to PostgreSQL database. The FastAPI application includes:
 - Complete REST API endpoints with all business logic implemented
 - Full database connection and configuration setup
@@ -54,9 +57,9 @@ The candidate's ONLY responsibility is:
 - Using provided database credentials to connect via database client tools
 - NO changes to FastAPI code files are expected or required
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the task 
+### Nature of the Task
 - Task must ask to implement database schemas from scratch and populate with sample data to make a functional application
 - **CRITICAL**: The FastAPI application should be FULLY functional and ready to run - candidates should NOT need to implement FastAPI code. Their focus should be on PostgreSQL database schema design and data insertion only.
 - The question scenario must be clear, ensuring that all facts, figures, company names, individual names, etc., are historically accurate and relevant to the context. 
@@ -245,10 +248,10 @@ Have a sensible gitignore suited for PostgreSQL and FastAPI tasks:
 ## README.md INSTRUCTIONS:
  - The README.md contains the following sections:
    - Task Overview
-   - Guidance
+   - Helpful Tips
    - Database Access
    - Objectives
-   - How to Verify 
+   - How to Verify
 - The README.md file content MUST be fully populated with meaningful, specific content
 - Task Overview section MUST contain the exact business scenario from the task description
 - ALL sections must have substantial content - no empty or placeholder text allowed
@@ -260,7 +263,7 @@ Have a sensible gitignore suited for PostgreSQL and FastAPI tasks:
 **CRITICAL REQUIREMENT**: This section MUST contain 2-3 meaningful sentences describing the business scenario and aslo the why it is important to implement that scenarios  
 NEVER generate empty content - always provide substantial business context that explains what database schema the candidate needs to design and why it matters for the business.
 
-###  Guidance
+### Helpful Tips
   - Provide a clear explanation of how to effectively approach the task
   - Mention that the API infrastructure is complete but database schema and data are initially empty
   - Highlight key files or folders in the codebase that candidates should review before starting
@@ -292,13 +295,13 @@ NEVER generate empty content - always provide substantial business context that 
   - Instructions to run the run.sh file (deployment is automated)
   - Pre-written schema or data examples (candidates must write from scratch)
 
-# REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task Name",
    "question": "A short description of the task scenario including the specific business requirements that need a database schema designed from scratch — what business problem needs to be solved through database design and what tables/relationships need to be created?",
    "code_files": {{
-      "README.md": "Candidate-facing README with Task Overview, Guidance, Objectives, and How to Verify",
+      "README.md": "Candidate-facing README with Task Overview, Helpful Tips, Objectives, and How to Verify",
       ".gitignore": "Proper Python, Docker, and PostgreSQL exclusions",
       "requirements.txt": "Python dependencies list including PostgreSQL drivers (NO ORM libraries)",
       "docker-compose.yml": "Docker services for PostgreSQL and FastAPI (NO version specifications, NO env vars)",
@@ -316,6 +319,7 @@ NEVER generate empty content - always provide substantial business context that 
       "data/sample_data.sql": "EMPTY FILE - Candidate will write sample data insertion scripts"
   }},
   "outcomes": "Expected results after completion in 2-3 lines focusing on functional database schema design and successful API integration with populated data. Use simple english.",
+  "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific database schema design or optimization goal, and (3) the expected outcome emphasizing correctness, structure, and maintainability.",
   "pre_requisites": "Bullet-point list of tools, libraries, and environment setup required to complete the task. Mention things like Python 3.10+, Docker, Docker Compose, PostgreSQL client tools (pgAdmin/DBeaver), Git, pip, virtual environment support, etc.",
   "answer": "High-level solution approach focusing on database schema design principles and data modeling approach for the given business requirements",
   "hints": "A single line hint on what a good approach to solve the database schema design task could include. These hints must NOT give away the answer, but gently nudge the candidate toward good database design principles.",
@@ -324,16 +328,28 @@ NEVER generate empty content - always provide substantial business context that 
     "terminology_2": "definition_2"
     }}
 }}
+
+## CRITICAL REMINDERS
+1. **Output must be valid JSON only** — no markdown, no explanations, no code fences
+2. **name** must be short, descriptive, kebab-case
+3. **code_files** must include README.md, .gitignore, requirements.txt, Docker files, run.sh, kill.sh, and all Python/SQL source files
+4. **README.md** must follow the structure above with Task Overview, Helpful Tips, Database Access, Objectives, How to Verify
+5. **Starter code** must be runnable but the schema/data SQL files must be EMPTY for the candidate to fill
+6. **outcomes** and **short_overview** must be bullet-point lists in simple language
+7. **hints** must be a single line; **definitions** must include relevant PostgreSQL/FastAPI terms
+8. **Task must be completable within the allocated time** for the given proficiency level
+9. **NO ORM usage** for BASIC level — use raw SQL with psycopg2
+10. **All paths** must reference /root/task as the base directory
 """
 
 PROMPT_FASTAPI_POSTGRESQL_OPTIMIZATION_INSTRUCTIONS ="""
-  # GOAL:
-  As a technical architect super experienced in PostgreSQL database and Python FastAPI integration, you are given a list of real world scenarios and proficiency levels for PostgreSQL. 
-  Your job is to generate a task, with the given specifications, so that a candidate is presented with a functional API and some initial schema but with logical bugs, performance issues, or suboptimal API design patterns.
-  The candidate's responsibility is to identify the issues and fix them - both at the database level AND at the API endpoint level. So you'll have to be careful about not giving away the solution or even hinting at it in your task definitions.
+## GOAL
+As a technical architect super experienced in PostgreSQL database and Python FastAPI integration, you are given a list of real world scenarios and proficiency levels for PostgreSQL.
+Your job is to generate a task, with the given specifications, so that a candidate is presented with a functional API and some initial schema but with logical bugs, performance issues, or suboptimal API design patterns.
+The candidate's responsibility is to identify the issues and fix them - both at the database level AND at the API endpoint level. So you'll have to be careful about not giving away the solution or even hinting at it in your task definitions.
 
-  # CONTEXT & CANDIDATE EXPECTATION:
-  The candidate will receive a FULLY FUNCTIONAL FastAPI application that is already connected to PostgreSQL database with existing schema and data. The FastAPI application includes:
+## CONTEXT & CANDIDATE EXPECTATION
+The candidate will receive a FULLY FUNCTIONAL FastAPI application that is already connected to PostgreSQL database with existing schema and data. The FastAPI application includes:
   - Complete REST API endpoints with business logic implemented but with suboptimal database queries AND inefficient API design patterns
   - Full database connection and configuration setup
   - All necessary middleware, error handling, and response formatting
@@ -348,9 +364,9 @@ PROMPT_FASTAPI_POSTGRESQL_OPTIMIZATION_INSTRUCTIONS ="""
   A key part of the task completion is to watch the candidate implement PostgreSQL optimization best practices AND FastAPI performance patterns to improve both database and API performance.
 
 
-  # INSTRUCTIONS:
+## INSTRUCTIONS
 
-  ## Nature of the task 
+### Nature of the Task
   - Task name MUST be within 50 words and short and concise, and meaningfully name the optimization scenario
   - Task must provide a working application with existing database schema, data, and intentionally suboptimal queries/database design AND inefficient API endpoint patterns
   - **CRITICAL**: The FastAPI application should be FULLY functional but performing poorly due to both database inefficiencies AND API endpoint design issues
@@ -482,10 +498,10 @@ PROMPT_FASTAPI_POSTGRESQL_OPTIMIZATION_INSTRUCTIONS ="""
   ## README.md INSTRUCTIONS:
   - The README.md contains the following sections:
     - Task Overview
-    - Guidance
+    - Helpful Tips
     - Database Access
     - Objectives
-    - How to Verify 
+    - How to Verify
   - The README.md file content MUST be fully populated with meaningful, specific content
   - Task Overview section MUST contain the exact business scenario and performance problems that need optimization at BOTH database and API levels
   - ALL sections must have substantial content - no empty or placeholder text allowed
@@ -497,7 +513,7 @@ PROMPT_FASTAPI_POSTGRESQL_OPTIMIZATION_INSTRUCTIONS ="""
   **CRITICAL REQUIREMENT**: This section MUST contain 2-3 meaningful sentences describing the business scenario and the specific performance problems affecting the application that need optimization at BOTH the database level AND the API endpoint level.
   NEVER generate empty content - always provide substantial business context that explains what performance issues exist in the database (queries, schema, indexes) AND in the API endpoints (N+1 queries, missing pagination, inefficient patterns) and why optimization is critical for business operations.
 
-  ### Guidance
+  ### Helpful Tips
   Write in simple and easy-to-understand language so the candidate clearly understands what the problems are
     - Explain what kinds of performance issues exist in the database (e.g., slow queries, missing indexes, or poor table structure)
     - Explain what kinds of performance issues exist in the API endpoints (e.g., N+1 query problems, missing pagination on large datasets, inefficient data fetching patterns, slow response times)
@@ -531,13 +547,13 @@ PROMPT_FASTAPI_POSTGRESQL_OPTIMIZATION_INSTRUCTIONS ="""
     - Instructions to run the run.sh file (deployment is automated)
     - Specific optimization solutions at database or API level (candidates must analyze and implement improvements)
 
-  # REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 
   {{
     "name": "Task Name(50 words max used for name of the task)",
     "question": "A short description of the optimization task scenario including the specific performance problems in the existing database AND API endpoints that need to be identified and resolved — what performance bottlenecks exist at both database and API layers and what optimizations are needed?",
     "code_files": {{
-        "README.md": "Candidate-facing README with Task Overview, Performance Issues (database AND API), Objectives, and How to Verify",
+        "README.md": "Candidate-facing README with Task Overview, Helpful Tips, Database Access, Objectives, and How to Verify",
         ".gitignore": "Standard Python, Docker, and PostgreSQL exclusion patterns",
         "requirements.txt": "Python dependencies list including PostgreSQL drivers (NO ORM libraries for BASIC level)",
         "docker-compose.yml": "Docker services for PostgreSQL and FastAPI (NO version specifications, NO env vars)",
@@ -554,6 +570,7 @@ PROMPT_FASTAPI_POSTGRESQL_OPTIMIZATION_INSTRUCTIONS ="""
         
     }},
     "outcomes": "Expected results after completion in 2-3 lines focusing on measurable performance improvements at both database and API levels, optimized database operations, and efficient API endpoint performance. Use simple english.",
+    "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific database and API optimization goal, and (3) the expected outcome emphasizing measurable performance improvements.",
     "pre_requisites": "Bullet-point list of tools, libraries, and environment setup required to complete the optimization task. Mention things like Python 3.10+, Docker, Docker Compose, PostgreSQL client tools (pgAdmin/DBeaver), Git, pip, virtual environment support, query analysis tools, API testing tools (Postman/curl), performance monitoring tools, etc.",
     "answer": "High-level solution approach focusing on database optimization strategies, performance tuning techniques, AND API endpoint optimization patterns for the given performance issues at both layers",
     "hints": "A single line hint on what a good approach to analyze and optimize both the database performance AND API endpoint efficiency could include. These hints must NOT give away the specific optimizations needed, but gently nudge the candidate toward good database performance analysis practices AND efficient API design patterns.",
@@ -562,4 +579,23 @@ PROMPT_FASTAPI_POSTGRESQL_OPTIMIZATION_INSTRUCTIONS ="""
       "terminology_2": "definition_2"
       }}
   }}
+
+## CRITICAL REMINDERS
+1. **Output must be valid JSON only** — no markdown, no explanations, no code fences
+2. **name** must be short, descriptive, within 50 words
+3. **code_files** must include README.md, .gitignore, requirements.txt, Docker files, run.sh, and all Python/SQL source files
+4. **README.md** must follow the structure above with Task Overview, Helpful Tips, Database Access, Objectives, How to Verify
+5. **Starter code** must be complete and runnable but performing poorly due to database AND API inefficiencies
+6. **outcomes** and **short_overview** must be bullet-point lists in simple language
+7. **hints** must be a single line; **definitions** must include relevant PostgreSQL/FastAPI terms
+8. **Task must be completable within the allocated time** for the given proficiency level
+9. **NO solutions revealed** in starter code — no TODO comments, no hint comments
+10. **All paths** must reference /root/task as the base directory
   """
+PROMPT_REGISTRY = {
+    "Python - FastAPI, PostgreSQL": [
+        PROMPT_FASTAPI_POSTGRESQL_CONTEXT,
+        PROMPT_FASTAPI_POSTGRESQL_OPTIMIZATION_INSTRUCTIONS,
+        PROMPT_FASTAPI_POSTGRESQL_INPUT_AND_ASK,
+    ]
+}

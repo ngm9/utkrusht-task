@@ -40,13 +40,13 @@ Please provide a brief summary of your understanding before proceeding with the 
 """
 
 PROMPT_PANDAS_NUMPY_BASIC = """
-# GOAL:
-As a senior data analyst super experienced in Python data manipulation libraries (Pandas, NumPy, data cleaning, data transformation), you are given a list of real world scenarios and proficiency levels for Python data analysis development. 
+## GOAL
+As a senior data analyst super experienced in Python data manipulation libraries (Pandas, NumPy, data cleaning, data transformation), you are given a list of real world scenarios and proficiency levels for Python data analysis development.
 Your job is to generate an entire task definition, including code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end.
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the task 
+### Nature of the Task 
 - Task must ask to implement a feature from scratch or fix bugs in the existing code.
 - The question scenario must be clear, ensuring that all facts, figures, company names, individual names, etc., are historically accurate and relevant to the context. 
 - Generate enough starter code that gives the candidate a good starting point to start solving the task
@@ -92,17 +92,7 @@ Based on the real-world scenarios provided in following conversations, create a 
 - Python starter code should include basic project structure but NOT require complex infrastructure setup (advanced database connections, complex data pipelines, distributed computing, etc.)
 - Focus on CSV/Excel file-based data with simple file I/O operations for simplicity
 
-# OUTPUT
-
-The output should be a valid json schema:
-  - README.md (CRITICAL - Follow exact structure specified below)
-  - requirements.txt (Python dependencies including pandas, numpy, and any other required libraries)
-  - .gitignore (Standard Python project gitignore)
-  - sample_data.csv or sample_data.xlsx (Sample dataset for the task)
-  - Any Python source code files that are to be included as a part of the task. These should not include the solution but should be a good starting point for the candidate to start solving the task.
-  - Code files do not have many comments that reveal the solution or give hints to implement
-
-# REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task name in <verb><subject> format within 50 characters, e.g. 'analyze sales data with pandas'",
@@ -118,6 +108,7 @@ The output should be a valid json schema:
       ...
   }},
   "outcomes": "Bullet-point list of expected results after completion, using simple, non-technical language. Each bullet must describe ONE clear deliverable or requirement and be understandable to non-engineers (e.g. HR or recruiters). One bullet MUST explicitly state: 'Write production level clean code with best practices including proper naming conventions, error handling, efficient memory usage, and code documentation.'",
+  "short_overview": "Bullet-point list in simple language describing: (1) the high-level problem in a business context, (2) the specific goal, and (3) the expected outcome emphasizing maintainability and scalability.",
   "pre_requisites": "Bullet-point list of tools, libraries, and environment setup required to complete the task. Mention things like Python 3.8+, pandas, numpy, IDE, Git, basic data analysis knowledge, etc.",
   "answer": "High-level solution approach for solving the task in few lines",
   "hints": "a single line hint on what a good approach to solve the task could include. These hints must NOT give away the answer, but gently nudge the candidate in the right direction.",
@@ -233,4 +224,24 @@ Provide practical guidance without revealing specific implementations:
   - Phrases like "you should implement", "make sure to use", "create a function called X"
   - Specific pandas or numpy API recommendations that would reveal the solution approach
   - Code structure details that would dictate the implementation approach
+
+## CRITICAL REMINDERS
+
+1. **Output must be valid JSON only** — no markdown, no explanations, no code fences
+2. **name** must be short, descriptive, maximum 50 characters
+3. **code_files** must include README.md, .gitignore, requirements.txt, main.py, and sample data file
+4. **README.md** must follow the structure above with Task Overview, Helpful Tips, Objectives, How to Verify
+5. **Starter code** must be runnable but must NOT contain the solution
+6. **outcomes** and **short_overview** must be bullet-point lists in simple language
+7. **hints** must be a single line; **definitions** must include relevant Pandas/NumPy terms
+8. **Task must be completable within the allocated time** for BASIC proficiency (1-2 years)
+9. **NO comments in code** that reveal the solution or give hints
+10. **Use Python 3.8+ and modern Pandas/NumPy best practices** throughout
   """
+PROMPT_REGISTRY = {
+    "Python - Numpy (BASIC), Python - Pandas (BASIC)": [
+        PROMPT_PANDAS_NUMPY_CONTEXT_BASIC,
+        PROMPT_PANDAS_NUMPY_INPUT_AND_ASK_BASIC,
+        PROMPT_PANDAS_NUMPY_BASIC,
+    ]
+}

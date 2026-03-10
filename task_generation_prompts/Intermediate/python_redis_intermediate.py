@@ -1,30 +1,30 @@
 PROMPT_FASTAPI_REDIS_INPUT_AND_ASK = """
-# GOAL:
-As a technical architect super experienced in Python FastAPI and Redis, you are given a list of real-world scenarios and proficiency levels for FastAPI and Redis. 
-Your job is to generate a complete task definition, including all necessary code files, README.md, expected outcomes, and evaluation focus areas that can effectively assess the candidate's ability to design, build, and optimize scalable backend systems using FastAPI and Redis.
-
-The task should reflect realistic backend challenges involving caching, background processing, message queues, pub/sub mechanisms, session management, or rate limiting — depending on the scenario and experience level provided.
-
-Now that you've seen the instructions and examples, you are ready to generate a task definition for Python FastAPI and Redis given the following inputs:
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Python FastAPI and Redis assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
 
-INPUT ROLE CONTEXT: 
+INPUT ROLE CONTEXT:
 {role_context}
 
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
-CRITICAL: The task complexity must match the given skill and years of experience. 
-The candidate should be able to complete it in the allocated time while demonstrating strong understanding of Redis usage patterns and FastAPI integration.
-Use the real-world scenarios to determine the business context, technical direction, and Redis features to focus on.
 
-Can you now generate a task definition for Python FastAPI and Redis given the above inputs, following the instructions given above? 
-Use the following prompt to narrow down your response: 
-{question_prompt}
+CRITICAL TASK GENERATION REQUIREMENTS:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
+- Ensure the candidate can realistically complete the task in the allocated time
+- Select a different real-world scenario each time to ensure variety in task generation
+- The task must reflect authentic challenges that would be encountered in the role described in the role context
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
+
+1. What will the task be about? (Describe the business domain, technical context, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of Redis optimization or FastAPI integration required, the expected deliverables, and how it aligns with the given proficiency level)
+
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 PROMPT_FASTAPI_REDIS_CONTEXT = """
 Let me provide you with some context about the company and role:
@@ -40,12 +40,12 @@ particularly in relation to using Redis for caching, queue management, backgroun
 """
 
 PROMPT_FASTAPI_REDIS_OPTIMIZATION_INSTRUCTIONS_INTER ="""
-# GOAL:
-As a technical architect super experienced in Redis caching and Python FastAPI integration, you are given a list of real world scenarios and proficiency levels for Redis. 
+## GOAL
+As a technical architect super experienced in Redis caching and Python FastAPI integration, you are given a list of real world scenarios and proficiency levels for Redis.
 Your job is to generate a task, with the given specifications, so that a candidate is presented with a functional API with Redis integration but either with logical bugs, suboptimal caching strategies, or performance issues that require intermediate-level Redis optimization skills.
 The candidate's responsibility is to identify the issue and fix it. So you'll have to be careful about not giving away the solution or even hinting at it in your task definitions.
 
-# CONTEXT & CANDIDATE EXPECTATION:
+## CONTEXT & CANDIDATE EXPECTATION:
 The candidate will receive a FULLY FUNCTIONAL FastAPI application that is already connected to Redis cache with existing implementation and data. The FastAPI application includes:
 - Complete REST API endpoints with business logic implemented but with suboptimal Redis caching patterns requiring intermediate-level optimization
 - Full Redis connection and configuration setup
@@ -55,9 +55,9 @@ The candidate will receive a FULLY FUNCTIONAL FastAPI application that is alread
 
 The candidate's responsibility is to identify and fix Redis caching issues according to the task requirements and then make any code changes in the app to support the fixes. A part of the task completion is to watch the candidate implement Redis optimization best practices and improve caching performance at an intermediate level (3-5 years experience).
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the task 
+### Nature of the Task
 - Task name MUST be within 50 words and clearly describe the intermediate-level Redis optimization scenario
 - Task must provide a working application with existing Redis implementation and intentionally suboptimal caching patterns requiring intermediate-level optimization skills
 - **CRITICAL**: The FastAPI application should be FULLY functional but performing poorly due to inefficient Redis usage that requires sophisticated analysis and optimization techniques
@@ -287,7 +287,7 @@ Write practical tips in clear and comprehensive language so intermediate-level c
   - Specific optimization solutions (candidates must analyze and implement advanced improvements)
   - Generic guidance that doesn't provide actionable tips
 
-# REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task Name (within 50 words)",
@@ -322,3 +322,10 @@ Write practical tips in clear and comprehensive language so intermediate-level c
     }}
 }}
 """
+PROMPT_REGISTRY = {
+    "Python - FastAPI, Redis": [
+        PROMPT_FASTAPI_REDIS_CONTEXT,
+        PROMPT_FASTAPI_REDIS_OPTIMIZATION_INSTRUCTIONS_INTER,
+        PROMPT_FASTAPI_REDIS_INPUT_AND_ASK,
+    ]
+}

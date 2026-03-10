@@ -10,30 +10,32 @@ Roles and Responsibilities:
 Based on this information, could you summarize what you understand about the company and role requirements?
 """
 PROMPT_REACT_OPTIMIZATION_INTERMEDIATE_INPUT_AND_ASK = """
-# GOAL:
-As a technical architect super experienced in React and TypeScript, you are given a list of real world scenarios and proficiency levels for React optimization. 
-Your job is to generate an entire task definition, including TypeScript code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, analyze performance, design, optimize, debug or in general solve a React + TypeScript optimization problem end to end.
-
-Now that you've seen the instructions and examples, you are ready to generate a task definition for React + TypeScript optimization given the following inputs:
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a React and TypeScript optimization assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
 
-INPUT ROLE CONTEXT: 
+INPUT ROLE CONTEXT:
 {role_context}
 
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
-CRITICAL: The task complexity must be appropriate for the given skill and years of experience. The candidate should be able to complete in the allocated time. Use the real-world scenarios to determine the business context, optimization focus areas, and technical constraints.
 
-REPOSITORY NAMING: When generating the GitHub repository name in the resources section, ensure it is short, descriptive, and under 50 characters. Use kebab-case (lowercase with hyphens). Examples: "react-ts-dashboard-optimization", "analytics-performance-tuning", "react-order-flow-optimization".
+CRITICAL TASK GENERATION REQUIREMENTS:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
+- Ensure the candidate can realistically complete the task in the allocated time
+- Select a different real-world scenario each time to ensure variety in task generation
+- The task must reflect authentic challenges that would be encountered in the role described in the role context
 
-Can you now generate a task definition for React + TypeScript optimization given the above inputs, following the instructions given above? 
-Use the following prompt to narrow down your response: 
-{question_prompt}
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+1. What will the task be about? (Describe the business domain, technical context, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of React and TypeScript optimization required, the expected deliverables, and how it aligns with the given proficiency level)
+
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 PROMPT_REACT_OPTIMIZATION_INTERMEDIATE= """
 # React + TypeScript Optimization Task Requirements (INTERMEDIATE Level)
@@ -160,7 +162,7 @@ Based on real-world scenarios, create a React + TypeScript task that:
 - Task name: short, descriptive, under 50 characters, kebab-case (e.g., "react-ts-analytics-platform-optimization")
 - **CRITICAL - FILE NAMING**: All additional component, page, hook, context, and utility files MUST use meaningful, scenario-specific file names derived from the task (e.g., OrdersDashboard.tsx, AnalyticsChart.tsx, useOrders.ts, CartContext.tsx). NEVER use generic placeholder names like PageA, ComponentA, useCustomHook, SomeContext, or helpers.ts when a scenario-specific name is appropriate. File names should reflect the business domain and feature so generated code is identifiable and varies correctly per task.
 
-## REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task Name",
@@ -391,3 +393,10 @@ Practical guidance without revealing implementations, geared toward intermediate
 22. **Application must demonstrate real-world complexity** appropriate for 3-5 years experience level
 
 """
+PROMPT_REGISTRY = {
+    "ReactJs, ReactJs - Optimization": [
+        PROMPT_REACT_OPTIMIZATION_INTERMEDIATE_CONTEXT,
+        PROMPT_REACT_OPTIMIZATION_INTERMEDIATE_INPUT_AND_ASK,
+        PROMPT_REACT_OPTIMIZATION_INTERMEDIATE,
+    ]
+}

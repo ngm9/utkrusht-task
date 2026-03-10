@@ -11,27 +11,31 @@ Based on this information, could you summarize what you understand about the com
 """
 
 PROMPT_PROMPT_ENGINEERING_INPUT_AND_ASK = """
-# GOAL:
-As a senior product manager expert in Prompt Engineering for contact-center AI applications, you are given competency levels, role context, and real-world scenarios. 
-Your job is to generate an entire task definition that can be effectively used to assess the candidate's ability to analyze data, design prompts, optimize performance, and document solutions for contact-center use cases.
-
-Now that you've seen the instructions and examples, you are ready to generate a task definition for Prompt Engineering given the following inputs:
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Prompt Engineering assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
 
-INPUT ROLE CONTEXT: 
+INPUT ROLE CONTEXT:
 {role_context}
 
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
+CRITICAL TASK GENERATION REQUIREMENTS:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
+- Ensure the candidate can realistically complete the task in the allocated time
+- Select a different real-world scenario each time to ensure variety in task generation
+- The task must reflect authentic challenges that would be encountered in the role described in the role context
 
-Can you now generate a task definition for Prompt Engineering given the above inputs, following the instructions given above? 
-Use the following prompt to narrow down your response: 
-{question_prompt}
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+1. What will the task be about? (Describe the business domain, AI context, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of prompt engineering or AI optimization required, the expected deliverables, and how it aligns with the given proficiency level)
+
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 
 PROMPT_INSTRUCTIONS = """
@@ -125,6 +129,7 @@ Based on the provided `real_world_task_scenarios` , create a Prompt task that:
       [NOTE: Include ONLY the files that are explicitly mentioned or required in the scenarios. NO templates, NO examples, NO explanatory guides, NO additional files beyond what the scenarios specify. NO README.md unless explicitly requested in the scenario.]
    }},
    "outcomes": "A very short description (1–2 sentences) of what tangible deliverables should exist if the task is completed well, without revealing the solution. For example: a clear problem diagnosis, a set of improved prompts/flows or configs, basic metrics or observations from the data, and a short executive-style summary tying changes to business impact.",
+   "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or AI problem, (2) the specific prompt engineering or optimization goal, and (3) the expected outcome emphasizing correctness, structure, and maintainability.",
    "pre_requisites": "List Bullet-points required for knowledge and tools for the task:\\n- Access to LLM playground (ChatGPT, Claude, or similar) for prompt testing\\n- Basic data analysis skills (CSV/JSON handling, spreadsheet tools or Python)\\n- Understanding of prompt engineering and AI system design fundamentals\\n- Documentation tools (Word/Markdown editor)\\n- Ability to query/filter data and identify patterns\\n- Critical thinking for root cause analysis",
    "answer": "Only a high-level solution approach.
    "hints": "A single guiding hint that nudges toward good diagnostic or analytical practices without revealing the solution. Example: 'Start by examining patterns in the failure cases – what do they have in common that successful cases don't?' or 'Consider how the multi-step flow might be creating cascading errors from early stages.'",
@@ -135,5 +140,22 @@ Based on the provided `real_world_task_scenarios` , create a Prompt task that:
    }}
 }}
 
-
+## CRITICAL REMINDERS
+1. **Output must be valid JSON only** — no markdown, no explanations, no code fences
+2. **name** must be short, descriptive, in format `<verb> <subject>`, maximum 50 characters
+3. **code_files** must include ONLY the raw data files explicitly required by the scenario
+4. **NO README.md** unless explicitly requested in the scenario
+5. **NO templates, NO examples, NO explanatory guides** in code_files
+6. **outcomes** and **short_overview** must be concise descriptions in simple language
+7. **hints** must be a single line; **definitions** must include relevant AI/prompt engineering terms
+8. **Task must be completable within the allocated time** for the given proficiency level
+9. **NO solutions revealed** in starter materials or data files
+10. **AI tinkering and diagnostic thinking** must be required to solve the task
 """
+PROMPT_REGISTRY = {
+    "Prompt Engineering (BASIC)": [
+        PROMPT_CONTEXT,
+        PROMPT_PROMPT_ENGINEERING_INPUT_AND_ASK,
+        PROMPT_INSTRUCTIONS,
+    ]
+}

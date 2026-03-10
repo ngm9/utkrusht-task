@@ -200,3 +200,11 @@ Practical guidance without revealing implementations:
 10. **Select a different real-world scenario** each time for variety.
 11. **2-3 tables**, simple relationships, clear and measurable success criteria.
 """
+
+PROMPT_REGISTRY = {
+    "SQL": [
+        PROMPT_SQL_BEGINNER_CONTEXT,
+        PROMPT_SQL_BEGINNER_INPUT_AND_ASK,
+        PROMPT_SQL_BEGINNER,
+    ]
+}

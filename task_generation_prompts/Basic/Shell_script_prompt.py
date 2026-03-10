@@ -13,11 +13,7 @@ Keep your summary focused, and remember that any generated task name must stay c
 """
 
 PROMPT_SHELL_SCRIPT_BASIC_INPUT_AND_ASK = """
-# GOAL:
-As a technical architect with strong experience in Shell scripting and Linux system automation, you are given a list of real-world scenarios and proficiency levels for basic scripting development.
-Your job is to generate a complete task definition, including shell scripts, README.md, expected outcomes, and evaluation criteria that can effectively assess the candidate's ability to write, debug, and execute automation scripts for simple system-level tasks.
-
-Now that you've seen the instructions and examples, you are ready to generate a task definition for Shell Scripting given the following inputs:
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Shell Scripting assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
@@ -28,23 +24,30 @@ INPUT ROLE CONTEXT:
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
-CRITICAL: The task complexity must match a beginner level (1–2 years experience). Focus on tasks like automating log management, file organization, resource monitoring, or creating simple deployment utilities. Avoid complex CI/CD pipelines, systemd integrations, or multi-server orchestration.
+CRITICAL TASK GENERATION REQUIREMENTS:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
+- Ensure the candidate can realistically complete the task in the allocated time
+- Select a different real-world scenario each time to ensure variety in task generation
+- The task must reflect authentic challenges that would be encountered in the role described in the role context
 
-Can you now generate a task definition for Shell Scripting given the above inputs, following the instructions given above?
-Use the following prompt to narrow down your response:
-{question_prompt}
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+1. What will the task be about? (Describe the operational context, technical requirements, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of script to be implemented or fixed, the expected deliverables, and how it aligns with BASIC Shell Scripting proficiency)
+
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 
 PROMPT_SHELL_SCRIPT_BASIC = """
-# GOAL:
-As a senior DevOps engineer super experienced in shell scripting, Linux system administration, and automation (Bash, command-line tools, cron, log management, file processing), you are given a list of real world scenarios and proficiency levels for shell scripting. 
+## GOAL
+As a senior DevOps engineer super experienced in shell scripting, Linux system administration, and automation (Bash, command-line tools, cron, log management, file processing), you are given a list of real world scenarios and proficiency levels for shell scripting.
 Your job is to generate an entire task definition, including starter files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end.
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the task 
+### Nature of the Task
 - Task must ask to implement a shell script from scratch or fix bugs in the existing script.
 - The question scenario must be clear, ensuring that all facts, figures, directory names, file patterns, etc., are realistic and relevant to the context. 
 - Generate enough starter files/directories that gives the candidate a good starting point to start solving the task
@@ -94,16 +97,7 @@ Based on the real-world scenarios provided in following conversations, create a 
 - Shell script starter files should include realistic test data but NOT require complex infrastructure setup (no Docker, Kubernetes, cloud services, or advanced monitoring systems)
 - Focus on standalone scripts that can be tested locally on any Unix/Linux system
 
-# OUTPUT
-
-The output should be a valid json schema:
-  - README.md (CRITICAL - Follow exact structure specified below)
-  - .gitignore (Standard shell script project gitignore)
-  - Sample data files, test directories, or starter scripts as needed
-  - Any configuration files that are part of the task context
-  - Starter scripts should not include many comments that reveal the solution or give hints to implement
-
-# REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task Name (within 50 words) reflecting the scenario context and focusing on basic shell scripting",
@@ -119,6 +113,7 @@ The output should be a valid json schema:
       ...
   }},
   "outcomes": "Expected results after completion in 2-3 lines. Use simple english.",
+  "short_overview": "Bullet-point list in simple language describing: (1) the high-level operational or business problem, (2) the specific shell scripting implementation or fix goal, and (3) the expected outcome emphasizing correctness, reliability, and maintainability.",
   "pre_requisites": "Bullet-point list of tools, environment, and knowledge required to complete the task. Mention things like Bash 4.0+, Unix/Linux system, basic command-line tools (grep, sed, awk, find), text editor, Git, understanding of file permissions, etc.",
   "answer": "High-level solution approach",
   "hints": "a single line hint on what a good approach to solve the task could include. These hints must NOT give away the answer, but gently nudge the candidate in the right direction.",
@@ -235,4 +230,23 @@ Provide practical guidance without revealing specific implementations:
   - Phrases like "you should write", "make sure to use", "create a function called X"
   - Specific Unix tool recommendations that would reveal the solution approach
   - Directory structure details that would dictate the implementation approach
+
+## CRITICAL REMINDERS
+1. **Output must be valid JSON only** — no markdown, no explanations, no code fences
+2. **name** must be short, descriptive, within 50 words
+3. **code_files** must include README.md, .gitignore, and relevant starter scripts/data files
+4. **README.md** must follow the structure above with Task Overview, Helpful Tips, Objectives, How to Verify
+5. **Starter files** must be realistic but must NOT contain the solution
+6. **outcomes** and **short_overview** must be bullet-point lists in simple language
+7. **hints** must be a single line; **definitions** must include relevant Shell/Bash terms
+8. **Task must be completable within the allocated time** for BASIC proficiency (1-2 years)
+9. **NO comments in scripts** that reveal the solution or give hints
+10. **Use Bash 4.0+** best practices throughout
   """
+PROMPT_REGISTRY = {
+    "Shell (BASIC)": [
+        PROMPT_SHELL_SCRIPT_BASIC_CONTEXT,
+        PROMPT_SHELL_SCRIPT_BASIC_INPUT_AND_ASK,
+        PROMPT_SHELL_SCRIPT_BASIC,
+    ]
+}

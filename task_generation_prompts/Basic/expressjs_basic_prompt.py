@@ -11,40 +11,42 @@ Based on this information, could you summarize what you understand about the com
 """
 
 PROMPT_EXPRESSJS_BASIC_INPUT_AND_ASK = """
-# GOAL:
-As a technical architect super experienced in Express.js and Node.js backend development, you are given a list of real-world scenarios and proficiency levels for Express.js development.
-Your job is to generate a complete backend task definition — including API endpoints, middleware logic, database integration (if relevant), README.md, and expected outcomes — that can effectively assess the candidate’s ability to think, design, build, implement, debug, and deploy a backend service end to end.
-
-Now that you've seen the instructions and examples, you are ready to generate a task definition for Express.js given the following inputs:
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating an Express.js assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
 
-INPUT ROLE CONTEXT: 
+INPUT ROLE CONTEXT:
 {role_context}
 
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
-CRITICAL: The task complexity must be appropriate for the given skill level and years of experience. The candidate should be able to complete it within the allocated time. Use the real-world scenarios to determine the business context and technical focus (e.g., REST API design, authentication, middleware, or database operations).
+CRITICAL TASK GENERATION REQUIREMENTS:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
+- Ensure the candidate can realistically complete the task in the allocated time
+- Select a different real-world scenario each time to ensure variety in task generation
+- The task must reflect authentic challenges that would be encountered in the role described in the role context
 
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
-Can you now generate a task definition for Express.js given the above inputs, following the instructions given above?
-Use the following prompt to narrow down your response:
-{question_prompt}
+1. What will the task be about? (Describe the business domain, technical context, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of implementation or fix required, the expected deliverables, and how it aligns with the given Express.js proficiency level)
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 
 
 PROMPT_EXPRESSJS_BASIC_INSTRUCTIONS = """
-# GOAL:
-As a technical architect super experienced in Express.js, Node.js ecosystem, and backend architecture, you are given a list of real world scenarios and proficiency levels for Express.js development. 
+## GOAL
+As a technical architect super experienced in Express.js, Node.js ecosystem, and backend architecture, you are given a list of real world scenarios and proficiency levels for Express.js development.
 Your job is to generate an entire task definition, including code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end at an intermediate level.
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the task 
+### Nature of the Task
 - Task must ask to implement a feature from scratch, refactor existing code, or fix complex bugs in the existing codebase.
 - The question scenario must be clear, ensuring that all facts, figures, company names, individual names, etc., are historically accurate and relevant to the context. 
 - Generate enough starter code that gives the candidate a good starting point to start solving the task.
@@ -120,25 +122,13 @@ Based on the real-world scenarios provided in following conversations, create an
 - Provide partial implementations that require candidates to complete the API design and optimization work.
 - **Do NOT mandate database usage** - many scenarios can use in-memory data, file operations, or external API integrations.
 
-# OUTPUT
-The output should be a valid json schema:
-  - README.md (CRITICAL - Follow exact structure specified below)
-  - package.json (Node.js dependencies including Express and other dependencies required in the scenario - database clients are OPTIONAL)
-  - .gitignore (Standard Node.js/Express project gitignore)
-  - .env.example (Environment variables template - if needed)
-  - Any application code files (routes/, controllers/, services/, middleware/, utils/, config/)
-  - Data files (JSON, CSV, etc.) if the task involves data processing without database
-  - Any other configuration files needed for local development
-  - Code files should demonstrate partial architecture that candidate needs to complete/extend
-  - Include realistic folder structure appropriate for the task
-
-# REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task Name (50 words maximum not exceding that)",
    "question": "A detailed description of the task scenario including the specific ask from the candidate — what needs to be implemented/refactored/fixed/optimized? Include API design considerations and performance optimization requirements.",
    "code_files": {{
-      "README.md": "Candidate-facing README with Task Overview, Guidance, Objectives, and How to Verify",
+      "README.md": "Candidate-facing README with Task Overview, Helpful Tips, Objectives, and How to Verify",
       ".gitignore": "Proper Node.js/Express exclusions",
       "package.json": "Node.js dependencies and scripts",
       "src/index.js": "Express app entry point",
@@ -158,6 +148,7 @@ The output should be a valid json schema:
       ...
   }},
   "outcomes": "Expected results after completion focusing on API design quality, performance improvements, code organization, and response time optimization. Include both functional outcomes and optimization metrics (4-5 lines).",
+  "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific Express.js implementation or fix goal, and (3) the expected outcome emphasizing correctness, structure, and maintainability.",
   "pre_requisites": "Bullet-point list of tools, libraries, environment setup, and knowledge required. Include intermediate-level expectations like Node.js 18+, RESTful API principles, HTTP protocol understanding, async/await patterns, performance profiling concepts, etc. Do NOT mandate database knowledge unless absolutely required.",
   "answer": "High-level solution approach with emphasis on API design decisions, optimization strategies, and performance improvements",
   "hints": "a single line hint focusing on API design approach or optimization strategy that could be useful. These hints must NOT give away the answer, but guide towards good API design and optimization thinking.",
@@ -192,7 +183,7 @@ Create a comprehensive gitignore file that covers all standard exclusions for in
 ## README.md INSTRUCTIONS:
 - The README.md contains the following sections:
   - Task Overview
-  - Guidance
+  - Helpful Tips
   - Objectives
   - How to Verify
 - The README.md file content MUST be fully populated with meaningful, specific content
@@ -206,7 +197,7 @@ Create a comprehensive gitignore file that covers all standard exclusions for in
 **CRITICAL REQUIREMENT**: This section MUST contain 3-4 meaningful sentences describing the business scenario, current situation, and why API design excellence and optimization matter for this use case.
 NEVER generate empty content - always provide substantial business context that explains what the candidate is working on and why proper API design and performance optimization are crucial.
 
-### Guidance
+### Helpful Tips
 - Provide 3-5 simple, clear bullet points that give project context and high-level guidance
 - Each bullet point should be one concise sentence
 - Focus on what matters for this specific task (API design quality, performance expectations, code organization)
@@ -242,4 +233,23 @@ NEVER generate empty content - always provide substantial business context that 
 - Specific optimization techniques or caching strategies to implement
 - Folder structure decisions that would dictate the architectural approach
 - Database technologies or libraries (unless task specifically requires database)
+
+## CRITICAL REMINDERS
+1. **Output must be valid JSON only** — no markdown, no explanations, no code fences
+2. **name** must be short, descriptive, maximum 50 words
+3. **code_files** must include README.md, .gitignore, package.json, and all Express.js source files
+4. **README.md** must follow the structure above with Task Overview, Helpful Tips, Objectives, How to Verify
+5. **Starter code** must be runnable with `npm start` or `npm run dev` but must NOT contain the solution
+6. **outcomes** and **short_overview** must be bullet-point lists in simple language
+7. **hints** must be a single line; **definitions** must include relevant Node.js/Express.js terms
+8. **Task must be completable within the allocated time** for the given proficiency level
+9. **NO comments in code** that reveal the solution or give hints
+10. **Use Node.js 18+ and modern JavaScript/ES6+** best practices throughout
 """
+PROMPT_REGISTRY = {
+    "ExpressJS (BASIC)": [
+        PROMPT_EXPRESSJS_BASIC_CONTEXT,
+        PROMPT_EXPRESSJS_BASIC_INPUT_AND_ASK,
+        PROMPT_EXPRESSJS_BASIC_INSTRUCTIONS,
+    ]
+}

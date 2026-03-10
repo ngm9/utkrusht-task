@@ -10,73 +10,24 @@ from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 
 
-from task_generation_prompts.Basic.SQL_Optimization_prompts import (
-   PROMPT_FASTAPI_POSTGRESQL_CONTEXT,
-   PROMPT_FASTAPI_POSTGRESQL_OPTIMIZATION_INSTRUCTIONS,
-   PROMPT_FASTAPI_POSTGRESQL_INPUT_AND_ASK
-)
-from task_generation_prompts.Intermediate.java_intermediate_prompt import (
-   PROMPT_JAVA_INTERMEDIATE_INSTRUCTIONS,
-   PROMPT_JAVA_INPUT_AND_ASK,
-   PROMPT_JAVA_CONTEXT
-)
+import importlib
+import pkgutil
+import task_generation_prompts.Basic as _basic_pkg
+import task_generation_prompts.Intermediate as _inter_pkg
+import task_generation_prompts.Beginner as _beginner_pkg
 
-from task_generation_prompts.Intermediate.Java_Kafka_prompt_intermediate import (
-   PROMPT_JAVA_KAFKA_INTERMEDIATE_INPUT_AND_ASK,
-   PROMPT_JAVA_KAFKA_INTERMEDIATE_CONTEXT,
-   PROMPT_JAVA_KAFKA_OPTIMIZATION_INSTRUCTIONS_INTER
-)
 
-from task_generation_prompts.Basic.GO_basic_prompt import (
-    PROMPT_GO_BASIC_INSTRUCTIONS,
-    PROMPT_GOLANG_BASIC_CONTEXT,
-    PROMPT_GOLANG_BASIC_INPUT_AND_ASK
-)   
-from task_generation_prompts.Intermediate.python_redis_intermediate import (
-   PROMPT_FASTAPI_REDIS_INPUT_AND_ASK,
-   PROMPT_FASTAPI_REDIS_CONTEXT,
-   PROMPT_FASTAPI_REDIS_OPTIMIZATION_INSTRUCTIONS_INTER
-)
-from task_generation_prompts.Basic.Java_basic_prompt import (
-    PROMPT_JAVA_BASIC_CONTEXT,
-    PROMPT_JAVA_BASIC_INPUT_AND_ASK,
-    PROMPT_JAVA_BASIC
-)
-from task_generation_prompts.Basic.Java_spring_boot_prompt import (
-    PROMPT_JAVA_SPRING_BOOT_CONTEXT_BASIC,
-    PROMPT_JAVA_SPRING_BOOT_INPUT_AND_ASK_BASIC,
-    PROMPT_JAVA_SPRING_BOOT_BASIC
-)
-from task_generation_prompts.Intermediate.React_optimization_intermediate import (
-   PROMPT_REACT_OPTIMIZATION_INTERMEDIATE,
-   PROMPT_REACT_OPTIMIZATION_INTERMEDIATE_CONTEXT,
-   PROMPT_REACT_OPTIMIZATION_INTERMEDIATE_INPUT_AND_ASK
-)
-from task_generation_prompts.Basic.NodeJs_postgres_basic_prompt import(
-    PROMPT_NODEJS_POSTGRESQL_INSTRUCTIONS,
-    PROMPT_NODEJS_POSTGRESQL_CONTEXT,
-    PROMPT_NODEJS_POSTGRESQL_INPUT_AND_ASK
-)
-from task_generation_prompts.Beginner.ReactJs_beginner import (
-    PROMPT_REACT_BEGINNER_CONTEXT,
-    PROMPT_REACT_BEGINNER_INPUT_AND_ASK,
-    PROMPT_REACT_BEGINNER
-)
-from task_generation_prompts.Beginner.sql_beginner import (
-    PROMPT_SQL_BEGINNER_CONTEXT,
-    PROMPT_SQL_BEGINNER_INPUT_AND_ASK,
-    PROMPT_SQL_BEGINNER
-)
-from task_generation_prompts.Beginner.python_beginner import (
-    PROMPT_PYTHON_BEGINNER_CONTEXT,
-    PROMPT_PYTHON_BEGINNER_INPUT_AND_ASK,
-    PROMPT_PYTHON_BEGINNER
-)
-from task_generation_prompts.Basic.python_basic_prompt import (
-    PROMPT_PYTHON_BASIC_CONTEXT,
-    PROMPT_PYTHON_BASIC_INPUT_AND_ASK,
-    PROMPT_PYTHON_BASIC
-)
+def _build_prompt_registry() -> dict:
+    registry = {}
+    for pkg in [_basic_pkg, _inter_pkg, _beginner_pkg]:
+        for _, module_name, _ in pkgutil.iter_modules(pkg.__path__):
+            module = importlib.import_module(f"{pkg.__name__}.{module_name}")
+            if hasattr(module, "PROMPT_REGISTRY"):
+                registry.update(module.PROMPT_REGISTRY)
+    return registry
+
+
+_PROMPT_REGISTRY = _build_prompt_registry()
 
 
 PROFICIENCY_LEVELS = ["BEGINNER", "BASIC", "INTERMEDIATE", "ADVANCED", "EXPERT"]
@@ -390,211 +341,31 @@ def clean_llm_json_response(response: str) -> str:
         return response
 
 def get_task_prompt_by_technology_stack(competency_stack, input_data):
-    """Get task prompt by technology stack. Uses competency names + proficiency for lookup when available (e.g. Python (BEGINNER), Python (BASIC))."""
+    """Get task prompt by technology stack. Auto-discovered from PROMPT_REGISTRY in each prompt module."""
     competencies = input_data.get("competencies", [])
     key_with_proficiency = ", ".join(
         sorted([f"{c.get('name')} ({c.get('proficiency', '').upper()})" for c in competencies if c.get("name")])
     ) if competencies else ""
-    prompt_library = {
-        "Python - FastAPI, PostgreSQL":[
-            PROMPT_FASTAPI_POSTGRESQL_CONTEXT.format(
-                organization_background=input_data["background"]["organization"]["organization_background"],
-                role_context=input_data["background"]["role_context"]
-            ),
-            PROMPT_FASTAPI_POSTGRESQL_OPTIMIZATION_INSTRUCTIONS.format(
-                minutes_range=input_data.get("minutes_range", "15-20")
-            ),
-            PROMPT_FASTAPI_POSTGRESQL_INPUT_AND_ASK.format(
-                competencies=input_data.get("competencies"),
-                role_context=input_data.get("background").get("role_context", ""),
-                real_world_task_scenarios=input_data.get("scenarios", ""),
-                question_prompt=input_data.get("background").get("questions_prompt", "")
-            )
-        ],
-        "Java":[
-            PROMPT_JAVA_CONTEXT.format(
-                organization_background=input_data["background"]["organization"]["organization_background"],
-                role_context=input_data["background"]["role_context"]
-            ),
-            PROMPT_JAVA_INTERMEDIATE_INSTRUCTIONS.format(
-                minutes_range=input_data.get("minutes_range", "15-20")
-            ),
-            PROMPT_JAVA_INPUT_AND_ASK.format(
-                competencies=input_data.get("competencies"),
-                role_context=input_data.get("background").get("role_context", ""),
-                real_world_task_scenarios=input_data.get("scenarios", ""),
-                question_prompt=input_data.get("background").get("questions_prompt", "")
-            )
-        ],
-        "Java, Kafka":[
-            PROMPT_JAVA_KAFKA_INTERMEDIATE_CONTEXT.format(
-                organization_background=input_data["background"]["organization"]["organization_background"],
-                role_context=input_data["background"]["role_context"]
-            ),
-            PROMPT_JAVA_KAFKA_OPTIMIZATION_INSTRUCTIONS_INTER.format(
-                minutes_range=input_data.get("minutes_range", "15-20")
-            ),
-            PROMPT_JAVA_KAFKA_INTERMEDIATE_INPUT_AND_ASK.format(
-                competencies=input_data.get("competencies"),
-                role_context=input_data.get("background").get("role_context", ""),
-                real_world_task_scenarios=input_data.get("scenarios", ""),
-                question_prompt=input_data.get("background").get("questions_prompt", "")
-            )
-        ],
-        "Golang":[
-            PROMPT_GOLANG_BASIC_CONTEXT.format(
-                organization_background=input_data["background"]["organization"]["organization_background"],
-                role_context=input_data["background"]["role_context"]
-            ),
-            PROMPT_GO_BASIC_INSTRUCTIONS.format(
-                minutes_range=input_data.get("minutes_range", "15-20")
-            ),
-            PROMPT_GOLANG_BASIC_INPUT_AND_ASK.format(
-                competencies=input_data.get("competencies"),
-                role_context=input_data.get("background").get("role_context", ""),
-                real_world_task_scenarios=input_data.get("scenarios", ""),
-                question_prompt=input_data.get("background").get("questions_prompt", "")
-            )
-        ],
-        "Python - FastAPI, Redis":[
-            PROMPT_FASTAPI_REDIS_CONTEXT.format(
-                organization_background=input_data["background"]["organization"]["organization_background"],
-                role_context=input_data["background"]["role_context"]
-            ),
-            PROMPT_FASTAPI_REDIS_OPTIMIZATION_INSTRUCTIONS_INTER.format(
-                minutes_range=input_data.get("minutes_range", "15-20")
-            ),
-            PROMPT_FASTAPI_REDIS_INPUT_AND_ASK.format(
-                competencies=input_data.get("competencies"),
-                role_context=input_data.get("background").get("role_context", ""),
-                real_world_task_scenarios=input_data.get("scenarios", ""),
-                question_prompt=input_data.get("background").get("questions_prompt", "")
-            )
-        ],
-       "Java, Java - Spring Boot":[
-            PROMPT_JAVA_SPRING_BOOT_CONTEXT_BASIC.format(
-                organization_background=input_data["background"]["organization"]["organization_background"],
-                role_context=input_data["background"]["role_context"]
-            ),
-            PROMPT_JAVA_SPRING_BOOT_INPUT_AND_ASK_BASIC.format(
-                competencies=input_data.get("competencies"),
-                role_context=input_data.get("background").get("role_context", ""),
-                real_world_task_scenarios=input_data.get("scenarios", ""),
-                question_prompt=input_data.get("background").get("questions_prompt", "")
-            ),
-            PROMPT_JAVA_SPRING_BOOT_BASIC.format(
-                minutes_range=input_data.get("minutes_range", "15-20")
-            )
-        ],
-        "Java (BASIC), Java - Spring Boot (BASIC)": [
-            PROMPT_JAVA_SPRING_BOOT_CONTEXT_BASIC.format(
-                organization_background=input_data["background"]["organization"]["organization_background"],
-                role_context=input_data["background"]["role_context"]
-            ),
-            PROMPT_JAVA_SPRING_BOOT_INPUT_AND_ASK_BASIC.format(
-                competencies=input_data.get("competencies"),
-                role_context=input_data.get("background").get("role_context", ""),
-                real_world_task_scenarios=input_data.get("scenarios", ""),
-                question_prompt=input_data.get("background").get("questions_prompt", "")
-            ),
-            PROMPT_JAVA_SPRING_BOOT_BASIC.format(
-                minutes_range=input_data.get("minutes_range", "15-20")
-            )
-        ],
-       "ReactJs, ReactJs - Optimization":[
-            PROMPT_REACT_OPTIMIZATION_INTERMEDIATE_CONTEXT.format(
-                organization_background=input_data["background"]["organization"]["organization_background"],
-                role_context=input_data["background"]["role_context"]
-            ),
-            PROMPT_REACT_OPTIMIZATION_INTERMEDIATE_INPUT_AND_ASK.format(
-                competencies=input_data.get("competencies"),
-                role_context=input_data.get("background").get("role_context", ""),
-                real_world_task_scenarios=input_data.get("scenarios", ""),
-                question_prompt=input_data.get("background").get("questions_prompt", "")
-            ),
-            PROMPT_REACT_OPTIMIZATION_INTERMEDIATE
-        ],
-       "NodeJs, PostgreSQL":[
-            PROMPT_NODEJS_POSTGRESQL_CONTEXT.format(
-                organization_background=input_data["background"]["organization"]["organization_background"],
-                role_context=input_data["background"]["role_context"]
-            ),
-            PROMPT_NODEJS_POSTGRESQL_INPUT_AND_ASK.format(
-                competencies=input_data.get("competencies"),
-                role_context=input_data.get("background").get("role_context", ""),
-                real_world_task_scenarios=input_data.get("scenarios", ""),
-                question_prompt=input_data.get("background").get("questions_prompt", "")
-            ),
-            PROMPT_NODEJS_POSTGRESQL_INSTRUCTIONS
-        ],
-        "ReactJs":[
-            PROMPT_REACT_BEGINNER_CONTEXT.format(
-                organization_background=input_data["background"]["organization"]["organization_background"],
-                role_context=input_data["background"]["role_context"]
-            ),
-            PROMPT_REACT_BEGINNER_INPUT_AND_ASK.format(
-                competencies=input_data.get("competencies"),
-                role_context=input_data.get("background").get("role_context", ""),
-                real_world_task_scenarios=input_data.get("scenarios", ""),
-                question_prompt=input_data.get("background").get("questions_prompt", "")
-            ),
-            PROMPT_REACT_BEGINNER
-        ],
-        "SQL":[
-            PROMPT_SQL_BEGINNER_CONTEXT.format(
-                organization_background=input_data["background"]["organization"]["organization_background"],
-                role_context=input_data["background"]["role_context"]
-            ),
-            PROMPT_SQL_BEGINNER_INPUT_AND_ASK.format(
-                competencies=input_data.get("competencies"),
-                role_context=input_data.get("background").get("role_context", ""),
-                real_world_task_scenarios=input_data.get("scenarios", ""),
-                question_prompt=input_data.get("background").get("questions_prompt", "")
-            ),
-            PROMPT_SQL_BEGINNER.format(minutes_range=input_data.get("minutes_range", "15-20"))
-        ],
-        "Python (BEGINNER)": [
-            PROMPT_PYTHON_BEGINNER_CONTEXT.format(
-                organization_background=input_data["background"]["organization"]["organization_background"],
-                role_context=input_data["background"]["role_context"]
-            ),
-            PROMPT_PYTHON_BEGINNER_INPUT_AND_ASK.format(
-                competencies=input_data.get("competencies"),
-                role_context=input_data.get("background").get("role_context", ""),
-                real_world_task_scenarios=input_data.get("scenarios", "")
-            ),
-            PROMPT_PYTHON_BEGINNER.format(minutes_range=input_data.get("minutes_range", "15-20"))
-        ],
-        "Python (BASIC)": [
-            PROMPT_PYTHON_BASIC_CONTEXT.format(
-                organization_background=input_data["background"]["organization"]["organization_background"],
-                role_context=input_data["background"]["role_context"]
-            ),
-            PROMPT_PYTHON_BASIC_INPUT_AND_ASK.format(
-                competencies=input_data.get("competencies"),
-                role_context=input_data.get("background").get("role_context", ""),
-                real_world_task_scenarios=input_data.get("scenarios", "")
-            ),
-            PROMPT_PYTHON_BASIC.format(minutes_range=input_data.get("minutes_range", "15-20"))
-        ],
-        "Java (BASIC)": [
-            PROMPT_JAVA_BASIC_CONTEXT.format(
-                organization_background=input_data["background"]["organization"]["organization_background"],
-                role_context=input_data["background"]["role_context"]
-            ),
-            PROMPT_JAVA_BASIC_INPUT_AND_ASK.format(
-                competencies=input_data.get("competencies"),
-                role_context=input_data.get("background").get("role_context", ""),
-                real_world_task_scenarios=input_data.get("scenarios", ""),
-                question_prompt=input_data.get("background").get("questions_prompt", "")
-            ),
-            PROMPT_JAVA_BASIC.format(minutes_range=input_data.get("minutes_range", "15-20"))
-        ]
+
+    templates = (
+        _PROMPT_REGISTRY.get(key_with_proficiency)
+        or _PROMPT_REGISTRY.get(competency_stack)
+    )
+    if not templates:
+        raise ValueError(
+            f"No prompt registered for tech stack: '{key_with_proficiency or competency_stack}'. "
+            f"Add PROMPT_REGISTRY to the prompt file."
+        )
+
+    fmt_args = {
+        "organization_background": input_data["background"]["organization"]["organization_background"],
+        "role_context": input_data["background"]["role_context"],
+        "minutes_range": input_data.get("minutes_range", "15-20"),
+        "competencies": input_data.get("competencies"),
+        "real_world_task_scenarios": input_data.get("scenarios", ""),
+        "question_prompt": input_data.get("background", {}).get("questions_prompt", ""),
     }
-    prompts = prompt_library.get(key_with_proficiency) if key_with_proficiency else None
-    if prompts is None:
-        prompts = prompt_library.get(competency_stack, [])
-    return prompts
+    return [t.format(**fmt_args) for t in templates]
 
 def generate_task_with_code(openai_client, input_data: Dict) -> Dict:
     """Generate task and code files using language_prompts with Responses API and reasoning.

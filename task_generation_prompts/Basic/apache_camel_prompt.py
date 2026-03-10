@@ -11,39 +11,42 @@ Based on this information, could you summarize what you understand about the com
 """
 
 PROMPT_APACHE_CAMEL_INPUT_AND_ASK_BASIC = """
-# GOAL:
-As a technical architect super experienced in Apache Camel, you are given a list of real world scenarios and proficiency levels for Apache Camel development. 
-Your job is to generate an entire task definition, including code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end.
-
-Now that you've seen the instructions and examples, you are ready to generate a task definition for Apache Camel given the following inputs:
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating an Apache Camel assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
 
-INPUT ROLE CONTEXT: 
+INPUT ROLE CONTEXT:
 {role_context}
 
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
-CRITICAL: The task complexity must be appropriate for the given skill and years of experience. The candidate should be able to complete in the allocated time. Use the real-world scenarios to determine the business context and technical focus.
+CRITICAL TASK GENERATION REQUIREMENTS:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
+- Ensure the candidate can realistically complete the task in the allocated time
+- Select a different real-world scenario each time to ensure variety in task generation
+- The task must reflect authentic challenges that would be encountered in the role described in the role context
 
-Can you now generate a task definition for Apache Camel given the above inputs, following the instructions given above? 
-Use the following prompt to narrow down your response: 
-{question_prompt}
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+1. What will the task be about? (Describe the business domain, integration context, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of implementation or fix required, the expected deliverables, and how it aligns with BASIC Apache Camel and Docker proficiency)
+
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 
 PROMPT_APACHE_CAMEL_BASIC = """
-# GOAL:
+## GOAL
 As a technical architect experienced in Docker containerization and Apache Camel integration, you are given real-world scenarios and proficiency levels for Docker. Your job is to generate a deployment-ready task for basic-level Docker practitioners (1-2 years experience) where a candidate receives an Apache Camel integration application that needs proper containerization using Docker fundamentals.
 
 **CRITICAL**: You MUST strictly follow the provided real-world task scenarios (input_scenarios) to frame the task. The business context, domain, integration patterns, and technical requirements should directly align with the given scenario. The balance between Docker containerization work and Camel configuration/code work will naturally depend on the specific scenario requirements.
 
 The candidate's primary responsibility is to understand, configure, and apply Docker concepts appropriate to the scenario. This may involve containerizing Apache Camel applications with their dependent services, and may also require understanding and potentially modifying Camel routes or integration patterns as dictated by the scenario. Be careful not to give away solutions or hint at implementations in task definitions.
 
-# CONTEXT & CANDIDATE EXPECTATION:
+## CONTEXT & CANDIDATE EXPECTATION
 The candidate receives an Apache Camel integration application with varying levels of completeness based on the scenario requirements. The application includes:
 - Camel routes implementing integration logic (completeness varies by scenario)
 - Java/XML route definitions that may or may not require modifications based on scenario
@@ -54,9 +57,9 @@ The candidate receives an Apache Camel integration application with varying leve
 
 **TASK SCOPE**: The task naturally balances Docker containerization work with Camel application work based on the scenario. The task demonstrates understanding appropriate for 1-2 years Docker experience, with Camel complexity matching the scenario requirements.
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the Task
+### Nature of the Task
 - **MANDATORY**: The task MUST be derived from and aligned with the provided input_scenarios. Use the scenario's business context, integration patterns, dependent services, and requirements as the foundation
 - **SCENARIO-DRIVEN**: Let the scenario dictate the balance between Docker work and Camel application work
 - Provide a Camel application with completeness level appropriate to the scenario requirements
@@ -385,7 +388,7 @@ Use bullets, action words like "Consider", "Think about", "Review", "Explore"
 - Specific implementation details
 - Phrases like "you should implement", "add the following", "configure X as follows"
 
-# REQUIRED OUTPUT JSON:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task name (within 50 characters) reflecting the scenario context and required work, eg:-'Fix Broken Order Event Routing'",
@@ -409,6 +412,7 @@ Use bullets, action words like "Consider", "Think about", "Review", "Explore"
       "init-scripts/<init-file>": "Initialization scripts if needed (optional)"
    }},
   "outcomes": "Bullet-point list of expected results after completion, using simple, non-technical language. Each bullet must describe ONE clear deliverable or requirement and be understandable to non-engineers (e.g. HR or recruiters). One bullet MUST explicitly state: 'Write production level clean code with best practices including proper design patterns, naming conventions, exception handling, logging and observability.'",
+  "short_overview": "Bullet-point list in simple language describing: (1) the high-level business integration problem, (2) the specific Docker containerization and Camel implementation goal, and (3) the expected outcome emphasizing correctness and reliability.",
    "pre_requisites": "Bullet points: Docker, Docker Compose, basic Apache Camel familiarity (level appropriate to scenario), understanding of relevant concepts, Git, curl/testing tools",
    "answer": "High-level solution describing approach to scenario requirements. Focus on concepts and patterns, not specific implementations. Adapt to what scenario requires.",
    "hints": "Single line suggesting focus area(s) based on scenario. Must NOT reveal specific implementations.",
@@ -420,4 +424,23 @@ Use bullets, action words like "Consider", "Think about", "Review", "Explore"
      ...
    }}
 }}
+
+## CRITICAL REMINDERS
+1. **Output must be valid JSON only** — no markdown, no explanations, no code fences
+2. **name** must be short, descriptive, within 50 characters
+3. **code_files** must include README.md, .gitignore, pom.xml, Docker files, run.sh, kill.sh, and all Java/Camel source files
+4. **README.md** must follow the structure above with Task Overview, Helpful Tips, Application Access, Objectives, How to Verify
+5. **Starter code** must be appropriate for scenario but must NOT contain the full solution
+6. **outcomes** and **short_overview** must be bullet-point lists in simple language
+7. **hints** must be a single line; **definitions** must include relevant Docker/Camel terms
+8. **Task must be completable within the allocated time** for BASIC proficiency (1-2 years)
+9. **NO solutions revealed** in starter code — follow scenario-appropriate completeness
+10. **All paths** must reference /root/task as the base directory
 """
+PROMPT_REGISTRY = {
+    "Apache Camel (BASIC)": [
+        PROMPT_APACHE_CAMEL_CONTEXT_BASIC,
+        PROMPT_APACHE_CAMEL_INPUT_AND_ASK_BASIC,
+        PROMPT_APACHE_CAMEL_BASIC,
+    ]
+}

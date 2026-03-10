@@ -12,11 +12,7 @@ Based on this information, could you summarize what you understand about the com
 """
 
 PROMPT_GOLANG_REDIS_BASIC_INPUT_AND_ASK = """
-# GOAL:
-As a technical architect with strong experience in Go (Golang) and Redis, you are given a list of real-world scenarios and proficiency levels for backend development and caching systems.
-Your job is to generate a complete task definition, including code files, README.md, expected outcomes, and evaluation focus areas that can effectively assess the candidate's ability to write, integrate, and run simple Go services using Redis.
-
-Now that you've seen the instructions and examples, you are ready to generate a task definition for Go + Redis given the following inputs:
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Go and Redis assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
@@ -27,24 +23,29 @@ INPUT ROLE CONTEXT:
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
-CRITICAL: The task complexity must match a beginner level (1–2 years experience). Focus on tasks like building a small REST API in Go, integrating it with Redis for caching or temporary storage, and running it locally. Avoid complex distributed caching systems, sharding, or advanced concurrency patterns.
+CRITICAL TASK GENERATION REQUIREMENTS:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
+- Ensure the candidate can realistically complete the task in the allocated time
+- Select a different real-world scenario each time to ensure variety in task generation
+- The task must reflect authentic challenges that would be encountered in the role described in the role context
 
-REPOSITORY NAMING: When generating the GitHub repository name in the resources section, ensure it is short, descriptive, and under 50 characters. Use kebab-case (lowercase with hyphens). Examples: "go-redis-api", "golang-cache-service", "simple-redis-restapi".
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
-Can you now generate a task definition for Go + Redis given the above inputs, following the instructions given above? 
-Use the following prompt to narrow down your response:
-{question_prompt}
+1. What will the task be about? (Describe the business domain, technical context, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of Redis caching implementation or fix required, the expected deliverables, and how it aligns with BASIC Go and Redis proficiency)
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 
 PROMPT_GOLANG_REDIS_BASIC_INSTRUCTIONS = """
-# GOAL:
-As a technical architect experienced in Redis caching and Golang integration, you are given a list of real world scenarios and proficiency levels for Redis. 
+## GOAL
+As a technical architect experienced in Redis caching and Golang integration, you are given a list of real world scenarios and proficiency levels for Redis.
 Your job is to generate a task, with the given specifications, so that a candidate is presented with a functional API with Redis integration but with basic logical bugs, missing implementations, or simple performance issues that require basic-level Redis optimization skills.
 The candidate's responsibility is to identify the issue and fix it. So you'll have to be careful about not giving away the solution or even hinting at it in your task definitions.
 
-# CRITICAL DEPLOYMENT AND IMPLEMENTATION PHILOSOPHY:
+## CRITICAL DEPLOYMENT AND IMPLEMENTATION PHILOSOPHY
 
 **DEPLOYMENT SETUP REQUIREMENTS:**
 This is the MOST CRITICAL aspect of basic-level task generation. The task generation must follow this exact pattern:
@@ -88,7 +89,7 @@ This is the MOST CRITICAL aspect of basic-level task generation. The task genera
 
 This separation ensures candidates focus on Redis optimization skills rather than debugging deployment issues.
 
-# CONTEXT & CANDIDATE EXPECTATION:
+## CONTEXT & CANDIDATE EXPECTATION
 The candidate will receive a FULLY DEPLOYED and RUNNING Golang REST API application that is already connected to Redis cache. The Golang application includes:
 - Complete REST API endpoints that are accessible and responding
 - Working Redis connection (no connection errors)
@@ -99,9 +100,9 @@ The candidate will receive a FULLY DEPLOYED and RUNNING Golang REST API applicat
 
 The candidate's responsibility is to identify and fix basic Redis caching issues in the code and improve the implementation. A part of the task completion is to watch the candidate implement basic Redis caching best practices at an entry level (1-2 years experience).
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the task 
+### Nature of the Task
 - Task name MUST be within 50 words and clearly describe the basic-level Redis optimization scenario
 - Task must provide a WORKING and DEPLOYED application with basic Redis implementation issues requiring basic-level optimization skills
 - **CRITICAL**: The Golang application should be FULLY DEPLOYED, RUNNING, and ACCESSIBLE but performing poorly or incorrectly due to basic Redis caching mistakes that require simple fixes
@@ -355,9 +356,7 @@ Write practical, beginner-friendly tips in clear language so basic-level candida
 - Think like a product manager describing the problem, not a developer explaining the fix
 - Keep the candidate focused on understanding the problem and exploring solutions
 
-# REQUIRED OUTPUT JSON STRUCTURE:
-
-**CRITICAL**: The output MUST follow this EXACT JSON structure. DO NOT add or remove fields. DO NOT use alternative structures like "requirements", "evaluation_criteria", or "description".
+## REQUIRED OUTPUT JSON STRUCTURE
 
 
 {{
@@ -382,6 +381,7 @@ Write practical, beginner-friendly tips in clear language so basic-level candida
       "routes/routes.go": "Route definitions and registration"
    }},
    "outcomes": "Expected results after completion in 2-3 lines focusing on measurable basic caching improvements. Use simple english.",
+   "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific Redis caching fix or implementation goal, and (3) the expected outcome emphasizing measurable performance improvements.",
    "pre_requisites": [
      "Go 1.21 or higher installed",
      "Docker and Docker Compose installed and running",
@@ -404,13 +404,22 @@ Write practical, beginner-friendly tips in clear language so basic-level candida
    }}
 }}
 
-**CRITICAL REMINDERS**:
-- This JSON structure is MANDATORY and FINAL
-- DO NOT deviate from this structure
-- All file paths in code_files must be complete and correct
-- README.md MUST be included in code_files
-- DO NOT use fields like "requirements", "evaluation_criteria", or "description" 
-- The "code_files" field is REQUIRED and must contain all application files
-- Use proper Golang package structure and naming conventions
-- Ensure go.mod and go.sum are properly generated for the project
+## CRITICAL REMINDERS
+1. **Output must be valid JSON only** — no markdown, no explanations, no code fences
+2. **name** must be short, descriptive, within 50 words
+3. **code_files** must include README.md, .gitignore, go.mod, go.sum, Docker files, run.sh, kill.sh, and all Go source files
+4. **README.md** must follow the structure above with Task Overview, Helpful Tips, Application Access, Objectives, How to Verify
+5. **Deployment files** (run.sh, docker-compose.yml, Dockerfile) must be PERFECT and work without errors
+6. **outcomes** and **short_overview** must be bullet-point lists in simple language
+7. **hints** must be a single line; **definitions** must include relevant Redis/Go terms
+8. **Task must be completable within the allocated time** for BASIC proficiency (1-2 years)
+9. **NO TODO or hint comments** in code files — problems must be in the logic, not commented
+10. **All paths** must reference /root/task as the base directory
 """
+PROMPT_REGISTRY = {
+    "Golang (BASIC), Redis (BASIC)": [
+        PROMPT_GOLANG_REDIS_BASIC_CONTEXT,
+        PROMPT_GOLANG_REDIS_BASIC_INPUT_AND_ASK,
+        PROMPT_GOLANG_REDIS_BASIC_INSTRUCTIONS,
+    ]
+}

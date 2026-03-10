@@ -11,37 +11,41 @@ Based on this information, could you summarize what you understand about the com
 """
 
 PROMPT_JAVA_SPRING_BOOT_INPUT_AND_ASK_INTERMEDIATE = """
-# GOAL:
-As a technical architect super experienced in java, you are given a list of real world scenarios and proficiency levels for java development. 
-Your job is to generate an entire task definition, including code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end.
-
-Now that you've seen the instructions and examples, you are ready to generate a task definition for java given the following inputs:
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Java Spring Boot assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
 
-INPUT ROLE CONTEXT: 
+INPUT ROLE CONTEXT:
 {role_context}
 
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
-CRITICAL: The task complexity must be appropriate for the given skill and years of experience. The candidate should be able to complete in the allocated time. Use the real-world scenarios to determine the business context and technical focus.
 
-Can you now generate a task definition for java given the above inputs, following the instructions given above? 
-Use the following prompt to narrow down your response: 
-{question_prompt}
+CRITICAL TASK GENERATION REQUIREMENTS:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
+- Ensure the candidate can realistically complete the task in the allocated time
+- Select a different real-world scenario each time to ensure variety in task generation
+- The task must reflect authentic challenges that would be encountered in the role described in the role context
 
-RESPOND ONLY WITH VALID JSON - NO MARKDOWN OR EXPLANATIONS.
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
+
+1. What will the task be about? (Describe the business domain, technical context, and problem the candidate will be solving)
+2. What will the task look like? (Describe the type of Java Spring Boot implementation or fix required, the expected deliverables, and how it aligns with the given proficiency level)
+
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 PROMPT_JAVA_SPRING_BOOT_INTERMEDIATE_INSTRUCTIONS = """
-# GOAL:
-As a technical architect super experienced in Java, Spring Boot, and modern Spring ecosystem, you are given a list of real world scenarios and proficiency levels for Spring Boot development. 
+## GOAL
+As a technical architect super experienced in Java, Spring Boot, and modern Spring ecosystem, you are given a list of real world scenarios and proficiency levels for Spring Boot development.
 Your job is to generate an entire task definition, including code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end at an intermediate level.
 
-# INSTRUCTIONS:
+## INSTRUCTIONS
 
-## Nature of the task 
+### Nature of the Task 
 - Task must ask to implement a feature from scratch, refactor existing code, or fix complex bugs in the existing codebase, implement a new feature or improve existing functionality.
 - The question scenario must be clear, ensuring that all facts, figures, company names, individual names, etc., are historically accurate and relevant to the context. 
 - Generate enough starter code that gives the candidate a good starting point to start solving the task
@@ -103,7 +107,7 @@ The output should be a valid json schema:
   - Code files should demonstrate partial Spring Boot architecture that candidate needs to complete/extend
   - Include realistic folder structure (src/main/java/com/company/package/, src/main/resources/, src/test/java/, etc.)
 
-# REQUIRED OUTPUT JSON STRUCTURE:
+## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task name in <verb><subject> format within 50 charactersand task related, e.g. 'Harden Payment Gateway Integration' ",
@@ -254,3 +258,4 @@ Provide practical guidance without revealing specific implementations:
   - Specific Spring Data JPA query method names or repository patterns that would reveal the solution
   - Spring Security configuration details or specific authentication approaches
 """
+PROMPT_REGISTRY = {}
