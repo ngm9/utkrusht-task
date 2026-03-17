@@ -19,6 +19,7 @@ from scenario_generator.generator import (
     save_generated_scenarios,
     create_openai_client,
     format_cost_summary,
+    validate_pr_review_scenario_structure,
 )
 
 __all__ = [
@@ -29,4 +30,5 @@ __all__ = [
     "save_generated_scenarios",
     "create_openai_client",
     "format_cost_summary",
+    "validate_pr_review_scenario_structure",
 ]
