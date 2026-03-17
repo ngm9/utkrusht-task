@@ -321,6 +321,36 @@ def validate_scenario_structure(scenario: str, proficiency: str = "BASIC") -> bo
     return True
 
 
+def validate_pr_review_scenario_structure(scenario: str, proficiency: str = "BASIC") -> bool:
+    """Validate that a PR review scenario has the required three-section structure.
+
+    Checks for:
+    - Required bold-header sections: Project Context, PR Intent, Injected Flaws
+    - Minimum length
+    - At least 1 flaw in Injected Flaws section
+    """
+    if len(scenario) < 100:
+        logger.warning(f"PR review scenario too short ({len(scenario)} chars)")
+        return False
+
+    required_headers = ["**Project Context:**", "**PR Intent:**", "**Injected Flaws:**"]
+    for header in required_headers:
+        if header not in scenario:
+            logger.warning(f"PR review scenario missing required section '{header}'")
+            return False
+
+    # Check that Injected Flaws has at least one bullet
+    if "**Injected Flaws:**" in scenario:
+        flaws_start = scenario.index("**Injected Flaws:**") + len("**Injected Flaws:**")
+        flaws_section = scenario[flaws_start:]
+        bullet_count = flaws_section.count("- ")
+        if bullet_count < 1:
+            logger.warning("PR review scenario has no flaws listed in Injected Flaws section")
+            return False
+
+    return True
+
+
 def check_similarity(new_scenario: str, existing_scenarios: List[str], threshold: float = 0.6) -> bool:
     """Check if a new scenario is too similar to any existing scenario.
 
