@@ -1,0 +1,10 @@
+[
+  {
+    "competency_id": "sd-java-int-001",
+    "created_at": "2026-03-18T00:00:00.000000+00:00",
+    "proficiency": "INTERMEDIATE",
+    "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+    "name": "Java - System Design",
+    "scope": "A person with INTERMEDIATE proficiency level in Java System Design should be able to decompose a monolithic Java application into well-bounded services with clear API contracts and data ownership, design event-driven architectures using Kafka or RabbitMQ with appropriate consumer group strategies, dead letter queues, and exactly-once semantics considerations, choose between Spring Boot MVC, WebFlux, and other Java frameworks based on workload characteristics (IO-bound vs CPU-bound), design concurrency strategies using Java thread pools, CompletableFuture, or reactive streams with appropriate sizing and back-pressure handling, implement distributed transaction patterns (saga, outbox) and reason about consistency vs availability trade-offs in practical terms, design resilience patterns (circuit breakers with Resilience4j, retry policies, bulkheads, timeouts) for inter-service communication, define observability strategies including structured logging with SLF4J, distributed tracing with OpenTelemetry, and metrics with Micrometer, design data access layers considering JPA/Hibernate vs JDBC trade-offs, connection pool sizing (HikariCP), read replicas, and caching layers (Caffeine, Redis), reason about JVM-specific deployment concerns including heap sizing, GC tuning basics, container memory limits, and graceful shutdown, and communicate multi-service architecture decisions clearly in written design documents with component diagrams and sequence flows. They are expected to handle practical distributed systems concerns but NOT design custom consensus algorithms, build distributed databases from scratch, or solve theoretical computer science problems."
+  }
+]

@@ -1,0 +1,8 @@
+{
+  "organization": {
+    "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+    "organization_name": "Utkrusht",
+    "organization_background": "Utkrusht is a proof-of-skills marketplace that helps agile teams find talent with strong fundamental concepts within days. We help aspiring professionals improve their profile with continuous improvement in their skills, documenting their journey and helping them fulfill their potential. We primarily build, conduct, proctor and disseminate proof-of-skill assessments in Technical domains like AI, ML, Fullstack development, High scale distributed systems, DevOps etc but do help non-tech roles like Sales, HR, Marketing etc"
+  },
+  "role_context": "A Java/JVM software engineer with 3-5 years of experience is expected to demonstrate intermediate system design skills within the Java ecosystem. They should be able to decompose a monolithic Spring Boot application into bounded services, design event-driven pipelines using Kafka or RabbitMQ, reason about Java concurrency patterns (thread pools, CompletableFuture, reactive streams), choose between Spring Boot frameworks (MVC vs WebFlux) based on workload characteristics, design resilient inter-service communication with circuit breakers and retry policies, and define observability strategies using Java ecosystem tools (SLF4J, Micrometer, OpenTelemetry). They should understand JPA/Hibernate trade-offs, connection pool sizing, and caching strategies. The assessment evaluates their ability to make and justify architecture decisions specific to the Java/JVM ecosystem and communicate them clearly in a written design document."
+}
