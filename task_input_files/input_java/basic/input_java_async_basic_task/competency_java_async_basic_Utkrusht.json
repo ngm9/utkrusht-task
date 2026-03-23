@@ -1,0 +1,18 @@
+[
+    {
+        "competency_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "created_at": "2025-07-29T03:14:19.087072+00:00",
+        "proficiency": "BASIC",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Java",
+        "scope": "A person with BASIC proficiency level in Java as a competency should be able to understand the Java execution model (JDK, JRE, JVM) and write maintainable code using proper packages and naming conventions. They possess foundational proficiency in Java syntax, including control flow, error handling, and basic class structures. Their knowledge of OOP principles (Encapsulation, Inheritance, Polymorphism, Abstraction) allows them to create coherent classes with appropriate access modifiers. They are comfortable employing Java's core collections (List, Set, Map), grasping performance impacts of ArrayList vs LinkedList and HashMap vs TreeMap. They handle exceptions using try-catch-finally and appreciate the difference between checked and unchecked exceptions. Their concurrency awareness extends to creating and running simple threads, with a limited understanding of race conditions and synchronization. They can effectively use IDEs (e.g., IntelliJ, Eclipse), basic build tools (Maven, Gradle), and version control (Git) for daily tasks and collaboration."
+    },
+    {
+        "competency_id": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+        "created_at": "2025-07-29T03:14:19.087072+00:00",
+        "proficiency": "BASIC",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Java - Asynchronous Programming",
+        "scope": "A person with BASIC proficiency level in Java Asynchronous Programming should be able to understand the difference between synchronous and asynchronous execution, create and manage basic async operations using CompletableFuture (supplyAsync, thenApply, thenAccept, join/get), use @Async annotation with Spring Boot and @EnableAsync configuration, work with basic ExecutorService (submit, invokeAll, shutdown), understand the Future interface and blocking retrieval patterns, implement simple callback patterns and async error handling (exceptionally, handle), build basic async REST endpoints using DeferredResult and Callable in Spring MVC, configure simple scheduled tasks (@Scheduled, ScheduledExecutorService), distinguish between blocking and non-blocking operations, and configure basic thread pools for async task execution. They should understand when async processing is beneficial and be able to avoid common pitfalls like unhandled exceptions in async chains and thread pool exhaustion."
+    }
+]

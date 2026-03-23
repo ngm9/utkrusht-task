@@ -231,69 +231,93 @@ Generate a comprehensive .gitignore file suitable for Redis and FastAPI developm
 ## README.md INSTRUCTIONS:
  - The README.md contains the following sections:
    - Task Overview
-   - Helpful Tips
-   - Redis Access
    - Objectives
-   - How to Verify 
+   - How to Verify
+   - Helpful Tips
 - The README.md file content MUST be fully populated with meaningful, specific content relevant to intermediate-level Redis optimization challenges
 - Task Overview section MUST contain the exact business scenario and specific caching performance problems that need intermediate-level optimization
 - ALL sections must have substantial content - no empty or placeholder text allowed
 - Content must be directly relevant to the specific Redis optimization scenario being generated
 - Use concrete business context explaining caching performance bottlenecks requiring advanced optimization techniques, not generic descriptions
+- **IMPORTANT**: Do NOT directly tell candidates what to implement - provide direction and guidance to help them discover solutions
+- **CRITICAL**: The README must be concise and open-ended. Each section should have only the essential points needed to understand the task. Do NOT overload with too many bullets — quality over quantity. The candidate should figure out the implementation approach on their own. Keep it open-ended so that the candidate's architectural decisions and design choices can be evaluated.
+- README should NOT be heavy — each section should have only the essential points (4-6 bullets max for Objectives and How to Verify, 4-5 bullets for Helpful Tips)
+- Content should be open-ended, guiding the candidate toward discovery rather than prescribing specific implementations
+- Do NOT specify exact implementation approaches, specific APIs, class names, or method signatures
+- Objectives should describe WHAT needs to work, not HOW to implement it
 
 ### Task Overview
 
-**CRITICAL REQUIREMENT**: This section MUST contain 2-3 meaningful sentences describing the business scenario and the specific caching performance problems affecting the application that need intermediate-level Redis optimization. Include details about which endpoints are slow, what caching issues exist (e.g., cache stampede, poor key patterns, missing TTLs), and the business impact.
+**CRITICAL REQUIREMENT**: This section MUST contain 3-4 meaningful sentences describing the business scenario, current situation, and why Redis optimization matters for this use case.
 NEVER generate empty content - always provide substantial business context that explains what caching performance issues exist and why advanced optimization is critical for business operations.
 
-### Helpful Tips
-Write practical tips in clear and comprehensive language so intermediate-level candidates understand the Redis optimization approach:
-  - Provide actionable tips on analyzing Redis caching performance (e.g., monitoring cache hit rates, analyzing key patterns, checking TTL configurations)
-  - Suggest tools and commands for Redis analysis (MONITOR, INFO, SLOWLOG, redis-cli --stat)
-  - Mention key Redis concepts relevant to the optimization (pipelining, connection pooling, data structure selection)
-  - Provide tips on identifying cache stampede issues, inefficient key patterns, or serialization bottlenecks
-  - Suggest approaches for testing cache performance improvements
-  - DO NOT provide actual solutions or specific code fixes
-  - Use bullet points to keep the tips clean and readable
-  - Focus on methodology and analysis techniques rather than direct answers
-
-### Redis Access
-  - Provide the Redis connection details (host(droplet-ip), port, database number if applicable)
-  - Mention can use any preferred Redis client tools (e.g., redis-cli, RedisInsight, Medis) for analysis and monitoring
-  - For the host, use a placeholder indicating the droplet IP (e.g., <DROPLET_IP>) rather than an actual IP address
-  - Emphasize the importance of using Redis monitoring commands (MONITOR, SLOWLOG, INFO) for performance analysis
-  - Include commands to check cache hit rates and key patterns
-
 ### Objectives
-  - Clear, measurable goals for the candidate focusing on advanced Redis caching optimization requiring intermediate-level skills
-  - This is what the candidate should be able to do successfully to demonstrate intermediate-level Redis optimization competency.
-  - These objectives will also be used to verify the task completion and award points.
-  - Should focus on caching performance improvement objectives with measurable outcomes (improved cache hit rates, reduced response times, eliminated cache stampede)
-  - Include advanced optimization goals like key pattern improvements, TTL strategy implementation, and data structure optimization
+  - Clear, measurable goals for the candidate appropriate for intermediate Redis optimization level
+  - This is what the candidate should be able to do successfully to say that they have completed the task
+  - These objectives will also be used to verify the task completion and award points
+  - What Redis optimization should be achieved, expected behavior, and performance qualities
+  - Focus on both functional requirements and caching performance quality metrics
+  - Frame objectives around outcomes rather than specific technical implementations
+  - Examples of proper framing:
+    * "Optimize caching patterns so that frequently accessed data is served with minimal latency"
+    * "Design a solution that prevents cache stampede under high concurrent load"
+    * "Ensure the application handles cache misses gracefully without degrading overall performance"
+    * "Implement caching strategies that maintain data consistency while improving throughput"
+  - Objectives should be measurable but not prescribe specific Redis commands or approaches
+  - **CRITICAL**: Objectives describe the "what" and "why", never the "how"
 
 ### How to Verify
-  - Specific checkpoints after optimization showing improved caching performance metrics
-  - Observable behaviors to validate Redis caching performance improvements through the API
-  - Should include verification steps for cache hit rate improvements and response time enhancements
-  - Include methods to measure and compare before/after optimization results
-  - Mention verification of proper TTL configurations, key patterns, and data structure usage
-  - Include API endpoint testing to demonstrate performance improvements
+  - Specific checkpoints after optimization, what to test and how to confirm success
+  - Observable behaviors or outputs to validate both caching functionality and performance improvements
+  - API testing checkpoints (endpoints respond within expected time, cache hit rates improved)
+  - These points will help the candidate to verify their own work and the video recording of them performing these steps will also help the assessor to see how thorough they are in checking their own work and award points
+  - Frame verification in terms of observable outcomes and caching behaviors
+  - Examples of proper framing:
+    * "Test that frequently accessed endpoints respond significantly faster after optimization"
+    * "Verify that the system handles concurrent requests without cache stampede effects"
+    * "Confirm that cache entries expire and refresh appropriately under load"
+    * "Validate that the application maintains data consistency between cache and source"
+  - Suggest what to verify and why it matters, not specific Redis commands to check
+  - **CRITICAL**: Describe what to verify and expected behaviors, not the specific Redis implementation to check
+
+### Helpful Tips
+Provide practical guidance without revealing specific implementations:
+  - Suggest exploring how Redis handles different data access patterns and how to analyze caching performance
+  - Mention thinking about how to identify bottlenecks in existing caching strategies
+  - Hint at considering how cache invalidation and expiration strategies affect application performance
+  - Recommend exploring how to measure and compare before/after optimization results
+  - Suggest thinking about how different Redis data structures suit different use cases
+  - Use bullet points formatted as tips, starting with action words like "Consider", "Think about", "Explore", "Review", "Analyze"
+  - **CRITICAL**: Tips should guide discovery toward caching architectural thinking, not provide direct solutions or specific Redis commands
+  - Frame suggestions around principles and outcomes rather than specific implementations
+  - Examples of proper framing:
+    * "Consider how to decompose caching requirements based on data access patterns and freshness needs"
+    * "Think about how to handle the scenario where multiple requests hit an expired cache simultaneously"
+    * "Explore approaches for choosing the right data structure based on your access patterns"
+    * "Review how to monitor and measure caching effectiveness to guide your optimization decisions"
+    * "Consider how to design caching flows that are both performant and easy to debug"
+  - If Redis connection information is needed, include it briefly within a tip (e.g., "Redis is accessible at <DROPLET_IP>:6379 — use any preferred client tool for analysis")
 
 ### NOT TO INCLUDE in README: Make sure you do not include the following in the README.md file:
   - MANUAL DEPLOYMENT INSTRUCTIONS (environment is automated via run.sh)
   - FastAPI implementation guides (API is already complete)
-  - Step-by-step Redis connection setup (connection details are provided)
+  - Step-by-step Redis connection setup as a separate section
   - Instructions to run the run.sh file (deployment is automated)
-  - Specific optimization solutions (candidates must analyze and implement advanced improvements)
+  - Specific optimization solutions or specific Redis commands/APIs (candidates must analyze and implement advanced improvements)
+  - Direct answers and code snippets that would give away the solution to the task
+  - Step-by-step implementation guides
+  - Specific Redis commands like MONITOR, SLOWLOG, INFO as prescribed tools
+  - Phrases like "you should use pipelining", "implement cache-aside pattern", "add TTL to keys"
   - Generic guidance that doesn't provide actionable tips
 
 ## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
    "name": "Task Name (within 50 words)",
+   "title": "Human-readable task title in '<action verb> <subject>' format, 50-80 characters. Describes what the candidate will do in plain English. Examples: 'Optimize Redis Cache Strategy for E-Commerce Flash Sales', 'Fix Redis Cache Stampede in Patient Lookup Service', 'Implement Redis Pipeline for Batch Product Retrieval'. The title should clearly convey the action (implement, fix, build, refactor, optimize, debug) and the subject (what system/feature/component). This is used for display purposes — 'name' is the kebab-case GitHub repo name, 'title' is the readable display name.",
    "question": "A short description of the intermediate-level Redis optimization task scenario including the specific caching performance problems in the existing application that need to be identified and resolved using advanced techniques — what caching performance bottlenecks exist, and what intermediate-level Redis optimizations are needed?",
    "code_files": {{
-      "README.md": "Candidate-facing README with Task Overview, Helpful Tips, Redis Access, Objectives, and How to Verify for intermediate-level optimization",
+      "README.md": "Candidate-facing README with Task Overview, Objectives, How to Verify, and Helpful Tips for intermediate-level optimization",
       ".gitignore": "Proper Python, Docker, and Redis exclusions",
       "requirements.txt": "Python dependencies list including Redis libraries (redis, fastapi, uvicorn, etc.)",
       "docker-compose.yml": "Docker services for Redis and FastAPI (NO version specifications, NO env vars)",
@@ -321,11 +345,14 @@ Write practical tips in clear and comprehensive language so intermediate-level c
     "terminology_2": "definition_2"
     }}
 }}
+
+## CRITICAL REMINDER:
+- `"title"` must be in `<action verb> <subject>` format and different from `"name"` — name is kebab-case for GitHub repo, title is human-readable for display
 """
 PROMPT_REGISTRY = {
-    "Python - FastAPI, Redis": [
+    "Python - FastAPI (INTERMEDIATE), Redis (INTERMEDIATE)": [
         PROMPT_FASTAPI_REDIS_CONTEXT,
-        PROMPT_FASTAPI_REDIS_OPTIMIZATION_INSTRUCTIONS_INTER,
         PROMPT_FASTAPI_REDIS_INPUT_AND_ASK,
-    ]
+        PROMPT_FASTAPI_REDIS_OPTIMIZATION_INSTRUCTIONS_INTER,
+    ],
 }
