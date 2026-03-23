@@ -1,0 +1,8 @@
+{
+  "organization": {
+    "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+    "organization_name": "Utkrusht",
+    "organization_background": "Utkrusht is a proof-of-skills marketplace that helps agile teams find talent with strong fundamental concepts within days. We help aspiring professionals improve their profile with continuous improvement in their skills, documenting their journey and helping them fulfill their potential. We primarily build, conduct, proctor and disseminate proof-of-skill assessments in Technical domains like AI, ML, Fullstack development, High scale distributed systems, DevOps etc but do help non-tech roles like Sales, HR, Marketing etc"
+  },
+  "role_context": "A software engineer with 1-3 years of experience is expected to demonstrate foundational system design skills. They should be able to take a product requirement and break it into logical components, define API contracts, choose appropriate data stores, and reason about basic trade-offs (caching, async processing, data modeling). They are not expected to design large-scale distributed systems but should demonstrate the ability to think beyond code and reason about how components fit together, how data flows through a system, and what happens when things fail. The assessment evaluates their ability to communicate design decisions clearly in writing."
+}

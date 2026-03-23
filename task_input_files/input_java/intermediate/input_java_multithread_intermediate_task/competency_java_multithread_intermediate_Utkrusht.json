@@ -1,0 +1,18 @@
+[
+    {
+        "competency_id": "4d7392b0-b805-4852-bdf6-f04b73b757f9",
+        "created_at": "2025-07-29T03:14:19.087072+00:00",
+        "proficiency": "INTERMEDIATE",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Java",
+        "scope": "A person with INTERMEDIATE proficiency level in Java as a competency should be able to / is capable of writing and debugging production-ready applications using core Java constructs (loops, conditionals, generics, annotations, Collections Framework) while applying OOP principles (inheritance, polymorphism, encapsulation, abstraction). They demonstrate moderate concurrency skills (Threads, Runnables, Executors) with a basic grasp of the Java Memory Model, follow SOLID principles to avoid code smells, and effectively use frameworks like Spring (Spring Boot, MVC, Data) or Jakarta EE for building web applications, REST APIs, and microservices, integrating common logging (SLF4J, Log4j) and security (Spring Security). They employ ORM libraries (JPA/Hibernate) to map entities to relational databases (MySQL, PostgreSQL, Oracle) with an understanding of eager vs. lazy loading and manage environment-based configurations using build tools like Maven and Gradle. They containerize applications with Docker, have some exposure to cloud providers (AWS, GCP, Azure), and set up CI/CD pipelines (Jenkins, GitLab CI, GitHub Actions) for automated builds, tests, and deployments. They write unit and integration tests (JUnit, TestNG) with mocking (Mockito), measure coverage with Jacoco or SonarQube, and practice basic TDD or BDD if required. They troubleshoot performance issues using profiling tools (VisualVM, JDK Mission Control, YourKit), refine inefficient queries, and optimize concurrency and data structures."
+    },
+    {
+        "competency_id": "f6a7b8c9-d0e1-2345-fabc-456789012345",
+        "created_at": "2025-07-29T03:14:19.087072+00:00",
+        "proficiency": "INTERMEDIATE",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Java - Multithread Programming",
+        "scope": "A person with INTERMEDIATE proficiency level in Java Multithreading should be able to use advanced synchronization mechanisms (ReentrantLock, ReadWriteLock, StampedLock, Condition variables, tryLock with timeouts), leverage concurrent data structures effectively (ConcurrentHashMap advanced operations like compute/merge/reduce, CopyOnWriteArrayList, ConcurrentLinkedQueue/Deque, TransferQueue), tune ThreadPoolExecutor internals (corePoolSize, maxPoolSize, keepAliveTime, workQueue types, RejectedExecutionHandler) and understand ForkJoinPool work-stealing, use synchronization utilities appropriately (CountDownLatch, CyclicBarrier, Semaphore, Phaser, Exchanger), work with advanced atomic operations (AtomicReference, AtomicStampedReference, LongAdder, LongAccumulator) and understand CAS semantics, implement advanced producer-consumer patterns with various BlockingQueue types and back-pressure handling, reason about the Java Memory Model (happens-before relationships, memory visibility, instruction reordering, safe publication), apply deadlock prevention strategies (lock ordering, timeout-based acquisition, resource hierarchy), use virtual threads (Project Loom) and understand structured concurrency, profile and optimize concurrent code using JFR/VisualVM and thread dump analysis, and test concurrent code effectively using stress testing and race condition detection tools."
+    }
+]

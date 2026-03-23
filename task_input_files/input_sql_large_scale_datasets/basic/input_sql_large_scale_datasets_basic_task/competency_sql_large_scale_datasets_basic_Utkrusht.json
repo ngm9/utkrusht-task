@@ -1,0 +1,10 @@
+[
+    {
+        "competency_id": "ae31d035-61f8-46d6-99f7-7a96676cb62b",
+        "created_at": "2025-11-18T14:39:31.216933+00:00",
+        "proficiency": "BASIC",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "SQL - Large Scale Datasets",
+        "scope": "A person with BASIC proficiency level in SQL - Large Scale Datasets as a competency should be able to reliably write correct, maintainable SQL for large tables (millions/billions of rows) using core constructs (SELECT, JOINs, GROUP BY, WHERE, HAVING, ORDER BY, DISTINCT, LIMIT/OFFSET), understand normalized vs denormalized schemas, fact/dimension tables, OLTP vs OLAP, and basic data modeling concepts. They can filter and aggregate data, use CTEs and subqueries for clarity, apply simple window functions (ROW_NUMBER, RANK, partitioned aggregates), and handle time-based queries and numeric aggregations with awareness of data types, NULLs, and duplicates. They recognize performance pitfalls (full scans, unbounded sorts, non-sargable predicates), use indexes and partition keys when documented, and read basic query plans (EXPLAIN) to spot obvious inefficiencies. They work confidently in at least one large-scale SQL engine (enterprise RDBMS, cloud data warehouse, distributed SQL engines), use engine-specific features as needed, and understand storage models (row/column store, compression, external tables). They handle data quality (NULLs, missing/duplicate data), apply basic sanity checks, and understand transactional vs eventually consistent tables. They use query tools/IDEs, version control, and basic monitoring to debug, document, and collaborate on SQL, following governance and cost guidelines. They participate in reviews, document business logic and assumptions in queries, and translate straightforward business requirements into scalable SQL, knowing when to seek help for advanced tuning or design. They are not expected to design schemas, tune complex queries, or architect distributed systems, but can operate effectively within existing large-scale environments for analytics and reporting."
+    }
+]

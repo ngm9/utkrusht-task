@@ -1,0 +1,10 @@
+[
+  {
+    "competency_id": "sd-fastapi-int-001",
+    "created_at": "2026-03-21T00:00:00.000000+00:00",
+    "proficiency": "INTERMEDIATE",
+    "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+    "name": "Python FastAPI - System Design",
+    "scope": "A person with INTERMEDIATE proficiency level in Python FastAPI System Design should be able to decompose a monolithic FastAPI application into well-bounded services with clear API contracts and data ownership, design async-first architectures leveraging Python's asyncio event loop with proper blocking/non-blocking I/O separation, choose between FastAPI BackgroundTasks, Celery, ARQ, and Dramatiq for background processing based on workload characteristics (latency-sensitive vs throughput-oriented), design data access layers using SQLAlchemy 2.0 async engine with connection pooling and read replica routing, implement caching strategies with Redis including cache invalidation patterns, TTL design, and cache stampede prevention, design API gateway patterns with rate limiting (slowapi), authentication/authorization (OAuth2, JWT), and middleware composition, architect event-driven integrations using Kafka or RabbitMQ with Python async consumers (aiokafka, aio-pika) including dead letter handling and exactly-once semantics considerations, design observability strategies including structured logging (structlog/loguru), distributed tracing (OpenTelemetry), and metrics (Prometheus with prometheus-fastapi-instrumentator), reason about Python-specific deployment concerns including Uvicorn/Gunicorn worker configuration, GIL implications on concurrency, container memory sizing, and graceful shutdown, design resilience patterns (retries with tenacity, circuit breakers, bulkheads, timeouts) for inter-service communication, and communicate multi-service architecture decisions clearly in written design documents with component diagrams and sequence flows. They are expected to handle practical distributed systems concerns but NOT design custom async runtimes, build distributed databases from scratch, or solve theoretical computer science problems."
+  }
+]

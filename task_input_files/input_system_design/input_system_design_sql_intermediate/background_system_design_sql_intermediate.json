@@ -1,0 +1,8 @@
+{
+  "organization": {
+    "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+    "organization_name": "Utkrusht",
+    "organization_background": "Utkrusht is a proof-of-skills marketplace that helps agile teams find talent with strong fundamental concepts within days. We help aspiring professionals improve their profile with continuous improvement in their skills, documenting their journey and helping them fulfill their potential. We primarily build, conduct, proctor and disseminate proof-of-skill assessments in Technical domains like AI, ML, Fullstack development, High scale distributed systems, DevOps etc but do help non-tech roles like Sales, HR, Marketing etc"
+  },
+  "role_context": "A SQL/data engineer with 3-5 years of experience is expected to demonstrate intermediate system design skills within the SQL/database ecosystem. They should be able to design normalized and denormalized schemas for different workloads (OLTP vs OLAP), architect star/snowflake schemas for analytical data warehouses, design partitioning and indexing strategies for large-scale tables, plan ETL/ELT data pipelines with proper staging and validation, reason about transaction isolation levels for concurrent workloads, design materialized view strategies for query performance, plan schema migrations with zero-downtime approaches, and define monitoring strategies using PostgreSQL observability tools. They should understand connection pooling, read replica topologies, and data lifecycle management. The assessment evaluates their ability to make and justify database architecture decisions specific to the SQL/data engineering ecosystem and communicate them clearly in a written design document."
+}

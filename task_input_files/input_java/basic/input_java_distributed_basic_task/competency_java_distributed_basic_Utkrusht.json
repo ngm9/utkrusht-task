@@ -1,0 +1,18 @@
+[
+    {
+        "competency_id": "a7b8c9d0-e1f2-3456-abcd-567890123456",
+        "created_at": "2025-07-29T03:14:19.087072+00:00",
+        "proficiency": "BASIC",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Java",
+        "scope": "A person with BASIC proficiency level in Java as a competency should be able to understand the Java execution model (JDK, JRE, JVM) and write maintainable code using proper packages and naming conventions. They possess foundational proficiency in Java syntax, including control flow, error handling, and basic class structures. Their knowledge of OOP principles (Encapsulation, Inheritance, Polymorphism, Abstraction) allows them to create coherent classes with appropriate access modifiers. They are comfortable employing Java's core collections (List, Set, Map), grasping performance impacts of ArrayList vs LinkedList and HashMap vs TreeMap. They handle exceptions using try-catch-finally and appreciate the difference between checked and unchecked exceptions. Their concurrency awareness extends to creating and running simple threads, with a limited understanding of race conditions and synchronization. They can effectively use IDEs (e.g., IntelliJ, Eclipse), basic build tools (Maven, Gradle), and version control (Git) for daily tasks and collaboration."
+    },
+    {
+        "competency_id": "b8c9d0e1-f2a3-4567-bcde-678901234567",
+        "created_at": "2025-07-29T03:14:19.087072+00:00",
+        "proficiency": "BASIC",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Java - Distributed Systems",
+        "scope": "A person with BASIC proficiency level in Java Distributed Systems should be able to understand basic message broker concepts and produce/consume messages with Kafka or RabbitMQ using Spring Kafka (@KafkaListener, KafkaTemplate) or Spring AMQP (RabbitTemplate, @RabbitListener), integrate Redis for basic caching using RedisTemplate and @Cacheable, implement REST-based inter-service communication using RestTemplate or WebClient basics, understand the basic circuit breaker concept using Resilience4j @CircuitBreaker annotation, grasp eventual consistency at a conceptual level, apply basic retry mechanisms using @Retryable or simple Spring retry, set up local development environments using Docker Compose for infrastructure services (Kafka, Redis, RabbitMQ), configure basic health checks and service monitoring with Spring Boot Actuator, and understand idempotency at a conceptual level. They should be able to build simple distributed applications with 1-2 services that communicate via messages or REST calls."
+    }
+]

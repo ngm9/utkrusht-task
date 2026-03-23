@@ -1,0 +1,10 @@
+[
+  {
+    "competency_id": "sd-sql-int-001",
+    "created_at": "2026-03-21T00:00:00.000000+00:00",
+    "proficiency": "INTERMEDIATE",
+    "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+    "name": "SQL - System Design",
+    "scope": "A person with INTERMEDIATE proficiency level in SQL System Design should be able to design normalized and denormalized schemas for different workload types (OLTP vs OLAP), architect star and snowflake schemas for analytical workloads with appropriate fact/dimension table relationships, design partitioning strategies (range, list, hash) with awareness of partition pruning and maintenance trade-offs, select appropriate indexing strategies (B-tree, GIN, GiST, BRIN, partial, expression, covering indexes) based on query patterns and data characteristics, architect ETL/ELT data pipelines with staging tables, incremental load strategies, and data quality validation, design materialized view strategies for pre-computed aggregations with appropriate refresh patterns, reason about transaction isolation levels (READ COMMITTED, REPEATABLE READ, SERIALIZABLE) and their impact on mixed OLTP/OLAP workloads, design data lifecycle management including archival strategies, retention policies, and hot/warm/cold storage tiers, plan schema migration strategies for zero-downtime deployments and backward-compatible changes, design monitoring and observability approaches using pg_stat_statements, auto_explain, and connection pool metrics, architect connection pooling strategies (PgBouncer) and read replica topologies for scaling read-heavy workloads, design stored procedure and function strategies for encapsulating complex business logic server-side, and communicate database architecture decisions clearly in written design documents with entity-relationship diagrams and data flow diagrams. They are expected to handle practical data engineering concerns but NOT design custom storage engines, build distributed databases from scratch, or solve theoretical database research problems."
+  }
+]

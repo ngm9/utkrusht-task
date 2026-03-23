@@ -1,0 +1,18 @@
+[
+    {
+        "competency_id": "d4e5f6a7-b8c9-0123-defa-234567890123",
+        "created_at": "2025-07-29T03:14:19.087072+00:00",
+        "proficiency": "BASIC",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Java",
+        "scope": "A person with BASIC proficiency level in Java as a competency should be able to understand the Java execution model (JDK, JRE, JVM) and write maintainable code using proper packages and naming conventions. They possess foundational proficiency in Java syntax, including control flow, error handling, and basic class structures. Their knowledge of OOP principles (Encapsulation, Inheritance, Polymorphism, Abstraction) allows them to create coherent classes with appropriate access modifiers. They are comfortable employing Java's core collections (List, Set, Map), grasping performance impacts of ArrayList vs LinkedList and HashMap vs TreeMap. They handle exceptions using try-catch-finally and appreciate the difference between checked and unchecked exceptions. Their concurrency awareness extends to creating and running simple threads, with a limited understanding of race conditions and synchronization. They can effectively use IDEs (e.g., IntelliJ, Eclipse), basic build tools (Maven, Gradle), and version control (Git) for daily tasks and collaboration."
+    },
+    {
+        "competency_id": "e5f6a7b8-c9d0-1234-efab-345678901234",
+        "created_at": "2025-07-29T03:14:19.087072+00:00",
+        "proficiency": "BASIC",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Java - Multithread Programming",
+        "scope": "A person with BASIC proficiency level in Java Multithreading should be able to create threads using Thread class and Runnable interface (including lambda expressions), understand thread lifecycle and states (NEW, RUNNABLE, BLOCKED, WAITING, TERMINATED), apply basic synchronization using the synchronized keyword and synchronized blocks, understand the volatile keyword and visibility guarantees, identify basic thread safety issues like shared mutable state and race conditions, use ExecutorService basics (newFixedThreadPool, newCachedThreadPool, submit, shutdown), work with basic concurrent collections (ConcurrentHashMap, Collections.synchronizedList), implement simple producer-consumer patterns with BlockingQueue, use Thread.sleep, Thread.join, and Thread.interrupt correctly, apply basic atomic variables (AtomicInteger, AtomicBoolean) for simple thread-safe counters, and understand deadlock at a conceptual level. They should be able to write basic multi-threaded Java programs that avoid common concurrency pitfalls."
+    }
+]

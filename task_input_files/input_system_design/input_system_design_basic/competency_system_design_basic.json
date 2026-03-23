@@ -1,0 +1,10 @@
+[
+  {
+    "competency_id": "sd-basic-001",
+    "created_at": "2026-03-18T00:00:00.000000+00:00",
+    "proficiency": "BASIC",
+    "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+    "name": "System Design",
+    "scope": "A person with BASIC proficiency level in System Design should be able to break a feature or product requirement into logical components and define their responsibilities, design RESTful API contracts with appropriate endpoints, request/response schemas, HTTP methods, and status codes, choose between common data stores (relational vs document vs key-value) and justify the choice for a given use case, draw component or sequence diagrams showing how a request flows through a system, identify single points of failure in a simple architecture and propose basic redundancy or fallback strategies, reason about fundamental trade-offs such as SQL vs NoSQL, synchronous vs asynchronous processing, caching vs direct database reads, and monolith vs simple service separation, design basic data models with appropriate entity relationships and indexing strategies, understand when and why to use a message queue or background worker and describe the high-level message flow, and communicate design decisions clearly in written form with diagrams. They are NOT expected to handle distributed consensus algorithms, CAP theorem proofs, multi-region architectures, database sharding strategies, or advanced event sourcing patterns. The focus is on practical, single-service or two-service designs for systems handling thousands (not millions) of users."
+  }
+]

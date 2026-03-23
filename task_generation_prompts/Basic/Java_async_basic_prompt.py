@@ -1,4 +1,4 @@
-PROMPT_EXPRESSJS_BASIC_CONTEXT = """
+PROMPT_JAVA_ASYNC_CONTEXT_BASIC = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -10,8 +10,8 @@ Roles and Responsibilities:
 Based on this information, could you summarize what you understand about the company and role requirements?
 """
 
-PROMPT_EXPRESSJS_BASIC_INPUT_AND_ASK = """
-Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating an Express.js assessment task.
+PROMPT_JAVA_ASYNC_INPUT_AND_ASK_BASIC = """
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Java Asynchronous Programming assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
@@ -33,13 +33,13 @@ CRITICAL TASK GENERATION REQUIREMENTS:
 Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
 1. What will the task be about? (Describe the business domain, technical context, and problem the candidate will be solving)
-2. What will the task look like? (Describe the type of implementation or fix required, the expected deliverables, and how it aligns with BASIC Express.js proficiency)
+2. What will the task look like? (Describe the type of implementation or fix required, the expected deliverables, and how it aligns with BASIC Java Asynchronous Programming proficiency)
 
 Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
-PROMPT_EXPRESSJS_BASIC_INSTRUCTIONS = """
+PROMPT_JAVA_ASYNC_BASIC = """
 ## GOAL
-As a technical architect super experienced in Express.js, Node.js ecosystem, and backend API development, you are given a list of real world scenarios and proficiency levels for Express.js development.
+As a senior Java architect super experienced in Java concurrency and asynchronous programming (CompletableFuture, ExecutorService, @Async, Spring Boot async patterns), you are given a list of real world scenarios and proficiency levels for Java development.
 Your job is to generate an entire task definition, including code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end.
 
 ## INSTRUCTIONS
@@ -51,99 +51,94 @@ Your job is to generate an entire task definition, including code files, README.
 - DO NOT GIVE AWAY THE SOLUTION IN THE STARTER CODE.
 - A part of the task completion is to watch the candidate implement best practices, design the solution correctly and not just fix the errors
 - The question should be a real-world scenario and not a trick question that is syntactic errors.
-- The complexity of the task and specific ask expected from the candidate must align with BASIC proficiency level (1-2 years Express.js/Node.js experience), ensuring that no two questions generated are similar.
-- For BASIC level of proficiency, the questions must be more specific and less open ended. The scenarios must also be easily digestible and focus on fundamental Express.js concepts like:
-  - Express application setup and configuration (express(), app.listen, port configuration)
-  - Basic routing (app.get, app.post, app.put, app.delete, route parameters, query strings)
-  - Request/Response handling (req.params, req.query, req.body, res.json, res.status)
-  - Simple middleware usage (express.json(), express.urlencoded(), custom middleware basics)
-  - Basic error handling (try/catch in async handlers, simple error middleware)
-  - HTTP methods and status codes (200, 201, 400, 404, 500)
-  - Simple CRUD operations with in-memory data or JSON files
-  - Basic async/await patterns with Express route handlers
-  - Serving static files (express.static)
-  - Environment variables with dotenv
-  - Basic input validation (checking required fields, data types)
-  - Simple modular routing (express.Router)
+- The complexity of the task and specific ask expected from the candidate must align with BASIC proficiency level (1-2 years Java async programming experience), ensuring that no two questions generated are similar.
+- For BASIC level of proficiency, the questions must be more specific and less open ended. The scenarios must also be easily digestible and focus on fundamental Java async programming concepts like:
+  - CompletableFuture basics (supplyAsync, thenApply, thenAccept, thenCompose, join/get)
+  - @Async annotation with Spring Boot, @EnableAsync configuration
+  - Basic ExecutorService usage (submit, invokeAll, shutdown)
+  - Future interface and blocking retrieval
+  - Callback patterns and async error handling (exceptionally, handle)
+  - Basic async REST endpoints (DeferredResult, Callable in Spring MVC)
+  - Simple scheduled tasks (@Scheduled, ScheduledExecutorService)
+  - Understanding blocking vs non-blocking operations
+  - Basic understanding of thread pool configuration for async tasks
 - The question must NOT include hints. The hints will be provided in the "hints" field.
-- Ensure that all questions and scenarios adhere to modern Node.js best practices (Node.js 18+) and current JavaScript standards. Use async/await patterns exclusively.
+- Ensure that all questions and scenarios adhere to modern Java best practices (Java 11+) and current Spring framework standards (Spring Boot 2.7+ or 3.x).
 - If you include diagrams, ensure they are written in mermaid format, properly indented and also in code blocks.
-- **Database is OPTIONAL**: Tasks may or may not include database integration. When databases are not required, focus on in-memory data structures, JSON files, or simple file operations.
 
 ## AI AND EXTERNAL RESOURCE POLICY:
 - Candidates are permitted and encouraged to use any external resources they find helpful, including but not limited to Google, Stack Overflow, official documentation, and AI-powered tools, agentic IDs, or Large Language Models (LLMs).
-- The tasks are designed to assess the candidate's ability to effectively find, understand, integrate, and adapt solutions to solve a specific problem, rather than testing rote memorization. Therefore, the complexity of the tasks should reflect basic Express.js proficiency while requiring genuine problem-solving skills that go beyond simple copy-pasting from a generative AI.
+- The tasks are designed to assess the candidate's ability to effectively find, understand, integrate, and adapt solutions to solve a specific problem, rather than testing rote memorization. Therefore, the complexity of the tasks should reflect basic Java async proficiency while requiring genuine problem-solving skills that go beyond simple copy-pasting from a generative AI.
 
 ## Code Generation Instructions:
-Based on the real-world scenarios provided in following conversations, create an Express.js task that:
+Based on the real-world scenarios provided in following conversations, create a Java async programming task that:
 - Draws inspiration from the input_scenarios given to determine the business context and technical requirements
-- Matches the complexity level appropriate for BASIC proficiency level (1-2 years Express.js/Node.js experience), keeping in mind that AI assistance is allowed.
-- Tests practical Express.js skills that require more than a simple AI query to solve, focusing on fundamental Express.js concepts
-- Time constraints: Each task should be finished within {{minutes_range}} minutes.
+- Matches the complexity level appropriate for BASIC proficiency level (1-2 years Java async programming experience), keeping in mind that AI assistance is allowed.
+- Tests practical Java async skills that require more than a simple AI query to solve, focusing on fundamental async concepts
+- Time constraints: Each task should be finished within {minutes_range} minutes.
 - At every time pick different real-world scenario from the list provided above to ensure variety in task generation.
-- Focus on simple API applications that test routing, middleware, request handling, and basic async patterns
-- Should NOT require advanced patterns like complex caching, rate limiting, API versioning, or distributed systems
+- Focus on single service async patterns rather than complex distributed systems or advanced reactive programming
 
 ## Starter Code Instructions:
 - The starter code should only provide starting directions so that the candidate is not clueless to begin with.
-- The code files generated must be valid and executable with `npm start` or `npm run dev`.
+- The code files generated must be valid and executable with `mvn spring-boot:run` or `gradle bootRun`.
 - Keep the code files minimal and to the point.
 - A part of the task completion is to watch the candidate implement best practices, design the solution correctly and not just fix the errors, so make sure the starter code leaves room for the candidate to implement the solution the way they want.
 - If the task is to fix bugs, make sure the starter code has a logical bug (no syntactic errors) that is substantial enough to test the basic proficiency level.
 - If the task is to implement a feature from scratch, make sure the starter code only provides a good starting point.
-- Express.js starter code should include basic project structure but NOT require complex infrastructure setup (databases, message queues, caching layers, etc.)
-- Focus on Express.js with simple routing, middleware, and async/await for simplicity
+- Java starter code should include basic project structure with @EnableAsync configuration but NOT require complex infrastructure setup (advanced message brokers, complex distributed scheduling, reactive streams, etc.)
+- Focus on Spring Boot with CompletableFuture, @Async, and basic thread pool configuration for simplicity
 
 ## REQUIRED OUTPUT JSON STRUCTURE
 
-{{{{
+{{
   "name": "task-name-in-kebab-case",
-  "title": "Human-readable task title in '<action verb> <subject>' format, 50-80 characters. Describes what the candidate will do in plain English. Examples: 'Implement Product Catalog API for E-Commerce Platform', 'Fix Route Handling in Booking Management Service', 'Build User Registration Endpoint with Validation'. The title should clearly convey the action (implement, fix, build, refactor, optimize, debug) and the subject (what system/feature/component). This is used for display purposes — 'name' is the kebab-case GitHub repo name, 'title' is the readable display name.",
+  "title": "Human-readable task title in '<action verb> <subject>' format, 50-80 characters. Describes what the candidate will do in plain English. Examples: 'Implement Async Notification Service for E-Commerce Platform', 'Fix Race Condition in Payment Processing Queue', 'Build Non-Blocking File Upload Handler'. The title should clearly convey the action (implement, fix, build, refactor, optimize, debug) and the subject (what system/feature/component). This is used for display purposes — 'name' is the kebab-case GitHub repo name, 'title' is the readable display name.",
   "question": "Short description of the scenario and specific ask from the candidate — what needs to be fixed or implemented",
-  "code_files": {{{{
+  "code_files": {{
     "README.md": "Candidate-facing README following structure below",
-    ".gitignore": "Comprehensive Node.js and IDE exclusions",
-    "package.json": "Node.js dependencies and scripts",
-    "src/index.js": "Express app entry point with server listen",
-    "src/app.js": "Express app setup and middleware configuration",
-    "src/routes/exampleRoutes.js": "Route definitions using express.Router",
-    "src/controllers/exampleController.js": "Controller with route handler functions",
-    "src/middleware/errorHandler.js": "Basic error handling middleware",
-    "additional_file.js": "Other source files as needed"
-  }}}},
+    ".gitignore": "Comprehensive Java, Maven/Gradle, and IDE exclusions",
+    "pom.xml": "Maven dependencies and build configuration (or build.gradle for Gradle projects)",
+    "src/main/resources/application.properties": "Spring Boot configuration including async thread pool settings",
+    "src/main/java/com/example/Application.java": "Spring Boot main application class with @EnableAsync",
+    "src/main/java/com/example/config/AsyncConfig.java": "Async configuration with thread pool executor",
+    "src/main/java/com/example/controller/ExampleController.java": "Controller with async endpoints",
+    "src/main/java/com/example/service/ExampleService.java": "Service with async methods",
+    "additional_file.java": "Other Java source files as needed"
+  }},
   "outcomes": "Bullet-point list in simple language. Must include expected results after completion and one bullet explicitly stating: 'Write production-level clean code with best practices including proper design patterns, naming conventions, exception handling, logging and observability.'",
   "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific implementation or fix goal, and (3) the expected outcome emphasizing correctness, structure, and maintainability.",
-  "pre_requisites": "Bullet-point list of tools, libraries, environment setup, and knowledge required. Include Node.js 18+, npm, IDE, Git, and Express.js fundamentals (routing, middleware, request/response handling, async/await, HTTP methods and status codes).",
+  "pre_requisites": "Bullet-point list of tools, libraries, environment setup, and knowledge required. Include Java 11+, Maven 3.6+/Gradle 7+, IDE, Git, and Java async fundamentals (CompletableFuture, @Async, ExecutorService, thread pool basics, async error handling).",
   "answer": "High-level solution approach describing main components and flow.",
-  "hints": "Single line suggesting focus area. Example: 'Focus on proper route organization, middleware ordering, and consistent error response formatting'",
-  "definitions": {{{{
-    "Express.js": "A minimal and flexible Node.js web application framework for building APIs and web servers",
-    "Middleware": "Functions that have access to the request and response objects and can modify them or end the request-response cycle",
-    "Router": "An Express class that creates modular, mountable route handlers for organizing API endpoints",
-    "async/await": "JavaScript syntax for handling asynchronous operations in a synchronous-looking manner",
-    "REST": "Representational State Transfer — an architectural style for designing networked APIs using HTTP methods"
-  }}}}
-}}}}
+  "hints": "Single line suggesting focus area. Example: 'Focus on CompletableFuture chaining, proper thread pool configuration, and graceful error handling in async callbacks'",
+  "definitions": {{
+    "CompletableFuture": "A Future that can be explicitly completed and supports chaining of dependent async operations",
+    "@Async": "Spring annotation that marks a method for asynchronous execution in a separate thread",
+    "@EnableAsync": "Spring configuration annotation that enables asynchronous method execution support",
+    "ExecutorService": "Java interface for managing and controlling thread pool execution of async tasks",
+    "Thread Pool": "A managed collection of reusable threads for executing asynchronous tasks efficiently"
+  }}
+}}
 
 ## Code file requirements:
 - More than 1 files can be generated but make sure they are included in the JSON structure correctly.
-- Code should follow modern Express.js and Node.js best practices
-- Use a clean project structure (src/routes/, src/controllers/, src/middleware/, etc.)
-- Use async/await patterns exclusively, no callback-based code
-- Focus on modern JavaScript/ES6+ features
+- Code should follow modern Java best practices and Spring framework conventions for async programming
+- Use proper package structure (com.example.taskname.controller, service, config, model, etc.)
+- Use appropriate Spring annotations (@RestController, @Service, @Async, @EnableAsync, etc.)
+- Follow Java naming conventions and coding standards
 - **CRITICAL**: The generated code files MUST NOT contain the implementation for the core logic of the task. They should only provide the necessary boilerplate, file structure, and minimal setup code.
-- The core route handlers, controller logic, middleware implementations, or service methods that the candidate needs to implement MUST be left empty or with minimal structure.
+- The core async business logic methods, CompletableFuture chains, service implementations, or async controller endpoints that the candidate needs to implement MUST be left empty or with minimal structure.
 - DO NOT include any 'TODO' or placeholder comments
 - DO NOT include any comments that give away hints or solutions
-- DO NOT include comments like "Add logic here" or "Should implement validation" etc.
+- DO NOT include comments like "Add logic here" or "Should implement async logic" etc.
 - DO NOT add comments that give away hints or solution or implementation details
 
 - The generated project structure should be runnable, but the code requiring implementation will not function correctly until the candidate completes the task.
 
 ## .gitignore INSTRUCTIONS:
-Create a comprehensive gitignore file that covers all standard exclusions for Node.js projects including node_modules, environment files (.env), log files, IDE configurations (.idea, .vscode), coverage reports, and other common development artifacts that should not be tracked in version control.
+Create a comprehensive gitignore file that covers all standard exclusions for Java projects including target/build directories, IDE configurations (.idea, .eclipse, .vscode), compiled class files, JAR files, log files, and other common development artifacts that should not be tracked in version control.
 
-## README.md STRUCTURE (Express.js)
+## README.md STRUCTURE (Java Asynchronous Programming)
 
 **CRITICAL**: The README must be concise and open-ended. Each section should have only the essential points needed to understand the task. Do NOT overload with too many bullets — quality over quantity. The candidate should figure out the implementation approach on their own.
 
@@ -161,7 +156,7 @@ Practical guidance without revealing implementations:
 
 ### Objectives (3-5 bullets MAX)
 
-Define goals focusing on outcomes for a BASIC-level Express.js task:
+Define goals focusing on outcomes for a BASIC-level Java async programming task:
   - Describe WHAT needs to work, not HOW to implement it
   - Frame objectives around observable outcomes and expected behavior
   - Do NOT specify exact implementation approaches, specific APIs, class names, or method signatures
@@ -171,38 +166,38 @@ Define goals focusing on outcomes for a BASIC-level Express.js task:
 
 Verification approaches for the task:
   - Describe what behaviors to verify and how to confirm success
-  - Focus on observable outcomes (response behavior, status codes, error handling)
+  - Focus on observable outcomes (response behavior, concurrent execution, error handling)
   - Do NOT specify specific code, annotations, or implementation details to check
   - **CRITICAL**: Describe what behaviors to verify, not specific code or annotations to check. Keep to 3-5 concise bullets only.
 
 ### NOT TO INCLUDE
 - Step-by-step implementation instructions
 - Exact code solutions or snippets
-- Setup commands (npm install, npm start, etc.)
-- Specific Express.js APIs or method names that reveal the solution
+- Setup commands (mvn spring-boot:run, etc.)
+- Specific Java async APIs or class names that reveal the solution
 - Phrases like "you should implement", "add the following code", "create a method called X"
 - Excessive bullets or verbose explanations — keep each section lean and focused
 
 ## CRITICAL REMINDERS
 
 1. **Output must be valid JSON only** — no markdown, no explanations, no code fences
-2. **name** must be short, descriptive, kebab-case (e.g., "product-catalog-api", "booking-service-routes")
-3. **code_files** must include README.md, .gitignore, package.json, and Express.js source files
+2. **name** must be short, descriptive, kebab-case (e.g., "order-processing-async-pipeline")
+3. **code_files** must include README.md, .gitignore, build file, application.properties, and Java source files
 4. **README.md** must follow the structure above with Task Overview, Helpful Tips, Objectives, How to Verify
-5. **Starter code** must be runnable (`npm start` or `npm run dev`) but must NOT contain the solution
+5. **Starter code** must be runnable (mvn spring-boot:run or gradle bootRun) but must NOT contain the solution
 6. **outcomes** must include one bullet on production-level clean code with best practices, design patterns, exception handling, logging
 7. **short_overview**, **pre_requisites** must be bullet-point lists in simple language
-8. **hints** must be a single line; **definitions** must include relevant Express.js/Node.js terms
+8. **hints** must be a single line; **definitions** must include relevant Java async terms
 9. **Task must be completable within the allocated time** for BASIC proficiency (1-2 years)
 10. **NO comments in code** that reveal the solution or give hints
-11. **Use Node.js 18+ and modern JavaScript/ES6+** conventions throughout
-12. **Focus on fundamental Express.js patterns**, not complex distributed systems or advanced architectural patterns
+11. **Use Java 11+ and Spring Boot 2.7+ or 3.x** conventions throughout
+12. **Focus on single service async patterns**, not complex distributed systems or advanced reactive programming
 13. **"title"** must be in `<action verb> <subject>` format and different from `"name"` — name is kebab-case for GitHub repo, title is human-readable for display
 """
 PROMPT_REGISTRY = {
-    "ExpressJS (BASIC)": [
-        PROMPT_EXPRESSJS_BASIC_CONTEXT,
-        PROMPT_EXPRESSJS_BASIC_INPUT_AND_ASK,
-        PROMPT_EXPRESSJS_BASIC_INSTRUCTIONS,
+    "Java (BASIC), Java - Asynchronous Programming (BASIC)": [
+        PROMPT_JAVA_ASYNC_CONTEXT_BASIC,
+        PROMPT_JAVA_ASYNC_INPUT_AND_ASK_BASIC,
+        PROMPT_JAVA_ASYNC_BASIC,
     ],
 }
