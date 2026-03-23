@@ -37,10 +37,10 @@ BASE_DIR = Path(__file__).parent.parent / "task_input_files"
 MODEL = "gpt-5-nano-2025-08-07"
 
 PROFICIENCY_YOE_MAP = {
-    "BEGINNER": "0-1",
+    "BEGINNER": "0+",
     "BASIC": "1-2",
     "INTERMEDIATE": "3-5",
-    "ADVANCED": "5+",
+    "ADVANCED": "6+",
 }
 
 HARDCODED_ORGANIZATION = {

@@ -35,9 +35,9 @@ Before we proceed to the detailed task generation instructions, please confirm y
 1. What will the task be about? (Describe the business domain, data context, and problem the candidate will be solving)
 2. What will the task look like? (Describe the type of data manipulation/analysis required, the expected deliverables, and how it aligns with the proficiency level)
 
-
 Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
+
 PROMPT_RAG_BASIC = """
 ## GOAL
 As a technical architect experienced in Docker containerization and RAG (Retrieval-Augmented Generation) systems, you are given real-world scenarios and proficiency levels for Docker. Your job is to generate a deployment-ready task for basic-level Docker practitioners (1-2 years experience) where a candidate receives a RAG application that is already fully containerized and deployable, and where the candidate must improve and harden the deployment and/or RAG pipeline based on the scenario.

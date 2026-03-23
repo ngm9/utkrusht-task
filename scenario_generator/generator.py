@@ -1,5 +1,19 @@
 """
 Core scenario generation logic — classification, LLM calls, validation, and pipeline orchestration.
+
+  python -m scenario_generator --competency-file task_input_files/input_java/competency_java_basic.json --count 6
+
+  python -m scenario_generator --competency-file task_input_files/input_java/competency_java_basic.json --count 6
+  --append
+
+  python -m scenario_generator --competency-file task_input_files/input_java/competency_java_basic.json
+  --background-file task_input_files/input_java/background_java_basic.json --count 6
+
+  python -m scenario_generator --competency-file task_input_files/input_java/competency_java_basic.json --count 6
+  --dry-run
+
+  python -m scenario_generator --competency-file task_input_files/input_java/competency_java_basic.json --count 6
+  --output task_input_files/task_scenarios/my_scenarios.json
 """
 
 import json
@@ -27,8 +41,8 @@ from scenario_generator.prompts import (
 load_dotenv()
 
 # Model configuration — using gpt-5-nano for both generation and evaluation (cost-effective)
-GENERATION_MODEL = "gpt-5-nano-2025-08-07"
-EVAL_MODEL = "gpt-5-nano-2025-08-07"
+GENERATION_MODEL = "gpt-5.4"
+EVAL_MODEL = "gpt-5.4"
 MAX_RETRIES = 1
 
 # Pricing per million tokens (https://platform.openai.com/docs/pricing)
@@ -423,6 +437,7 @@ def call_llm_generate(
         input=messages,
         reasoning={"effort": "medium"},
         text={
+            "verbosity": "medium",
             "format": {
                 "type": "json_schema",
                 "name": SCENARIO_GENERATION_SCHEMA["name"],
