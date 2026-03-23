@@ -1,3 +1,11 @@
+"""
+usage: 
+python "c:\Utkrushta\Utkrushta\agents\infra_assessor\multiagent.py" generate-tasks -c "c:\Utkrushta\Utkrushta\utilities\input_collection\task\input_rag\basic\basic\competency_rag_basic_Utkrusht.json" -b "c:\Utkrushta\Utkrushta\utilities\input_collection\task\input_rag\basic\basic\background_for_task_utkrusht_rag_basic.json" -s "c:\Utkrushta\Utkrushta\utilities\input_collection\task_scenarios.json"
+
+python multiagent.py reset-task --task-id b77bcb57-48be-4cc9-b738-702659d764bc  --droplet-ip 157.245.96.154  --script-path  /root/task/kill.sh
+
+python multiagent.py deploy_task --task-id 6e20982e-9a4e-4a0d-b20f-1e0b1ba6e67a --droplet-ip 64.227.178.86 
+"""
 import json
 import subprocess
 import datetime

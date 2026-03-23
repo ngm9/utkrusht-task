@@ -1,0 +1,10 @@
+[
+    {
+        "competency_id": "b7b13179-8f24-4d83-9d21-3ce35b7a6181",
+        "created_at": "2025-11-18T14:44:17.519729+00:00",
+        "proficiency": "BASIC",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "SQL - Queries",
+        "scope": "A person with BASIC proficiency level in SQL - Queries as a competency should be able to reliably construct SELECT queries using all core clauses (SELECT, FROM, WHERE, ORDER BY, LIMIT/OFFSET/TOP), query single and multiple tables with appropriate use of INNER and OUTER joins, apply aggregate functions with GROUP BY and HAVING, and use simple subqueries (scalar, IN/EXISTS, derived tables). They should understand relational concepts (tables, keys, relationships), core data types (numeric, string, date/time, boolean), literals, and type conversions, and use built-in functions for arithmetic, string, date/time, and conditional logic (CASE, COALESCE). They must handle NULLs and three-valued logic correctly, perform basic DML (INSERT, UPDATE, DELETE) for query setup, and debug syntax and logical errors using incremental query building and test data. They should be aware of SQL dialect differences (PostgreSQL, MySQL, SQL Server, Oracle, cloud warehouses), basic index usage, set-based query thinking, and avoid inefficient or unsafe patterns (e.g., SQL injection, unnecessary complexity). They should use SQL client tools, query editors, and result inspection features, maintain clear formatting, naming, and commenting for collaboration, and translate straightforward business requirements into queries while recognizing data quality issues and the boundaries between SQL and application logic. Advanced topics like query plan tuning, window functions, recursion, and complex optimization are not expected at this level."
+    }
+]
