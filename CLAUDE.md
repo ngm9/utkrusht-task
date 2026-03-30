@@ -57,6 +57,22 @@ python -m pr_review_flow \
   -s path/to/task_scenarios_pr_review.json
 ```
 
+### Design review task generation
+```bash
+# Generate flaw spec + brief + rubric
+python -m design_review_flow generate \
+  -c path/to/competency.json \
+  -p INTERMEDIATE \
+  -s "SaaS onboarding redesign" \
+  -l lib-001
+
+# Store task in Supabase (after Figma plugin step)
+python -m design_review_flow store \
+  -f path/to/design_task_spec.json \
+  -u "https://figma.com/file/...?duplicate" \
+  --env dev
+```
+
 ### Gist management
 ```bash
 python gist_manager.py sync-prod-to-dev
@@ -102,6 +118,7 @@ The main orchestrator. Three Click CLI commands: `generate-tasks`, `deploy-task`
 | `generate_input_files/` | Fetches competencies from Supabase DB, generates input JSON files |
 | `scenario_generator/` | LLM-generated real-world scenarios for competencies |
 | `pr_review_flow/` | Separate flow for PR review assessment tasks (own prompts, schemas, evals) |
+| `design_review_flow/` | UI/UX design review assessments with Figma flaw injection |
 | `non_tech_flow/` | Separate pipeline for non-technical AI/ML assessment challenges |
 | `task_generation_prompts/` | Technology-specific prompt templates organized by level (Beginner/Basic/Intermediate) |
 | `task_input_files/` | Input JSON files per technology (competencies, backgrounds, scenarios) |
