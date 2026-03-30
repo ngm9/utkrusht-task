@@ -380,7 +380,7 @@ def generate_task_with_code(openai_client, input_data: Dict) -> Dict:
         Dict: Generated task data with code files
     """
     try:
-        model = "gpt-5.1-2025-11-13"  # Specified model version
+        model = "claude-sonnet-4-6"  # Specified model version
         competencies = input_data["competencies"]
 
         # Get competency names and create a single technology stack string
@@ -402,32 +402,72 @@ def generate_task_with_code(openai_client, input_data: Dict) -> Dict:
             logger.error(f"No task generation prompts found for technology stack: {competency_stack}")
             raise ValueError(f"Unsupported technology stack: {competency_stack}. Please add prompts for this stack in get_task_prompt_by_technology_stack.")
 
-        # Send prompts one by one and log each response using Responses API
+        # Pricing per million tokens — source: https://platform.claude.com/docs/en/docs/about-claude/models
+        # Claude Opus 4.6: $5/M input, $25/M output
+        # Claude Sonnet 4.6: $3/M input, $15/M output
+        # Claude Haiku 4.5: $1/M input, $5/M output
+        PRICING = {
+            "claude-opus-4-6": {"input": 5.0, "output": 25.0},
+            "claude-sonnet-4-6": {"input": 3.0, "output": 15.0},
+            "claude-haiku-4-5-20251001": {"input": 1.0, "output": 5.0},
+            "gpt-5.1-2025-11-13": {"input": 2.0, "output": 8.0},
+        }
+        model_pricing = PRICING.get(model, {"input": 15.0, "output": 75.0})
+        total_input_tokens = 0
+        total_output_tokens = 0
+
+        # Send prompts one by one using Chat Completions API (universally supported)
         response = None
-        for prompt in task_generation_prompts:
+        response_text = None
+        for i, prompt in enumerate(task_generation_prompts, 1):
             messages.append({"role": "user", "content": prompt})
-            response = openai_client.responses.create(
+            response = openai_client.chat.completions.create(
                 model=model,
-                input=messages,
-                reasoning={"effort": "medium"},
-                text={"verbosity": "medium"}
+                messages=messages,
+                max_tokens=16000,
             )
-            response_text = getattr(response, "output_text", "NO output_text on response")
+            response_text = response.choices[0].message.content if response.choices else None
+            if not response_text:
+                logger.error(f"No response content from prompt {i}/{len(task_generation_prompts)}")
+                raise RuntimeError(f"Empty response from LLM on prompt {i}")
             messages.append({"role": "assistant", "content": response_text})
+
+            # Track token usage
+            usage = response.usage
+            prompt_input = usage.prompt_tokens if usage else 0
+            prompt_output = usage.completion_tokens if usage else 0
+            total_input_tokens += prompt_input
+            total_output_tokens += prompt_output
+
             logger.info("=" * 70)
-            logger.info(f" Prompt Response: ")
+            logger.info(f" Prompt {i}/{len(task_generation_prompts)} Response: ")
             logger.info(response_text)
+            logger.info(f" Tokens - Input: {prompt_input:,} | Output: {prompt_output:,}")
             logger.info("=" * 70)
 
+        # Print cost summary
+        input_cost = (total_input_tokens / 1_000_000) * model_pricing["input"]
+        output_cost = (total_output_tokens / 1_000_000) * model_pricing["output"]
+        total_cost = input_cost + output_cost
+        logger.info("=" * 70)
+        logger.info(" API COST SUMMARY")
+        logger.info(f" Model: {model}")
+        logger.info(f" Total Input Tokens:  {total_input_tokens:,}")
+        logger.info(f" Total Output Tokens: {total_output_tokens:,}")
+        logger.info(f" Input Cost:  ${input_cost:.4f} (${model_pricing['input']}/M tokens)")
+        logger.info(f" Output Cost: ${output_cost:.4f} (${model_pricing['output']}/M tokens)")
+        logger.info(f" TOTAL COST:  ${total_cost:.4f}")
+        logger.info("=" * 70)
+
         # Basic safety checks
-        if response is None or not getattr(response, "output_text", None):
-            logger.error("No output_text received from OpenAI Responses API")
-            raise RuntimeError("Failed to get output_text from OpenAI Responses API")
+        if response_text is None:
+            logger.error("No response received from LLM")
+            raise RuntimeError("Failed to get response from LLM")
 
         # Parse JSON from the final response
         # Try to extract JSON from the response, handling cases where it might be embedded in text or markdown
         task_data = None
-        response_text = response.output_text.strip()
+        response_text = response_text.strip()
         
         try:
             # First, try parsing the response directly as JSON

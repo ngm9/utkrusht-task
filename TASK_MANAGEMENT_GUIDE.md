@@ -1,423 +1,437 @@
 # Task Management Guide
 
-This guide  provides comprehensive instructions for **generating**, **deploying**, and **resetting** assessment tasks using the Utkrushta Infrastructure Assessment Agent.
+This guide covers the complete workflow for **generating**, **deploying**, **testing**, and **resetting** assessment tasks using the Utkrushta Infrastructure Assessment System.
+
+---
 
 ## Environment Setup
 
-### 1. Environment Variables
-
-Create a `.env` file in the project root with the following variables:
+### Python Executable
 
 ```bash
-# OpenAI Configuration
-OPENAI_API_KEY=your_openai_api_key
-PORTKEY_API_KEY=your_portkey_api_key
-
-# GitHub Configuration
-GITHUB_UTKRUSHTAPPS_TOKEN=your_github_token
-REPO_OWNER=your_github_organization
-
-# Supabase Configuration (Development)
-SUPABASE_URL_APTITUDETESTSDEV=your_supabase_dev_url
-SUPABASE_API_KEY_APTITUDETESTSDEV=your_supabase_dev_key
-
-# Supabase Configuration (Production)
-SUPABASE_URL_APTITUDETESTS=your_supabase_prod_url
-SUPABASE_API_KEY_APTITUDETESTS=your_supabase_prod_key
-
-# DigitalOcean Configuration
-DIGITALOCEAN_API_PAT=your_digitalocean_token
-AVAILABLE_IPS=ip1,ip2,ip3  # Comma-separated droplet IPs
-
-# SSH Configuration
-SSH_PRIVATE_KEY_PATH=/path/to/your/private/key
+PYEXE="/c/Users/Meet/AppData/Local/Programs/Python/Python310/python.exe"
 ```
 
-### 2. File Dependencies
+### Required Environment Variables (`.env`)
 
-Ensure these files exist in your workspace:
+| Variable | Purpose |
+|----------|---------|
+| `OPENAI_API_KEY` | OpenAI API access |
+| `PORTKEY_API_KEY` | Portkey gateway (routes OpenAI calls) |
+| `GITHUB_UTKRUSHTAPPS_TOKEN` | GitHub push access to UtkrushtApps org |
+| `REPO_OWNER` | GitHub org name (`UtkrushtApps`) |
+| `SUPABASE_URL_APTITUDETESTSDEV` | Dev Supabase URL |
+| `SUPABASE_API_KEY_APTITUDETESTSDEV` | Dev Supabase key |
+| `SUPABASE_URL_APTITUDETESTS` | Prod Supabase URL |
+| `SUPABASE_API_KEY_APTITUDETESTS` | Prod Supabase key |
+| `DIGITALOCEAN_API_PAT` | DigitalOcean API token (optional — for droplet info) |
+| `AVAILABLE_IPS` | Comma-separated droplet IPs for auto-select (e.g. `159.65.53.87`) |
+| `SSH_PRIVATE_KEY_PATH` | Path to SSH key (e.g. `/c/ssh-keys/dutkrusht-dev-do`) |
+| `GITHUB_GIST_TOKEN` | GitHub Gist token (optional — enables Gist creation on task generation) |
 
-**Required for Task Generation:**
-- `competencies.json` - Competency definitions
-- `background_for_tasks.json` - Background context
-- `task_scenarios.json` - Real-world scenarios (optional)
+### Infrastructure
 
-**Required Files in Project:**
-- `agents/infra_assessor/multiagent.py` - Main orchestrator
-- `agents/infra_assessor/utils.py` - Utility functions
-- `agents/infra_assessor/droplet_utils.py` - DigitalOcean operations
-- `agents/infra_assessor/github_utils.py` - GitHub operations
-- `agents/infra_assessor/evals.py` - Task evaluation logic
-- `agents/infra_assessor/logger_config.py` - Logging configuration
+| Resource | Value |
+|----------|-------|
+| Droplet 2 (primary) | `159.65.53.87` — `uktrusht-task-droplet-2` |
+| Droplet 1 | `64.227.178.86` — `uktrusht-task-droplet-1` |
+| SSH Key | `/c/ssh-keys/dutkrusht-dev-do` |
+| Deploy path on droplet | `/root/task/` |
+| GitHub Org | `UtkrushtApps` |
 
 ---
 
-## Task Generation
+## Project Structure
 
-### Overview
-Task generation creates intelligent assessment tasks based on competencies, background context, and real-world scenarios. The process uses LLM to generate task descriptions, code files, documentation, and solution guides.
-
-### Step 1: Prepare Input Files
-
-#### competencies.json
-```json
-[
-  {
-    "id": "comp_001",
-    "competency_id": "comp_001",
-    "name": "Python - FastAPI",
-    "description": "API development with FastAPI framework",
-    "scope": "Backend API development",
-    "proficiency": "INTERMEDIATE"
-  }
-]
+```
+C:\Utkrushta_task\
+├── multiagent.py                  # CLI: generate_tasks, deploy_task, reset_task
+├── utils.py                       # Core task generation helpers
+├── evals.py                       # LLM-based task + code evaluations
+├── schemas.py                     # JSON schema definitions for structured LLM outputs
+├── droplet_utils.py               # SSH/SFTP + DigitalOcean droplet operations
+├── github_utils.py                # GitHub repo creation, template repos, batch file upload
+├── gist_manager.py                # GitHub Gist lifecycle management CLI
+├── logger_config.py               # Centralized logging
+│
+├── pipeline/                      # Unified pipeline: input files + scenarios in one command
+│   ├── __main__.py                # Entry point: python -m pipeline
+│   └── pipeline.py                # Core pipeline logic
+│
+├── generate_input_files/          # Generates competency + background JSON from Supabase
+│   ├── __main__.py
+│   └── generator.py
+│
+├── scenario_generator/            # Standalone scenario generator
+│   ├── __main__.py                # Entry point: python -m scenario_generator
+│   ├── generator.py               # Classification, LLM calls, validation pipeline
+│   └── prompts.py                 # LLM prompt templates
+│
+├── non_tech_flow/                 # Non-technical (AI/ML) assessment pipeline
+│   ├── non_tech_multiagent.py
+│   ├── models.py
+│   ├── non_tech_utils.py
+│   └── non_tech_evals.py
+│
+├── task_generation_prompts/       # Technology-specific LLM prompt templates
+│   ├── Basic/                     # BASIC proficiency prompts
+│   ├── Intermediate/              # INTERMEDIATE proficiency prompts
+│   └── Beginner/                  # BEGINNER proficiency prompts
+│
+├── task_input_files/              # Input JSON files for task generation
+│   ├── input_<tech>/<level>/      # Per-tech, per-level competency + background files
+│   └── task_scenarios/
+│       ├── task_scenarios.json              # BEGINNER + BASIC scenarios
+│       ├── task_scenarios_intermediate.json # INTERMEDIATE + ADVANCED scenarios
+│       └── task_sceanrio_no_code.json       # NON_CODE scenarios
+│
+└── infra_assets/tasks/<uuid>/     # Generated task artifacts
+    ├── task.json                  # Full task definition (includes GitHub repo URL)
+    ├── docker-compose.yml         # Container setup
+    ├── run.sh                     # Deployment script
+    ├── kill.sh                    # Cleanup script
+    └── init_database.sql          # DB seed data (if applicable)
 ```
 
-#### background_for_tasks.json
-```json
-{
-  "organization": {
-    "organization_background": "Tech startup focused on e-commerce solutions"
-  },
-  "role_context": "Backend Developer",
-  "yoe": "3-5 years",
-  "questions_prompt": "Focus on practical implementation scenarios"
-}
+---
+
+## Full Workflow Overview
+
+```
+[pipeline] → generates input files + scenarios
+     ↓
+[generate-task] → generates task (GitHub repo, Supabase record, local files)
+     ↓
+[test-task] → deploy → verify → kill → verify clean
+     ↓
+[reset-task] → clean the droplet when needed
 ```
 
-#### task_scenarios.json (Optional)
-```json
-{
-  "Python - FastAPI (INTERMEDIATE)": [
-    "Build a REST API for user management",
-    "Implement database integration with PostgreSQL",
-    "Add authentication and authorization"
-  ]
-}
-```
+---
 
-#### util.py
+## Step 1 — Pipeline: Generate Input Files + Scenarios
 
-add the prompts imports from task_generation_prompts
+The pipeline fetches competency definitions from Supabase, generates background context via LLM, writes input files locally, and generates + saves task scenarios — all in one command.
 
-#### task_generation_prompts
+### Command
 
--Make sure to add the prompts for perticular competency to which you are making the task 
--Three prompt to include in that:
-    -tech_stack__CONTEXT
-    -tech_stack_INPUT_AND_ASK
-    -tech_stack_INSTRUCTIONS
-
-### Step 2: Run Task Generation
-
-#### Command
 ```bash
-cd agents/infra_assessor
-python multiagent.py generate_tasks -c /path/to/competencies.json -b /path/to/background_for_tasks.json -s /path/to/task_scenarios.json
+PYEXE="/c/Users/Meet/AppData/Local/Programs/Python/Python310/python.exe"
+cd /c/Utkrushta_task
+
+$PYEXE -m pipeline \
+  --name "<tech1>,<tech2>" \
+  --proficiency BASIC \
+  --count 6 \
+  --append
 ```
 
-#### Command Options
-- `-c, --competency-file`: Path to competencies JSON file (required)
-- `-b, --background-file`: Path to background JSON file (required)
-- `-s, --scenarios-file`: Path to scenarios JSON file (optional)
+### Options
 
-### Step 3: Generation Process
+| Option | Required | Default | Description |
+|--------|----------|---------|-------------|
+| `--name`, `-n` | Yes | — | Tech name(s), comma-separated or multiple flags |
+| `--proficiency`, `-p` | Yes | — | BEGINNER \| BASIC \| INTERMEDIATE \| ADVANCED |
+| `--count`, `-c` | No | 6 | Number of scenarios to generate per proficiency run |
+| `--append` | No | False | Merge into existing scenario file instead of overwriting |
+| `--folder-name`, `-f` | No | Auto | Override the auto-generated input files subfolder name |
+| `--force` | No | False | Overwrite existing input files |
+| `--dry-run` | No | False | LLM runs and output is previewed — no files written |
+| `--env` | No | `prod` | Supabase environment: `dev` or `prod` |
+| `--scenario-output` | No | Auto | Override scenario output file path |
 
-The system performs these steps automatically:
+### Examples
 
-1. **Environment Validation** - Checks all required environment variables
-2. **File Loading** - Reads and validates input files
-3. **Scenario Loading** - Matches competencies with relevant scenarios
-4. **LLM Task Generation** - Creates task description, requirements, and code
-5. **Task Evaluation** - Validates task quality and difficulty
-6. **GitHub Repository Creation** - Creates template and answer repositories
-7. **File Upload** - Uploads generated code to GitHub
-8. **Database Storage** - Stores task metadata in Supabase
-9. **Local File Saving** - Saves files locally for reference
+```bash
+# Single tech, single level
+$PYEXE -m pipeline --name "Java, Kafka" --proficiency BASIC --count 6 --append
+
+# Multiple techs, multiple levels (runs once per level)
+$PYEXE -m pipeline --name "Pandas,Numpy" --proficiency BASIC,INTERMEDIATE --count 2 --append
+
+# Dry run to preview without writing files
+$PYEXE -m pipeline --name "ReactJS" --proficiency BASIC --count 3 --dry-run
+```
+
+### What It Generates
+
+The pipeline runs once per proficiency level:
+
+1. **Fetches competencies** from Supabase for each named tech
+2. **Generates background** (role_context + questions_prompt) via LLM
+3. **Writes input files** to `task_input_files/input_<tech>/<level>/`:
+   - `competency_<tech>_<level>_Utkrusht.json`
+   - `background_forQuestions_utkrusht_<tech>_<level>.json`
+4. **Generates scenarios** and saves to the appropriate scenario file
+
+### Scenario Output File Mapping
+
+| Proficiency | Target File |
+|-------------|-------------|
+| BEGINNER | `task_input_files/task_scenarios/task_scenarios.json` |
+| BASIC | `task_input_files/task_scenarios/task_scenarios.json` |
+| INTERMEDIATE | `task_input_files/task_scenarios/task_scenarios_intermediate.json` |
+| ADVANCED | `task_input_files/task_scenarios/task_scenarios_intermediate.json` |
+| NON_CODE | `task_input_files/task_scenarios/task_sceanrio_no_code.json` |
+
+---
+
+## Step 2 — Generate Task
+
+Generates an assessment task from pre-built input files. The LLM creates the task description, code files, Docker infrastructure, README, and solution. Everything is pushed to GitHub and saved in Supabase and locally.
+
+### Command
+
+```bash
+PYEXE="/c/Users/Meet/AppData/Local/Programs/Python/Python310/python.exe"
+cd /c/Utkrushta_task
+
+$PYEXE multiagent.py generate_tasks \
+  --competency-file task_input_files/input_<tech>/<level>/competency_<tech>_<level>_Utkrusht.json \
+  --background-file task_input_files/input_<tech>/<level>/background_forQuestions_utkrusht_<tech>_<level>.json \
+  --scenarios-file task_input_files/task_scenarios/task_scenarios.json
+```
+
+Use `task_scenarios_intermediate.json` for INTERMEDIATE/ADVANCED tasks.
+
+### Generation Process
+
+1. Loads competency + background + scenario files
+2. Calls LLM (`gpt-5.1`) to generate task description, code files, Docker infrastructure
+3. Runs evaluations: LLM task eval + LLM code eval
+4. Determines task type (backend/frontend) based on competency keywords
+5. Generates answer code + solution steps
+6. Creates public GitHub template repo + private answer repo under `UtkrushtApps`
+7. Uploads all code files to GitHub in a single batch commit
+8. Creates a GitHub Gist (if `GITHUB_GIST_TOKEN` is set)
+9. Stores task record in Supabase `tasks` table + `task_competencies` table
+10. Saves all files locally to `infra_assets/tasks/<uuid>/`
+11. Renames local directory from temp repo name to actual task UUID
 
 ### Generated Outputs
 
-- **GitHub Repository** - Contains starter code and README
-- **Answer Repository** - Contains complete solution
-- **Database Record** - Task metadata and evaluation results
-- **Local Files** - Complete task package in `infra_assets/tasks/`
+- `infra_assets/tasks/<uuid>/task.json` — Full task definition; `resources.github_repo` has the repo URL
+- `infra_assets/tasks/<uuid>/docker-compose.yml` — Container setup
+- `infra_assets/tasks/<uuid>/run.sh` — Deployment script
+- `infra_assets/tasks/<uuid>/kill.sh` — Cleanup script
+- `infra_assets/tasks/<uuid>/init_database.sql` — DB seed data (if applicable)
+- GitHub template repo under `UtkrushtApps/<repo-name>`
+- Answer repo under `UtkrushtApps/<repo-name>-answers`
+- Supabase record in `tasks` + `task_competencies` tables
 
-### Example Output
+---
+
+## Step 3 — Test Task (Deploy → Verify → Kill → Verify Clean)
+
+### STEP 3.1 — Check Droplet is Clean
+
+```bash
+SSH_KEY="/c/ssh-keys/dutkrusht-dev-do"
+DROPLET_IP="159.65.53.87"
+
+ssh -i $SSH_KEY -o StrictHostKeyChecking=no root@$DROPLET_IP \
+  "docker ps -a && echo '---IMAGES---' && docker images && echo '---VOLUMES---' && docker volume ls && echo '---TASK_DIR---' && ls /root/task 2>&1 || echo 'folder not found'"
 ```
- INTELLIGENT TASK GENERATION AGENT
- Found 1 competencies:
-   1. Python - FastAPI
- 
- STEP 1: Creating Task(s)...
- Task Creation Successful!
- Task Type: Backend
- Task ID: 123
- Task Name: User Management API
- Competencies Covered: Python - FastAPI
- GitHub Repository: https://github.com/your-org/user-management-api
+
+The droplet is NOT clean if any of these exist: running/stopped containers, Docker images, Docker volumes, `/root/task` directory.
+
+If not clean, run:
+
+```bash
+ssh -i $SSH_KEY -o StrictHostKeyChecking=no root@$DROPLET_IP "cd /root/task && bash kill.sh"
+```
+
+Or manual cleanup if `kill.sh` is missing:
+
+```bash
+ssh -i $SSH_KEY -o StrictHostKeyChecking=no root@$DROPLET_IP "
+  docker stop \$(docker ps -q) 2>/dev/null || true
+  docker rm \$(docker ps -aq) 2>/dev/null || true
+  docker volume prune -f || true
+  docker image prune -a -f || true
+  docker system prune -a --volumes -f || true
+  rm -rf /root/task || true
+"
+```
+
+### STEP 3.2 — Pre-Deploy Fixes (Before Uploading)
+
+**Read task files first:**
+
+```bash
+TASK_DIR="/c/Utkrushta_task/infra_assets/tasks/<task-id>"
+```
+
+- `task.json` — GitHub repo URL, task description, tech stack
+- `docker-compose.yml` — services, ports, volumes
+- `run.sh` — check it waits for services to be ready
+- `kill.sh` — understand what cleanup it does
+- `init_database.sql` — if present, verify timestamps use `NOW()` not hardcoded dates
+
+**If init_database.sql has hardcoded dates**, fix them to relative (`NOW() - INTERVAL '30 days'`) and push the fix to GitHub:
+
+```bash
+GH_TOKEN=$(grep GITHUB_UTKRUSHTAPPS_TOKEN /c/Utkrushta_task/.env | cut -d= -f2)
+git clone "https://${GH_TOKEN}@github.com/UtkrushtApps/<repo-name>.git" /tmp/fix_<repo-name>
+cd /tmp/fix_<repo-name>
+git config user.email "naman@utkrushta.co.in" && git config user.name "Utkrushta Bot"
+# edit files
+git add -A
+git commit -m "fix: use relative timestamps"
+git push origin main
+rm -rf /tmp/fix_<repo-name>
+```
+
+### STEP 3.3 — Upload and Deploy
+
+```bash
+SSH_KEY="/c/ssh-keys/dutkrusht-dev-do"
+DROPLET_IP="159.65.53.87"
+TASK_DIR="/c/Utkrushta_task/infra_assets/tasks/<task-id>"
+
+ssh -i $SSH_KEY -o StrictHostKeyChecking=no root@$DROPLET_IP "rm -rf /root/task && mkdir -p /root/task"
+
+scp -i $SSH_KEY -o StrictHostKeyChecking=no \
+  $TASK_DIR/docker-compose.yml \
+  $TASK_DIR/run.sh \
+  $TASK_DIR/kill.sh \
+  root@$DROPLET_IP:/root/task/
+# Add init_database.sql to scp if it exists
+
+ssh -i $SSH_KEY -o StrictHostKeyChecking=no root@$DROPLET_IP \
+  "cd /root/task && bash run.sh"
+```
+
+### STEP 3.4 — Verify Deployment
+
+**Check containers are running:**
+
+```bash
+ssh -i $SSH_KEY -o StrictHostKeyChecking=no root@$DROPLET_IP "docker ps -a"
+```
+
+All containers should be in "Up" status.
+
+**If the task has a database** — validate data inside the DB container:
+- Row counts for all tables
+- Timestamp range check (MIN/MAX of date columns — confirm recent data exists)
+- Run sample query if `sample_queries.sql` exists
+
+**If the task has an API** — test endpoints:
+- Health/root: `curl -s http://$DROPLET_IP:<port>/` or `/health`
+- GET/list endpoints that should work out of the box
+- For endpoints the candidate must implement — only verify they return any response; do NOT fix them
+
+### What is and is NOT OK to Fix
+
+**OK to fix (infra issues):**
+- Container won't start (wrong port, missing env var, broken Dockerfile)
+- DB not seeding (init_database.sql not loading, wrong volume path)
+- `run.sh` / `kill.sh` broken (CRLF, wrong commands)
+- Health endpoint returning 500 due to missing DB connection
+
+**NOT OK to fix (candidate's problem):**
+- Missing or incomplete API endpoints the task requires the candidate to implement
+- Business logic errors (filtering, sorting, aggregation)
+- Missing validations described in the task README
+- Any code the README says the candidate should write
+
+### STEP 3.5 — Test kill.sh
+
+```bash
+ssh -i $SSH_KEY -o StrictHostKeyChecking=no root@$DROPLET_IP "cd /root/task && bash kill.sh"
+```
+
+### STEP 3.6 — Verify Droplet is Fully Clean
+
+```bash
+ssh -i $SSH_KEY -o StrictHostKeyChecking=no root@$DROPLET_IP \
+  "docker ps -a && echo '---IMAGES---' && docker images && echo '---VOLUMES---' && docker volume ls && echo '---TASK_DIR---' && ls /root/task 2>&1 || echo 'folder removed'"
+```
+
+All must be true for kill.sh to pass:
+- No containers (running or stopped)
+- No Docker images
+- No Docker volumes
+- `/root/task` directory does not exist
+
+**If kill.sh fails**, fix it (see Standard kill.sh Template below), push to GitHub, re-deploy, re-verify, re-run kill.sh. Do NOT leave the droplet deployed after testing.
+
+---
+
+## Step 4 — Reset Task
+
+### Standard Reset (via SSH directly)
+
+```bash
+SSH_KEY="/c/ssh-keys/dutkrusht-dev-do"
+DROPLET_IP="159.65.53.87"
+
+ssh -i $SSH_KEY -o StrictHostKeyChecking=no root@$DROPLET_IP "cd /root/task && bash kill.sh"
+```
+
+### Verify Cleanup
+
+```bash
+ssh -i $SSH_KEY -o StrictHostKeyChecking=no root@$DROPLET_IP \
+  "docker ps -a && docker images && ls /root/task 2>&1 || echo 'folder removed'"
+```
+
+Expected: no containers, no images, `/root/task` removed.
+
+### Via multiagent.py (updates Supabase `is_deployed` status)
+
+```bash
+$PYEXE multiagent.py reset_task \
+  --task-id <uuid> \
+  --droplet-ip 159.65.53.87 \
+  --script-path /root/task/kill.sh
 ```
 
 ---
 
-## Task Deployment
+## Standard kill.sh Template
 
-### Overview
-Task deployment downloads code from GitHub repositories and deploys it to DigitalOcean droplets for assessment execution.
-
-### Deployment Methods
-
-#### Method 1: Deploy Specific Task by ID
-
-Deploy a single task using its unique task ID.
-
-**Command:**
 ```bash
-python multiagent.py deploy_task --task-id 123 --droplet-ip 192.168.1.100
+#!/usr/bin/env bash
+set -e
+
+echo "Stopping and removing Docker containers and volumes..."
+docker-compose down -v || true
+
+echo "Removing Docker images..."
+docker image prune -a -f || true
+
+echo "Running Docker system prune..."
+docker system prune -f || true
+
+echo "Removing task directory at /root/task if it exists..."
+rm -rf /root/task || true
+
+echo "Cleanup completed"
 ```
 
-**Options:**
-- `--task-id, -t`: Task ID to deploy (required)
-- `--droplet-ip, -d`: Specific droplet IP (optional - auto-selects if not provided)
-
-#### Method 2: Deploy All Tasks by Competency
-
-Deploy all undeployed tasks for a specific competency.
-
-**Command:**
-```bash
-python multiagent.py deploy_task --competency-id comp_001 --droplet-ip 192.168.1.100
-```
-
-**Options:**
-- `--competency-id, -c`: Competency ID to deploy tasks for (required)
-- `--droplet-ip, -d`: Specific droplet IP (optional)
-
-#### Method 3: Auto-Deploy Multiple Tasks
-
-Deploy multiple tasks across all available droplets.
-
-**Command:**
-```bash
-python multiagent.py deploy_task --competency-id "comp_001,comp_002"
-```
-
-### Deployment Process
-
-The system performs these steps for each task:
-
-1. **Task Validation** - Verifies task exists and is not already deployed
-2. **Droplet Selection** - Chooses available droplet (checks for running containers)
-3. **Repository Download** - Downloads files from GitHub repository
-4. **File Upload** - Uploads files to droplet via SSH/SFTP
-5. **Script Execution** - Runs `run.sh` script on droplet
-6. **Database Update** - Marks task as deployed with deployment info
-7. **Cleanup** - Removes temporary local files
-
-### Deployment Requirements
-
-#### Droplet Requirements
-- Linux-based DigitalOcean droplet
-- Docker installed
-- SSH access configured
-- Root user access
-
-#### Generated Files Expected
-- `run.sh` - Deployment script
-- `install.sh` - Installation script (optional)
-- `README.md` - Task instructions
-- Application code files
-
-### Example Output
-```
-======================================================================
- TASK DEPLOYMENT AGENT - DEPLOY SPECIFIC TASK
-    Find Task → Download Files → Upload to Droplet → Execute → Update DB
-======================================================================
- Task ID: 123
- Droplet IP: Auto-select from available pool
-
- Searching for task with ID: 123
- Using specified droplet: 192.168.1.100
- Downloading files from GitHub repository...
- Files downloaded to: temp_deploy_123
- Uploading files to droplet: 192.168.1.100
- Files uploaded to droplet
- Executing run.sh script on droplet...
- run.sh executed successfully
- Database updated successfully
-
- DEPLOYMENT COMPLETED SUCCESSFULLY!
-```
+> **Note:** For tasks where the standard template is insufficient (e.g., named volumes or specific images remain), build a custom kill.sh that specifically undoes everything `run.sh` and `docker-compose.yml` set up.
 
 ---
 
-## Task Reset
+## Standalone Scenario Generation
 
-### Overview
-Task reset executes cleanup scripts on deployed tasks and marks them as undeployed in the database, allowing for redeployment.
+Use this when you need scenarios for a tech stack without regenerating input files.
 
-### Reset Command
-
-**Command:**
-```bash
-python multiagent.py reset_task --task-id 123 --droplet-ip 192.168.1.100 --script-path /root/task/kill.sh
-```
-
-### Required Parameters
-
-- `--task-id, -t`: ID of the task to reset (required)
-- `--droplet-ip, -d`: IP address of the droplet where task is deployed (required)
-- `--script-path, -s`: Path to the reset script on the droplet (required)
-
-### Reset Process
-
-1. **Parameter Validation** - Validates all required parameters
-2. **SSH Connection** - Connects to the specified droplet
-3. **Script Execution** - Executes the specified reset script
-4. **Database Update** - Marks task as undeployed, clears deployment info
-5. **Status Report** - Reports success or failure
-
-### Common Reset Scripts
-
-#### kill.sh (Docker containers)
-```bash
-#!/bin/bash
-# Stop and remove all Docker containers
-docker stop $(docker ps -aq) 2>/dev/null || true
-docker rm $(docker ps -aq) 2>/dev/null || true
-docker system prune -f
-```
-
-#### cleanup.sh (Process cleanup)
-```bash
-#!/bin/bash
-# Kill specific processes
-pkill -f "your_application"
-rm -rf /tmp/app_data
-```
-
-### Example Output
-```
-======================================================================
- TASK RESET AGENT - RESET AND UNDEPLOY TASK
-    Execute Script → Update Database → Mark as Undeployed
-======================================================================
- Task ID: 123
- Droplet IP: 192.168.1.100
- Script Path: /root/task/kill.sh
-
-🔄 Executing reset script on droplet...
-✅ Reset script executed successfully
-🔄 Updating database to mark task as undeployed...
-✅ Task successfully marked as undeployed in database
-
- RESET COMPLETED SUCCESSFULLY!
-======================================================================
- Task has been reset and marked as undeployed.
- You can now redeploy this task if needed.
-```
-
----
-
-## Task Scenario Generation
-
-### Overview
-
-The Scenario Generator (`scenario_generator.py`) automatically creates realistic task scenarios for coding assessments. It takes a competency file as input and uses LLM to generate scenarios that match the format expected by the task generation pipeline. Generated scenarios are saved to the appropriate scenario JSON file for reuse.
-
-### When to Use
-
-- When adding a **new competency combination** that has no existing scenarios (e.g., `Golang (BASIC), Redis (BASIC)`)
-- When you need to **expand the scenario pool** for an existing competency to increase task variety
-- When onboarding a **new technology stack** into the assessment platform
-
-### Input Files
-
-The generator requires a **competency file** (same format used for task generation):
-
-```json
-[
-  {
-    "competency_id": "c9bd828d-...",
-    "proficiency": "BASIC",
-    "name": "Java",
-    "scope": "A person with BASIC proficiency level in Java..."
-  },
-  {
-    "competency_id": "50f5e386-...",
-    "proficiency": "BASIC",
-    "name": "Kafka",
-    "scope": "A person with BASIC proficiency level in Kafka..."
-  }
-]
-```
-
-Optionally, a **background file** (`background_forQuestions_*.json`) can be provided for additional organizational context.
-
-### How Scenario Keys Work
-
-The generator constructs keys that match the format used in `task_scenarios.json`:
-- **Single competency**: `"Java (BASIC)"`, `"ReactJs (BEGINNER)"`
-- **Multi-competency**: competencies are sorted alphabetically and joined: `"Java (BASIC), Kafka (BASIC)"`
-- The key format must match exactly for scenarios to be found by `load_relevant_scenarios()` during task generation
-
-### Technology Categories
-
-The generator classifies competencies into categories that determine the content focus of generated scenarios:
-
-| Category | Competencies | Scenario Focus |
-|----------|-------------|----------------|
-| **BACKEND** | Java, Python, FastAPI, Go, Node.js, Express, Kafka, Redis, Docker | API endpoints, error handling, concurrency, data integrity |
-| **FRONTEND** | ReactJs, React Native, NextJs, TypeScript | Components, state management, rendering, accessibility |
-| **DATABASE** | SQL, PostgreSQL, MongoDB | Schema design, query optimization, transactions, indexes |
-| **MIXED_STACK** | Any combination crossing categories | Integration patterns, data flow between layers |
-| **NON_CODE** | Prompt Engineering, AI Literacy | LLM artifacts, evaluation datasets, prompt redesign |
-
-### CLI Commands
-
-#### Generate Scenarios (with auto-save)
+### Command
 
 ```bash
-python -m scenario_generator \
-  --competency-file task_input_files/input_java/basic/input_java_kafka_basic_task/competency_java_kafka_basic_Utkrusht.json \
+PYEXE="/c/Users/Meet/AppData/Local/Programs/Python/Python310/python.exe"
+cd /c/Utkrushta_task
+
+$PYEXE -m scenario_generator \
+  --competency-file task_input_files/input_<tech>/<level>/competency_<tech>_<level>_Utkrusht.json \
   --count 6 \
   --append
 ```
 
-This generates 6 scenarios and appends them to the appropriate file (`task_scenarios.json` for BASIC, `task_scenarios_intermediate.json` for INTERMEDIATE, `task_sceanrio_no_code.json` for NON_CODE).
-
-#### Generate with Explicit Output File
-
-```bash
-python -m scenario_generator \
-  --competency-file path/to/competency.json \
-  --count 4 \
-  --output task_input_files/task_scenarios/task_scenarios.json \
-  --append
-```
-
-#### Dry Run (Preview Only)
-
-```bash
-python -m scenario_generator \
-  --competency-file path/to/competency.json \
-  --count 3 \
-  --dry-run
-```
-
-Prints generated scenarios to console without saving to any file.
-
-#### With Background Context
-
-```bash
-python -m scenario_generator \
-  --competency-file path/to/competency.json \
-  --background-file path/to/background.json \
-  --count 6 \
-  --append
-```
-
-### CLI Options Reference
+### CLI Options
 
 | Option | Required | Default | Description |
 |--------|----------|---------|-------------|
@@ -426,84 +440,73 @@ python -m scenario_generator \
 | `--output` | No | Auto-detect | Output file path (auto-selects based on proficiency) |
 | `--append` | No | False | Merge into existing file instead of overwriting |
 | `--background-file` | No | None | Optional background JSON for additional context |
-| `--dry-run` | No | False | Preview scenarios without saving |
+| `--dry-run` | No | False | Preview without saving |
 
-### Quality Control Pipeline
+### Quality Pipeline
 
-The generator runs a three-step quality pipeline on every batch:
+Every generated batch goes through:
 
-1. **Structural Validation** — Checks each scenario is 200-3000 characters, formatted as a narrative paragraph
-2. **Deduplication** — Compares against all existing scenarios using text similarity (threshold: 0.6). Rejects scenarios too similar to existing ones
-3. **LLM Evaluation** — Uses `gpt-5-nano` to check realism, complexity calibration, technical detail, completeness, and scope appropriateness
+1. **Structural Validation** — 200–3,000 characters, narrative paragraph format
+2. **Deduplication** — text similarity check against existing scenarios (threshold: 0.6)
+3. **LLM Evaluation** — checks realism, complexity calibration, technical detail, completeness
 
-Failed scenarios are automatically regenerated (up to 2 retry attempts).
+Failed scenarios are auto-regenerated (up to 2 retry attempts).
 
-### Scenario Output Format
-
-All generated scenarios (across all proficiency levels) follow the same three-section bold-header structure (4-5 lines total):
+### Scenario Format
 
 ```
-**Current Implementation:** [1-2 sentences describing the existing system, tech stack, and what is currently broken/slow/missing with specific technical details]
+**Current Implementation:** [1-2 sentences: existing system, tech stack, what is broken/missing]
 
-**Your Task:** [Clear deliverables describing what to fix/build/optimize, with bullet points for multiple items]
+**Your Task:** [Clear deliverables, bullet points for multiple items]
 
-**Success Criteria:** [1-2 sentences describing the expected outcome with measurable targets]
+**Success Criteria:** [Expected outcome with measurable targets]
 ```
 
-Each scenario is stored as a separate string in the JSON array — never concatenate multiple scenarios into one entry.
+### Technology Categories
 
-### Output File Mapping
+| Category | Competencies | Scenario Focus |
+|----------|-------------|----------------|
+| BACKEND | Java, Python, FastAPI, Go, Node.js, Express, Kafka, Redis, Docker | API endpoints, concurrency, data integrity |
+| FRONTEND | ReactJs, React Native, NextJs, TypeScript | Components, state management, rendering |
+| DATABASE | SQL, PostgreSQL, MongoDB | Schema design, query optimization, transactions |
+| MIXED_STACK | Any cross-category combination | Integration patterns, data flow between layers |
+| NON_CODE | Prompt Engineering, AI Literacy | LLM artifacts, evaluation datasets |
 
-| Proficiency | Target File |
-|-------------|-------------|
-| BEGINNER | `task_input_files/task_scenarios/task_scenarios.json` |
-| BASIC | `task_input_files/task_scenarios/task_scenarios.json` |
-| INTERMEDIATE | `task_input_files/task_scenarios/task_scenarios_intermediate.json` |
-| NON_CODE | `task_input_files/task_scenarios/task_sceanrio_no_code.json` |
+---
 
-### Example Workflow: Adding Scenarios for a New Competency
+## Deploy via multiagent.py (with Supabase update)
 
-1. **Locate or create the competency file** in `task_input_files/`:
-   ```bash
-   ls task_input_files/input_java/basic/input_java_basic_task/competency_*.json
-   ```
+For deploying tasks with automatic Supabase status update:
 
-2. **Run the generator in dry-run mode** to preview:
-   ```bash
-   python -m scenario_generator \
-     --competency-file task_input_files/input_java/basic/input_java_basic_task/competency_java_basic_Utkrusht.json \
-     --count 4 \
-     --dry-run
-   ```
+```bash
+# Deploy by task ID
+$PYEXE multiagent.py deploy_task --task-id <uuid> --droplet-ip 159.65.53.87
 
-3. **Review the output** — check that scenarios are realistic, appropriately complex, and diverse
+# Deploy all undeployed tasks for a competency
+$PYEXE multiagent.py deploy_task --competency-id <competency-uuid>
 
-4. **Run again with `--append`** to save:
-   ```bash
-   python -m scenario_generator \
-     --competency-file task_input_files/input_java/basic/input_java_basic_task/competency_java_basic_Utkrusht.json \
-     --count 4 \
-     --append
-   ```
+# Auto-select droplet from AVAILABLE_IPS
+$PYEXE multiagent.py deploy_task --task-id <uuid>
+```
 
-5. **Verify** by checking the scenario file:
-   ```bash
-   python -c "import json; d=json.load(open('task_input_files/task_scenarios/task_scenarios.json')); print(list(d.keys()))"
-   ```
+> **Preferred deploy method for testing is direct SSH** (see Step 3) — it gives more control and doesn't require Supabase to be updated.
 
-6. **Generate tasks** using the standard pipeline:
-   ```bash
-   python multiagent.py generate_tasks -c path/to/competency.json -b path/to/background.json -s task_input_files/task_scenarios/task_scenarios.json
-   ```
+---
 
-### Files Involved
+## Scenario Key Format
 
-| File | Role |
-|------|------|
-| `scenario_generator/` | Package directory |
-| `scenario_generator/__init__.py` | Package exports — `generate_scenarios_for_competencies`, `build_scenario_key`, etc. |
-| `scenario_generator/__main__.py` | CLI entry point — run via `python -m scenario_generator` |
-| `scenario_generator/generator.py` | Core logic — classification, LLM calls, validation, pipeline |
-| `scenario_generator/prompts.py` | All LLM prompt templates for generation and evaluation |
-| `utils.py` | Shared helpers: `build_scenario_key()`, `save_generated_scenarios()` |
-| `task_input_files/task_scenarios/*.json` | Scenario storage files (output targets) |
+Scenarios in `task_scenarios.json` are keyed by competency name + proficiency:
+
+- Single: `"Java (BASIC)"`, `"ReactJs (BEGINNER)"`
+- Multi: alphabetically sorted, joined: `"Java (BASIC), Kafka (BASIC)"`
+
+Keys must match exactly for `load_relevant_scenarios()` to find them during task generation.
+
+---
+
+## Supported Tech Stacks
+
+Python, Python-FastAPI, Python-Pandas/Numpy, Python-Redis, ReactJS, NextJS-TypeScript,
+NodeJS-MongoDB, NodeJS-PostgreSQL, ExpressJS, Java, Java-SpringBoot, Java-Kafka,
+Java-Docker, Go, Go-Docker, Go-Redis, SQL, PostgreSQL, MongoDB-React-Node,
+Shell Script, Apache Camel, Docker, RAG

@@ -17,6 +17,7 @@ import shutil
 from pathlib import Path
 from github import Github
 import openai
+import httpx
 from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
 from dotenv import load_dotenv
 import click
@@ -42,18 +43,19 @@ import paramiko
 # Load environment variables
 load_dotenv()
 
-# Configure OpenAI
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
+# Configure Anthropic via Portkey
+ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
 
 openai_client = openai.OpenAI(
-    api_key=OPENAI_API_KEY,
+    api_key=ANTHROPIC_API_KEY,
     base_url=PORTKEY_GATEWAY_URL,
     default_headers=createHeaders(
-        provider="openai",
+        provider="anthropic",
         api_key=os.environ.get("PORTKEY_API_KEY")
-    )
+    ),
+    timeout=httpx.Timeout(None)
 )
-model = "gpt-5.1-2025-11-13"
+model = "claude-sonnet-4-6"
 
 # Static GitHub credentials
 GITHUB_UTKRUSHTAPPS_TOKEN = os.getenv("GITHUB_UTKRUSHTAPPS_TOKEN")
@@ -448,7 +450,7 @@ def create_task(competency_file: Path, background_file: Path, scenarios_file: Pa
             "criterias": task_data["criterias"],
             "is_deployed": False,
             "task_blob": {
-                "title": task_data.get("name", ""),
+                "title": task_data.get("title", "") or task_data.get("name", ""),
                 "definitions": task_data.get("definitions", {}),
                 "hints": task_data.get("hints", ""),
                 "resources": dict(

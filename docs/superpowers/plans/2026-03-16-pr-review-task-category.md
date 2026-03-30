@@ -17,6 +17,7 @@
 ### Task 1: Create package structure and schemas
 
 **Files:**
+
 - Create: `pr_review_flow/__init__.py`
 - Create: `pr_review_flow/schemas.py`
 - Create: `pr_review_flow/prompts/__init__.py`
@@ -153,6 +154,7 @@ from pr_review_flow.prompts.eval_prompts import BASE_REPO_EVAL_PROMPT, PR_EVAL_P
 ### Task 2: Create base repo generation prompts
 
 **Files:**
+
 - Create: `pr_review_flow/prompts/base_repo_prompts.py`
 
 - [ ] **Step 1: Write `base_repo_prompts.py`**
@@ -199,6 +201,7 @@ EVAL_FEEDBACK_BLOCK_EMPTY = ""
 ### Task 3: Create PR generation prompts
 
 **Files:**
+
 - Create: `pr_review_flow/prompts/pr_generation_prompts.py`
 
 - [ ] **Step 1: Write `pr_generation_prompts.py`**
@@ -246,6 +249,7 @@ EVAL_FEEDBACK_BLOCK_EMPTY = ""
 ### Task 4: Create evaluation prompts
 
 **Files:**
+
 - Create: `pr_review_flow/prompts/eval_prompts.py`
 
 - [ ] **Step 1: Write `eval_prompts.py`**
@@ -327,6 +331,7 @@ If the PR FAILS any criteria, respond in JSON:
 ### Task 5: Create evaluation module
 
 **Files:**
+
 - Create: `pr_review_flow/pr_review_evals.py`
 
 - [ ] **Step 1: Write `pr_review_evals.py`**
@@ -436,6 +441,7 @@ def eval_pr_and_answer_key(base_repo_files: dict, pr_data: dict, openai_client) 
 ### Task 6: Create PR review utilities
 
 **Files:**
+
 - Create: `pr_review_flow/pr_review_utils.py`
 
 - [ ] **Step 1: Write `pr_review_utils.py`**
@@ -616,6 +622,7 @@ def save_pr_review_locally(task_name: str, base_repo_files: dict, pr_data: dict,
 ### Task 7: Create PR review GitHub operations
 
 **Files:**
+
 - Create: `pr_review_flow/pr_review_github.py`
 
 - [ ] **Step 1: Write `pr_review_github.py`**
@@ -797,6 +804,7 @@ def create_pr_review_repo(
 ### Task 8: Add PR review scenario validation to scenario_generator
 
 **Files:**
+
 - Modify: `scenario_generator/generator.py` — add `validate_pr_review_scenario_structure()` function
 
 - [ ] **Step 1: Add PR review scenario validation function**
@@ -857,6 +865,7 @@ __all__ = [
 ### Task 9: Create the main orchestrator
 
 **Files:**
+
 - Create: `pr_review_flow/pr_review_multiagent.py`
 
 - [ ] **Step 1: Write `pr_review_multiagent.py`**
@@ -1338,6 +1347,7 @@ def create_pr_review_task(
 ### Task 10: Create CLI entry point
 
 **Files:**
+
 - Create: `pr_review_flow/__main__.py`
 
 - [ ] **Step 1: Write `__main__.py`**
@@ -1426,6 +1436,7 @@ if __name__ == "__main__":
 ### Task 11: Create empty scenario files
 
 **Files:**
+
 - Create: `task_input_files/task_scenarios/task_scenarios_pr_review.json`
 - Create: `task_input_files/task_scenarios/task_scenarios_pr_review_intermediate.json`
 
@@ -1446,6 +1457,7 @@ These will be populated by the scenario generator with PR-review-specific scenar
 ### Task 12: Update `pr_review_flow/__init__.py` with exports
 
 **Files:**
+
 - Modify: `pr_review_flow/__init__.py`
 
 - [ ] **Step 1: Add exports**
@@ -1500,6 +1512,7 @@ Expected: LLM generates base repo + PR with answer key, files previewed in conso
 - [ ] **Step 3: Review local output**
 
 Check `infra_assets/pr_review_tasks/<task-name>/`:
+
 - `base_repo/` has 4+ source files with clean, consistent code
 - `pr_files/` has modified/added files with intentional flaws
 - `answer_key.json` lists all flaws with categories and severities
@@ -1514,6 +1527,7 @@ Check `infra_assets/pr_review_tasks/<task-name>/`:
 Run: `python -m pr_review_flow --competency-file <path> --background-file <path> --scenarios-file task_input_files/task_scenarios/task_scenarios_pr_review.json --env dev`
 
 Expected output:
+
 ```
 PR REVIEW TASK CREATED SUCCESSFULLY
   Task ID:    <uuid>
