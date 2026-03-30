@@ -1,0 +1,13 @@
+{
+  "name": "utkrushta-flaw-injector",
+  "version": "1.0.0",
+  "description": "Figma plugin to inject UX flaws for design review assessments",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc --watch"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.100.0",
+    "typescript": "^5.0.0"
+  }
+}
