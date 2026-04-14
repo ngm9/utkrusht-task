@@ -1,0 +1,10 @@
+[
+    {
+        "competency_id": "984ea734-3242-41a3-a8fb-b7a252c8d48a",
+        "created_at": "2024-12-13T03:06:29.743075+00:00",
+        "proficiency": "BASIC",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Javascript",
+        "scope": "BASIC Proficiency Level in JavaScript\n\nIndividuals with BASIC proficiency (0-1 years) in JavaScript possess foundational knowledge of core language features and introductory advanced concepts. They understand JavaScript syntax, including variables (`var`, `let`, `const`), data types, operators, and control structures (`if`, `else`, `switch`, loops). They can define and invoke simple functions, differentiate between function declarations and expressions, and grasp basic scope and hoisting principles. Basic DOM manipulation skills include selecting elements with methods like `getElementById` and handling simple events (`click`, `input`). They have introductory knowledge of asynchronous JavaScript, capable of creating and handling Promises with `.then()` and `.catch()`, and writing basic `async/await` functions. Familiarity with ES6+ features such as arrow functions, template literals, and simple destructuring is expected. They can use higher-order functions like `map`, `filter`, and `reduce`, understand basic closures, and have an introductory understanding of prototypes and inheritance. Basic error handling using `try...catch` and the ability to throw custom errors are included. They can perform simple tasks like form validations, dynamic content updates, and handle basic asynchronous operations. Additionally, they utilize browser developer tools for debugging, perform basic Git operations, follow coding standards, and demonstrate eagerness to learn advanced topics. Limitations include inability to design complex systems and limited exposure to deep asynchronous patterns and advanced ES6+ features."
+    }
+]

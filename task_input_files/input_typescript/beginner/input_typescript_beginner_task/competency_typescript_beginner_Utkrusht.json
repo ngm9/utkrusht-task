@@ -1,0 +1,10 @@
+[
+    {
+        "competency_id": "9f665123-37eb-49c3-b7cb-522cabe2404f",
+        "created_at": "2025-04-30T10:17:02.357042+00:00",
+        "proficiency": "BEGINNER",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Typescript",
+        "scope": "A person with BEGINNER proficiency level in TypeScript as a competency should be able to recognize that TypeScript is a superset of JavaScript designed to add static type checking, compile-time error detection, and improved maintainability. They can identify how type annotations (string, number, boolean, any, null, undefined) work, and they appreciate the difference between strict typing and JavaScript’s dynamic nature. They know how to install Node.js, npm or Yarn, install TypeScript globally or locally, and set up a minimal tsconfig.json required for compilation. They can run tsc commands to transpile TypeScript to JavaScript and are aware of basic bundlers like webpack although they may not fully configure them. They can write simple functions with typed parameters and return types, see compiler errors, and fix straightforward mismatches. They understand the basics of interfaces or simple classes and can apply them to describe object shapes without delving deeply into generics. They recognize that type definitions for popular libraries exist (via DefinitelyTyped or built-in) but do not have deep experience using them. They can work with simple linting and formatting tools like ESLint or Prettier, though advanced configuration is not expected. They appreciate that TypeScript improves editor support (IntelliSense, error detection) but rely on minimal editor setup. They are aware of basic TypeScript use cases in frameworks like Angular, React, or Vue, but only at a surface level. They can explain the difference between compile-time checks and runtime behavior, using correct terminology like compiler, transpilation, and type declarations. They have enough clarity on fundamental concepts to avoid major confusion when transitioning to more advanced TypeScript usage."
+    }
+]

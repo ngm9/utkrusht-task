@@ -1,0 +1,10 @@
+[
+    {
+        "competency_id": "07275927-7181-4d36-8a5b-31e6560e4c7c",
+        "created_at": "2025-01-28T04:29:47.537918+00:00",
+        "proficiency": "BEGINNER",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "HTML and CSS",
+        "scope": "A BEGINNER in HTML and CSS should understand the basics of HTML as the structure of a webpage and CSS for styling. They should know basic HTML elements like headings, paragraphs, links, images, lists, tables, and forms with attributes like href, src, alt. In CSS, they should understand selectors (tag, .class, #id), basic properties for text styling (color, font-size, text-align), the box model (margin, padding, border, width), and backgrounds (background-color, background-image). They should differentiate between inline, internal, and external CSS, and have a basic grasp of semantic HTML for accessibility and SEO. Tasks include creating static webpages with text, images, and simple forms, applying basic styles, and organizing files with proper linking. Tools they should know include code editors like VS Code or Sublime Text, browsers like Chrome or Firefox, and browser developer tools for debugging. They may have limited exposure to responsive design, Flexbox, Grid, SASS, Bootstrap, or accessibility practices. They should produce clean, readable code, create basic static pages like a personal profile or landing page, and troubleshoot simple issues like broken links or missing attributes. However, they may struggle with cascading, specificity, advanced layouts, or debugging complex CSS. Online resources like MDN and W3Schools should be their primary references."
+    }
+]

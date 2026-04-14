@@ -1,0 +1,10 @@
+[
+    {
+        "competency_id": "591e7646-373b-4734-8f4c-cbfac942c507",
+        "created_at": "2025-11-04T10:51:45.888561+00:00",
+        "proficiency": "BASIC",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Microservices",
+        "scope": "A person with BASIC proficiency level in Microservices as a competency should be able to explain microservices architecture, its principles (single responsibility, bounded context, decentralized data, independent deployability), and compare with monolithic/SOA approaches; design and implement simple, stateless RESTful microservices using frameworks like Spring Boot, Node.js/Express, or .NET Core; perform basic CRUD operations, use ORMs or direct queries, and understand service-owned data and basic consistency challenges; design RESTful APIs, document with Swagger/OpenAPI, and use tools like Postman or curl for API testing; implement synchronous REST-based inter-service communication, understand basic error handling, and have a conceptual grasp of asynchronous messaging (RabbitMQ, Kafka); package and deploy services, use Docker for containerization, and manage configurations via environment variables or config files; understand basic service discovery (static config, Eureka, Consul) and API Gateway concepts (NGINX, Kong, Spring Cloud Gateway); handle basic error handling, retries, timeouts, centralized logging (Log4j, Winston), health checks, and basic metrics; implement simple authentication (API keys, tokens), understand HTTPS, and secure communication; write unit and integration tests, mock dependencies, and participate in code reviews; use Git for version control, build tools like Maven, Gradle, or npm, and maintain basic documentation (README, API contracts); and have awareness of distributed systems challenges (latency, failures, eventual consistency) and CI/CD concepts without deep hands-on experience."
+    }
+]

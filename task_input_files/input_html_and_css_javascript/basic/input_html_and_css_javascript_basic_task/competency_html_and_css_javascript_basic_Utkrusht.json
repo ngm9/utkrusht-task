@@ -1,0 +1,18 @@
+[
+    {
+        "competency_id": "mf7c1fe6-d669-414e-b066-e9733f0de7a8",
+        "created_at": "2024-12-11T11:13:21+00:00",
+        "proficiency": "BASIC",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "HTML and CSS",
+        "scope": "An BASIC level in HTML and CSS means the ability to structure complex web pages using semantic tags, create forms, and optimize accessibility with ARIA roles. They are proficient in using Flexbox and Grid for layouts, ensuring responsive designs with media queries. They are familiar with CSS preprocessors like SASS, can organize CSS using naming conventions (BEM, OOCSS), and work with CSS frameworks (Bootstrap, TailwindCSS). They know how to optimize for performance, handle cross-browser compatibility, and use browser dev tools for debugging. They are skilled in using custom CSS, CSS variables, and can implement basic animations or transitions. They can refactor and maintain existing codebases, improve load times, and ensure designs are SEO-friendly. They have a good understanding of CSS specificity, inheritance, and styling reusable components, ensuring scalability and maintainability."
+    },
+    {
+        "competency_id": "984ea734-3242-41a3-a8fb-b7a252c8d48a",
+        "created_at": "2024-12-13T03:06:29.743075+00:00",
+        "proficiency": "BASIC",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Javascript",
+        "scope": "BASIC Proficiency Level in JavaScript\n\nIndividuals with BASIC proficiency (0-1 years) in JavaScript possess foundational knowledge of core language features and introductory advanced concepts. They understand JavaScript syntax, including variables (`var`, `let`, `const`), data types, operators, and control structures (`if`, `else`, `switch`, loops). They can define and invoke simple functions, differentiate between function declarations and expressions, and grasp basic scope and hoisting principles. Basic DOM manipulation skills include selecting elements with methods like `getElementById` and handling simple events (`click`, `input`). They have introductory knowledge of asynchronous JavaScript, capable of creating and handling Promises with `.then()` and `.catch()`, and writing basic `async/await` functions. Familiarity with ES6+ features such as arrow functions, template literals, and simple destructuring is expected. They can use higher-order functions like `map`, `filter`, and `reduce`, understand basic closures, and have an introductory understanding of prototypes and inheritance. Basic error handling using `try...catch` and the ability to throw custom errors are included. They can perform simple tasks like form validations, dynamic content updates, and handle basic asynchronous operations. Additionally, they utilize browser developer tools for debugging, perform basic Git operations, follow coding standards, and demonstrate eagerness to learn advanced topics. Limitations include inability to design complex systems and limited exposure to deep asynchronous patterns and advanced ES6+ features."
+    }
+]

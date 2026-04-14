@@ -1,0 +1,10 @@
+[
+    {
+        "competency_id": "9875326c-c008-4d74-a494-365eed14ec87",
+        "created_at": "2025-11-04T10:58:16.328184+00:00",
+        "proficiency": "INTERMEDIATE",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "REST APIs",
+        "scope": "A person with INTERMEDIATE proficiency level in REST APIs as a competency should be able to design, build, document, and consume RESTful APIs following REST principles (statelessness, client-server, cacheability, uniform interface), using proper HTTP methods (GET, POST, PUT, PATCH, DELETE, OPTIONS, HEAD), status codes, and resource-oriented URIs. They can handle request/response structures, content negotiation (JSON, XML), and implement versioning, pagination, filtering, and basic HATEOAS. They use documentation tools like Swagger/OpenAPI, Postman, or API Blueprint, and are familiar with authentication (Basic Auth, API Keys, OAuth 2.0), authorization (RBAC, scopes), and API security best practices (HTTPS, CORS, input validation, rate limiting, protection against injection, CSRF, XSS). They can consume APIs from various clients, integrate with other systems, and understand synchronous/asynchronous calls. They design meaningful error responses, implement input validation (including JSON Schema), and use testing tools like Postman, Insomnia, REST Assured, or JMeter for functional and integration tests. They debug issues using logs, traces, and network tools, optimize performance (latency, caching with headers/ETags), and implement rate limiting/throttling. They are proficient with at least one backend framework (Express.js, Spring Boot, Django REST Framework, Flask, ASP.NET Core), have basic knowledge of API gateways (Kong, Apigee, AWS API Gateway), and understand monitoring and logging. They are familiar with API lifecycle management (design, deployment, versioning, deprecation), CI/CD pipelines, and can deploy APIs to cloud or on-prem environments. They collaborate effectively with cross-functional teams and communicate API contracts and changes clearly."
+    }
+]

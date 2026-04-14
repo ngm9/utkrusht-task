@@ -1,0 +1,18 @@
+[
+    {
+        "competency_id": "f4a2e937-b85b-4b81-b28b-8f6b49d9599c",
+        "created_at": "2025-03-31T05:05:21.227830+00:00",
+        "proficiency": "INTERMEDIATE",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "NodeJs",
+        "scope": "This individual has a strong grasp of JavaScript fundamentals (ES6+ syntax, event loop, async/await) and Node core modules (fs, http, crypto), and manages dependencies with npm or yarn. They build RESTful APIs using Express (or frameworks like Koa/Fastify), handle routing, middleware, error handling, and design data models for SQL/NoSQL databases (via ORM/ODM tools such as Sequelize or Mongoose), including transactions and concurrency. They separate application concerns for maintainability, implement caching (e.g., Redis), address security concerns (XSS, CSRF, SQL injection), and handle authentication/authorization (JWT, OAuth). They set up structured logging (Winston, Pino), monitor errors, and are comfortable deploying on AWS, GCP, or Azure, often using Docker containers and following 12-Factor App principles. They incorporate CI/CD pipelines (Jenkins, GitHub Actions, GitLab), write unit and integration tests (Mocha, Jest), and use debugging/profiling tools to optimize performance. They manage code in Git with branching, merging, rebasing, and give/receive feedback through code reviews. They have a solid understanding of environment variable management across multiple stages and are open to learning advanced features like cluster modules, microservices, or event-driven architectures. They are familiar with other Node frameworks (NestJS, Koa, Fastify) and can become productive quickly thanks to strong fundamentals. Typically, they have 3-6 years of hands-on Node.js experience, are stronger than a beginner or basic-level developer, but not yet as deep as advanced or expert. They show a readiness to handle real-world production complexities, while still benefiting from guidance on highly specialized or complex scenarios."
+    },
+    {
+        "competency_id": "5f7e63d9-148b-44e1-a391-efd813a86f92",
+        "created_at": "2025-07-29T03:14:19.087072+00:00",
+        "proficiency": "INTERMEDIATE",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Kafka",
+        "scope": "A person with INTERMEDIATE proficiency level in Kafka as a competency should be able to / is capable of describing and troubleshooting core architecture — brokers, topics, partitions, replicas, leaders, ISR, controller, ZooKeeper or KRaft quorum, request-processing pipeline, high-watermark movement, rack awareness, partition reassignment and log internals (segments, index files). They reason about delivery guarantees (at-least-once, at-most-once, exactly-once) using idempotent producers, transactions and consumer-offset management, choose delete vs compact cleanup and time/size/tiered retention, and plan leader balancing. They model data with well-chosen keys, headers and schemas, administer Schema Registry, evolve Avro, Protobuf or JSON-Schema with compatibility rules and weigh serialization trade-offs. They build and tune producers/consumers configuring batching, linger.ms, compression, acknowledgments, retries, max-in-flight, manual/async commits, cooperative rebalancing, lag detection and OpenTelemetry/Micrometer tracing. They apply event-centric architectural patterns — CQRS, outbox/CDC, event sourcing — design idempotent consumers, retries and dead-letter topics, produce ADRs and runbooks, document topic catalogs and schemas, and mentor juniors while escalating only deep architectural issues to senior experts."
+    }
+]

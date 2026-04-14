@@ -1,0 +1,18 @@
+[
+    {
+        "competency_id": "da55f170-7cf4-45c5-bea2-9ef6a389f4d4",
+        "created_at": "2026-04-06T12:00:00.000000+00:00",
+        "proficiency": "BASIC",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "React Native",
+        "scope": "A person with BASIC proficiency level in React Native (1-2 years experience) should be able to build and maintain simple to moderately complex mobile applications using React Native with Expo managed workflow. They understand the core React Native component library (View, Text, Image, ScrollView, FlatList, TextInput, TouchableOpacity, Pressable, SafeAreaView) and know when to use each component appropriately. They can compose components using props and children, manage local component state with useState, handle side effects with useEffect (data fetching, subscriptions, cleanup), and implement basic event handling (onPress, onChangeText, onSubmitEditing). They are comfortable with React Native's flexbox-based layout system and can create responsive layouts. They can style components using StyleSheet.create() and understand platform-specific styling. They can implement basic screen navigation using React Navigation (Stack Navigator, Tab Navigator) including passing parameters between screens. They understand FlatList for rendering lists with keyExtractor, renderItem, and basic performance props. They can build and validate simple forms with TextInput components and manage form state."
+    },
+    {
+        "competency_id": "cbfa171b-307e-4970-ba0e-01ed5b9cb55f",
+        "created_at": "2026-04-06T12:00:00.000000+00:00",
+        "proficiency": "BASIC",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Firebase",
+        "scope": "A person with BASIC proficiency level in Firebase (1-2 years experience) should be able to integrate Firebase services into a mobile application for common use cases. They understand Firebase Authentication for email/password sign-up, sign-in, and sign-out flows, and can use onAuthStateChanged to listen for auth state changes and conditionally render authenticated vs unauthenticated screens. They can perform basic Firestore CRUD operations using the modular v9+ SDK: addDoc to create documents, getDoc and getDocs to read single documents and collections, updateDoc to modify existing documents, and deleteDoc to remove documents. They can write simple Firestore queries using where, orderBy, and limit to filter and sort data. They understand the Firestore data model of collections and documents and can design simple data structures. They can set up real-time listeners using onSnapshot to get live data updates and know to unsubscribe listeners on component unmount. They can initialize the Firebase SDK in a React Native app and configure it to connect to Firebase Emulators for local development. They understand basic error handling for Firebase operations (auth errors like wrong password, Firestore permission errors). Limitations include limited experience with compound queries, subcollections, batch writes, transactions, Firestore security rules, Cloud Functions, and advanced data modeling patterns."
+    }
+]
