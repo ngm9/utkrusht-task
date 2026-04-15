@@ -94,6 +94,7 @@ The candidate's responsibility is to fix a caching or data access issue with Red
 ### Docker-compose & Infrastructure Details
 - DO NOT include a version field in docker-compose.yml; use the modern plain format
 - Services: one Go API service and one Redis service. The Go API must depend_on Redis and wait for Redis health
+- **SECURITY-CRITICAL**: Redis ports MUST be bound to localhost only using `"127.0.0.1:6379:6379"` — NEVER use `"6379:6379"` which exposes Redis to the public internet. Candidates access Redis via SSH on the droplet, so localhost binding is sufficient.
 - Hardened data persistence: Redis data directory mounted for persistence
 - Seed data initially loaded into Redis using a seed script executed on container startup
 - The container startup must be autonomous (no manual seed steps required by the candidate)
@@ -149,9 +150,9 @@ CRITICAL: Describe the specific business scenario where a Go REST API with Redis
 CRITICAL: Guide discovery, never provide direct solutions
 
 ### Database Access
-- Provide Redis connection details (host, port, password if applicable)
-- Mention that candidates can use redis-cli or a Redis GUI tool for basic performance analysis
-- For the host, use a placeholder (e.g., <REDIS_HOST>) rather than an actual hostname
+- Explain that Redis is bound to localhost for security — candidates must SSH into the droplet first, then access Redis locally at 127.0.0.1:6379
+- Mention that candidates can use `docker exec -it <redis_container> redis-cli` or `redis-cli -h 127.0.0.1` for inspection
+- Mention that candidates can also use a Redis GUI tool for basic performance analysis
 
 ### Objectives
 Define goals focusing on outcomes for the optimization task:

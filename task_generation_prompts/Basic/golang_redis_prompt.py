@@ -169,7 +169,8 @@ Based on the real-world scenarios provided above, create a Redis optimization ta
 - **CRITICAL**: All deployment files (run.sh, docker-compose.yml, Dockerfile) must be thoroughly validated to ensure successful deployment
 
 ### Docker-compose Instructions:
-  - Redis service with proper working configuration (port 6379, proper image)
+  - Redis service with proper working configuration (proper image, e.g. redis:7-alpine)
+  - **SECURITY-CRITICAL**: Redis ports MUST be bound to localhost only using `"127.0.0.1:6379:6379"` — NEVER use `"6379:6379"` which exposes Redis to the public internet. Candidates access Redis via SSH on the droplet, so localhost binding is sufficient.
   - Golang API service with working dependency on Redis using depends_on
   - Proper network configuration for service communication
   - **MUST NOT include any version specification** in the docker-compose.yml file
@@ -318,7 +319,7 @@ Write practical, beginner-friendly tips in clear language so basic-level candida
   - Use bullets, action words like "Consider", "Think about", "Review"
 
 ### Application Access
-  - Provide the Redis connection details in a clear format: host (use <DROPLET_IP> placeholder), port, API endpoints relevant to the scenario
+  - Provide the Redis connection details in a clear format: host is localhost/127.0.0.1 (accessible via SSH on the droplet), port 6379, and API endpoints relevant to the scenario. Mention candidates can use `docker exec -it <redis_container> redis-cli` or `redis-cli -h 127.0.0.1`
 
 
 ### Objectives

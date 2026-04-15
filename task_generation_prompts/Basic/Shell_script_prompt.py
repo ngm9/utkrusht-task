@@ -9,7 +9,6 @@ Roles and Responsibilities:
 A DevOps or backend engineer with 1–2 years of experience in Shell scripting is expected to write simple automation scripts to streamline basic system and deployment tasks. Their primary responsibility includes creating scripts to manage files, automate backups, perform log rotations, schedule jobs using cron, or monitor resource usage. They should understand shell fundamentals, including variables, loops, conditionals, functions, and file permissions. The engineer should also be able to write clean, reusable, and well-documented scripts that work reliably in Linux or Unix environments. While they may not be required to write complex production-grade automation, they should know how to test, debug, and safely execute their scripts in real-world scenarios.
 
 Based on this information, could you summarize what you understand about the company and role requirements?
-Keep your summary focused, and remember that any generated task name must stay concise—no more than 50 words.
 """
 
 PROMPT_SHELL_SCRIPT_BASIC_INPUT_AND_ASK = """
@@ -49,12 +48,12 @@ Your job is to generate an entire task definition, including starter files, READ
 
 ### Nature of the Task
 - Task must ask to implement a shell script from scratch or fix bugs in the existing script.
-- The question scenario must be clear, ensuring that all facts, figures, directory names, file patterns, etc., are realistic and relevant to the context. 
+- The question scenario must be clear, ensuring that all facts, figures, directory names, file patterns, etc., are realistic and relevant to the context.
 - Generate enough starter files/directories that gives the candidate a good starting point to start solving the task
 - DO NOT GIVE AWAY THE SOLUTION IN THE STARTER FILES OR COMMENTS.
 - A part of the task completion is to watch the candidate implement best practices, design the solution correctly and not just fix the errors
 - The question should be a real-world scenario and not a trick question with syntactic errors.
-- The complexity of the task and specific ask expected from the candidate must align with BASIC proficiency level (1-2 years shell scripting experience), ensuring that no two questions generated are similar. 
+- The complexity of the task and specific ask expected from the candidate must align with BASIC proficiency level (1-2 years shell scripting experience), ensuring that no two questions generated are similar.
 - For BASIC level of proficiency, the questions must be more specific and less open ended. The scenarios must also be easily digestible and focus on fundamental shell scripting concepts like:
   - Basic bash syntax and control structures (if/else, loops, case statements)
   - File and directory operations (cp, mv, mkdir, rm, find)
@@ -69,12 +68,12 @@ Your job is to generate an entire task definition, including starter files, READ
   - Log file processing and rotation
   - CSV/text data manipulation
   - Idempotency and script safety
-- The question must NOT include hints. The hints will be provided in the "hints" field. 
+- The question must NOT include hints. The hints will be provided in the "hints" field.
 - Ensure that all questions and scenarios adhere to modern bash best practices (Bash 4.0+) and POSIX compliance where applicable.
 - If you include diagrams, ensure they are written in mermaid format, properly indented and also in code blocks.
 
 ## AI AND EXTERNAL RESOURCE POLICY:
-- Candidates are permitted and encouraged to use any external resources they find helpful, including but not limited to Google, Stack Overflow, man pages, bash documentation, and AI-powered tools, agentic IDs, or Large Language Models (LLMs). 
+- Candidates are permitted and encouraged to use any external resources they find helpful, including but not limited to Google, Stack Overflow, man pages, bash documentation, and AI-powered tools, agentic IDs, or Large Language Models (LLMs).
 - The tasks are designed to assess the candidate's ability to effectively find, understand, integrate, and adapt solutions to solve a specific problem, rather than testing rote memorization. Therefore, the complexity of the tasks should reflect basic shell scripting proficiency while requiring genuine problem-solving skills that go beyond simple copy-pasting from a generative AI.
 
 ## Script Generation Instructions:
@@ -100,31 +99,31 @@ Based on the real-world scenarios provided in following conversations, create a 
 ## REQUIRED OUTPUT JSON STRUCTURE
 
 {{
-   "name": "Task Name (within 50 words) reflecting the scenario context and focusing on basic shell scripting",
-   "question": "A short description of the task scenario including the specific ask from the candidate — what needs to be fixed/implemented?",
-   "code_files": {{
-      "README.md": "Candidate-facing README with Task Overview, Helpful Tips, Objectives, and How to Verify",
-      ".gitignore": "Proper shell script, log files, and temporary file exclusions",
-      "scripts/.gitkeep": "Placeholder for scripts directory",
-      "data/sample_file.csv": "Sample dataset according to the scenario requirements",
-      "logs/.gitkeep": "Placeholder for logs directory if needed",
-      "starter_file_name": "starter_file_content",
-      "starter_file_name_2": "starter_file_content_2"
-      ...
+  "name": "task-name-in-kebab-case",
+  "title": "Human-readable task title in '<action verb> <subject>' format, 50-80 characters. Describes what the candidate will do in plain English. Examples: 'Automate Log Rotation for Web Server Farm', 'Fix Backup Script for Database Export Pipeline', 'Build CSV Report Generator for Sales Data'. The title should clearly convey the action (automate, fix, build, implement, debug, optimize) and the subject (what system/feature/component). This is used for display purposes — 'name' is the kebab-case GitHub repo name, 'title' is the readable display name.",
+  "question": "Short description of the scenario and specific ask from the candidate — what needs to be fixed or implemented",
+  "code_files": {{
+    "README.md": "Candidate-facing README following the README structure defined below",
+    ".gitignore": "Proper shell script, log files, and temporary file exclusions",
+    "scripts/.gitkeep": "Placeholder for scripts directory",
+    "data/sample_file.csv": "Sample dataset according to the scenario requirements",
+    "logs/.gitkeep": "Placeholder for logs directory if needed",
+    "...": "All other starter files — sample data, broken scripts for debugging tasks, directory structure. Generate as many files as needed for a realistic project setup."
   }},
-  "outcomes": "Expected results after completion in 2-3 lines. Use simple english.",
+  "outcomes": "Bullet-point list of expected results after completion, using simple, non-technical language. Each bullet must describe ONE clear deliverable or requirement and be understandable to non-engineers (e.g. HR or recruiters). One bullet MUST explicitly state: 'Write production-level clean code with best practices including proper design patterns, naming conventions, exception handling, logging and observability.'",
   "short_overview": "Bullet-point list in simple language describing: (1) the high-level operational or business problem, (2) the specific shell scripting implementation or fix goal, and (3) the expected outcome emphasizing correctness, reliability, and maintainability.",
   "pre_requisites": "Bullet-point list of tools, environment, and knowledge required to complete the task. Mention things like Bash 4.0+, Unix/Linux system, basic command-line tools (grep, sed, awk, find), text editor, Git, understanding of file permissions, etc.",
-  "answer": "High-level solution approach",
-  "hints": "a single line hint on what a good approach to solve the task could include. These hints must NOT give away the answer, but gently nudge the candidate in the right direction.",
+  "answer": "High-level solution approach describing main components and flow.",
+  "hints": "Single line suggesting focus area. Example: 'Focus on chaining Unix text processing tools efficiently and handling edge cases like empty files or missing directories'",
   "definitions": {{
-    "terminology_1": "definition_1",
-    "terminology_2": "definition_2",
-    ...
-    }}
+    "Shebang": "The #! line at the top of a script that tells the system which interpreter to use (e.g., #!/bin/bash)",
+    "Exit Code": "A numeric value returned by a command or script to indicate success (0) or failure (non-zero) to the calling process",
+    "Pipe": "The | operator that connects the stdout of one command to the stdin of another, enabling data processing chains",
+    "Idempotency": "Property of a script where running it multiple times produces the same result as running it once, without unintended side effects",
+    "Glob": "Shell pattern matching syntax using wildcards (*, ?, []) to match filenames and paths"
+  }}
 }}
 
- 
 ## File requirements:
 - More than 1 files can be generated but make sure they are included in the JSON structure correctly.
 - Scripts should follow bash best practices and conventions
@@ -137,112 +136,66 @@ Based on the real-world scenarios provided in following conversations, create a 
 - DO NOT include any comments that give away hints or solutions
 - DO NOT include comments like "Add logic here" or "Should implement validation" etc.
 - DO NOT add comments that give away hints or solution or implementation details
-
 - The generated project structure should be realistic, but the script requiring implementation will not function correctly until the candidate completes the task.
-- Every task name you produce must be concise and limited to 50 words or fewer, reflecting the core scenario clearly.
 
 ## .gitignore INSTRUCTIONS:
 Create a comprehensive gitignore file that covers all standard exclusions for shell script projects including log files (*.log), temporary files (*.tmp, .*.swp), backup files (*~, *.bak), OS-specific files (.DS_Store, Thumbs.db), generated output directories, and other common artifacts that should not be tracked in version control.
 
-## README.md INSTRUCTIONS:
- - The README.md contains the following sections:
-   - Task Overview
-   - Helpful Tips
-   - Objectives
-   - How to Verify 
-- The README.md file content MUST be fully populated with meaningful, specific content
-- Task Overview section MUST contain the exact operational scenario from the task description
-- ALL sections must have substantial content - no empty or placeholder text allowed
-- Content must be directly relevant to the specific task scenario being generated
-- Use concrete operational context, not generic descriptions
-- **IMPORTANT**: Do NOT directly tell candidates what to implement - provide direction and guidance to help them discover solutions
+## README.md STRUCTURE
 
-### Task Overview
+**CRITICAL**: The README must be concise and open-ended. Each section should have only the essential points needed to understand the task. Do NOT overload with too many bullets — quality over quantity. The candidate should figure out the implementation approach on their own.
 
-**CRITICAL REQUIREMENT**: This section MUST contain 2-3 meaningful sentences describing the operational scenario, current situation, and what problem needs to be solved. 
-NEVER generate empty content - always provide substantial context that explains what the candidate is working on and why it matters in a real DevOps/SysAdmin environment.
+### Task Overview (MANDATORY - 3-4 substantial sentences)
 
-### Helpful Tips
-Provide practical guidance without revealing specific implementations:
-  - Suggest exploring how Unix command-line tools can be chained together to process data efficiently
-  - Mention thinking about how to make scripts safe to run multiple times without causing issues
-  - Hint at considering what happens when expected files or directories don't exist
-  - Recommend exploring how to validate inputs before processing them
-  - Suggest thinking about how to provide useful feedback during script execution
-  - Point toward considering proper file permission management for security
-  - Hint at exploring how exit codes communicate success or failure to the system
-  - Recommend considering how to handle edge cases like empty inputs or special characters
-  - Suggest analyzing how to make scripts maintainable with clear variable names and structure
-  - Mention thinking about efficient text processing tools available in Unix/Linux
-  - Use bullet points formatted as tips, starting with action words like "Consider", "Think about", "Explore", "Review", "Look into"
-  - **CRITICAL**: Tips should guide discovery toward fundamental shell scripting concepts, not provide direct solutions or specific commands
-  - Frame suggestions around learning and understanding rather than prescriptive instructions
-  - Examples of proper framing:
-    * "Consider how to check if a directory exists before attempting operations on it"
-    * "Think about which Unix tools are best suited for processing structured text data"
-    * "Explore how to make your script communicate what it's doing to anyone watching"
-    * "Review how file permissions affect who can read, write, or execute files"
-    * "Look into how command pipelines can transform data step by step"
+**CRITICAL**: Describe the specific operational scenario and current state of the system/environment. Explain what the candidate is working on and why it matters. Use concrete business context; never leave empty or generic text. Do NOT directly tell candidates what to implement — provide direction so they can discover the solution.
 
-### Objectives
-  - Clear, measurable goals for the candidate appropriate for basic level
-  - This is what the candidate should be able to do successfully to say that they have completed the task
-  - These objectives will also be used to verify the task completion and award points
-  - What functionality should be implemented, expected script behavior, input/output requirements
-  - Focus on fundamental shell scripting concepts and skills
-  - Frame objectives around outcomes rather than specific technical implementations
-  - Examples of proper framing:
-    * "Create a script that organizes files based on specific criteria"
-    * "Implement functionality that processes text data and produces cleaned output"
-    * "Build a solution that handles errors gracefully and reports what went wrong"
-    * "Design a script that can safely run multiple times without causing problems"
-    * "Ensure the script validates its inputs before attempting to process them"
-  - Objectives should be measurable but not prescribe specific bash commands or approaches
-  - Should guide candidates to think about: functionality, data validation, error handling, idempotency
-  - **CRITICAL**: Objectives describe the "what" needs to work, never the "how" to implement it
+### Objectives (3-5 bullets MAX)
 
-### How to Verify
-  - Specific checkpoints after implementation, what to test and how to confirm success
-  - Observable behaviors or outputs to validate
-  - These points will help the candidate to verify their own work and the video recording of them performing these steps will also help the assessor to see how thorough they are in checking their own work and award points
-  - Include both functional testing and basic script quality checks
-  - Frame verification in terms of observable outcomes and script behaviors
-  - Examples of proper framing:
-    * "Run the script with the provided test data and verify it produces the expected output"
-    * "Test the script with missing files or directories and confirm it handles errors appropriately"
-    * "Execute the script multiple times and verify it produces consistent, correct results"
-    * "Check that generated files have the correct permissions and ownership"
-    * "Test edge cases like empty input, special characters, or very large files"
-    * "Verify the script exits with appropriate status codes for success and failure scenarios"
-  - Suggest what to verify and why it matters, not specific implementation details to check
-  - Guide candidates to test: functionality, error handling, idempotency, edge cases
-  - **CRITICAL**: Describe what behaviors to verify, not the specific commands or logic to check
+Define goals focusing on outcomes for a BASIC-level Shell Scripting task:
+  - Describe WHAT needs to work, not HOW to implement it
+  - Frame objectives around observable outcomes and expected behavior
+  - Do NOT specify exact implementation approaches, specific commands, or tool names
+  - **CRITICAL**: Objectives describe the "what" needs to work, never the "how" to implement it. Keep to 3-5 concise bullets only.
 
-### NOT TO INCLUDE in README: Make sure you do not include the following in the README.md file:
-  - SETUP INSTRUCTIONS OR COMMANDS (chmod +x script.sh, ./script.sh, etc.)
-  - Direct solutions or hints
-  - Step-by-step implementation guides
-  - Specific bash commands or implementation approaches (e.g., "use find command", "create a for loop with")
-  - Direct answers and code snippets that would give away the solution to the task
-  - Any specific command syntax or pipeline details that would give away the solution to the task
-  - Should not provide any particular tool or approach to implement the solution
-  - Script names or specific command patterns that would reveal the solution
-  - Phrases like "you should write", "make sure to use", "create a function called X"
-  - Specific Unix tool recommendations that would reveal the solution approach
-  - Directory structure details that would dictate the implementation approach
+### How to Verify (3-5 bullets MAX)
+
+Verification approaches for the task:
+  - Describe what behaviors to verify and how to confirm success
+  - Focus on observable outcomes (script output, file changes, exit codes)
+  - Do NOT specify specific commands, pipelines, or implementation details to check
+  - **CRITICAL**: Describe what behaviors to verify, not specific commands or logic to check. Keep to 3-5 concise bullets only.
+
+### Helpful Tips (3-4 bullets MAX)
+
+Practical guidance without revealing implementations:
+  - Use bullet points starting with "Consider", "Think about", "Explore", "Review", "Look into"
+  - Guide the candidate toward discovery — suggest areas to explore, not specific solutions
+  - Do NOT specify exact commands, tool names, or pipeline patterns
+  - **CRITICAL**: Guide discovery, never provide direct solutions. Keep to 3-4 concise bullets only.
+
+### NOT TO INCLUDE IN README
+- Step-by-step implementation instructions
+- Exact code solutions or snippets
+- Setup commands (chmod +x, ./script.sh, etc.)
+- Specific bash commands or tool names that reveal the solution approach
+- Phrases like "you should write", "make sure to use", "create a function called X"
+- Excessive bullets or verbose explanations — keep each section lean and focused
 
 ## CRITICAL REMINDERS
+
 1. **Output must be valid JSON only** — no markdown, no explanations, no code fences
-2. **name** must be short, descriptive, within 50 words
+2. **name** must be short, descriptive, kebab-case (e.g., "log-rotation-automation", "csv-report-generator")
 3. **code_files** must include README.md, .gitignore, and relevant starter scripts/data files
-4. **README.md** must follow the structure above with Task Overview, Helpful Tips, Objectives, How to Verify
+4. **README.md** must follow the structure above with Task Overview, Objectives, How to Verify, Helpful Tips (in that exact order)
 5. **Starter files** must be realistic but must NOT contain the solution
-6. **outcomes** and **short_overview** must be bullet-point lists in simple language
-7. **hints** must be a single line; **definitions** must include relevant Shell/Bash terms
-8. **Task must be completable within the allocated time** for BASIC proficiency (1-2 years)
-9. **NO comments in scripts** that reveal the solution or give hints
-10. **Use Bash 4.0+** best practices throughout
-  """
+6. **outcomes** must include one bullet on production-level clean code with best practices, design patterns, exception handling, logging
+7. **short_overview**, **pre_requisites** must be bullet-point lists in simple language
+8. **hints** must be a single line; **definitions** must include relevant Shell/Bash terms
+9. **Task must be completable within the allocated time** for BASIC proficiency (1-2 years)
+10. **NO comments in scripts** that reveal the solution or give hints
+11. **Use Bash 4.0+** best practices throughout
+12. **"title"** must be in `<action verb> <subject>` format and different from `"name"` — name is kebab-case for GitHub repo, title is human-readable for display
+"""
 PROMPT_REGISTRY = {
     "Shell (BASIC)": [
         PROMPT_SHELL_SCRIPT_BASIC_CONTEXT,
