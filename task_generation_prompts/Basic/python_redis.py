@@ -168,7 +168,8 @@ Based on the real-world scenarios provided above, create a Redis optimization ta
 - **CRITICAL**: All deployment files (run.sh, docker-compose.yml, Dockerfile) must be thoroughly validated to ensure successful deployment
 
 ### Docker-compose Instructions:
-  - Redis service with proper working configuration (port 6379, proper image)
+  - Redis service with proper working configuration (proper image, e.g. redis:7-alpine)
+  - **SECURITY-CRITICAL**: Redis ports MUST be bound to localhost only using `"127.0.0.1:6379:6379"` — NEVER use `"6379:6379"` which exposes Redis to the public internet. Candidates access Redis via SSH on the droplet, so localhost binding is sufficient.
   - FastAPI service with working dependency on Redis using depends_on
   - Proper network configuration for service communication
   - **MUST NOT include any version specification** in the docker-compose.yml file
@@ -352,15 +353,16 @@ Write practical, beginner-friendly tips in clear language so basic-level candida
 ```
 
 ### Redis Access
+  - Explain that Redis is bound to localhost for security — candidates must SSH into the droplet first, then access Redis locally
   - Provide the Redis connection details in a clear format
-  - Mention tools they can use to inspect Redis
-  - For the host, use a placeholder indicating the droplet IP (e.g., <DROPLET_IP>)
+  - Mention tools they can use to inspect Redis (redis-cli via docker exec, or locally on the droplet)
   - Include basic inspection commands that help them understand Redis state
   - Keep it simple and focused on access information
 
 **RULES:**
 - Use clean, structured format for connection details
-- Mention 2-3 useful tools (redis-cli, RedisInsight)
+- Mention that Redis is only accessible from the droplet (not from the internet)
+- Explain how to access via `docker exec -it <redis_container> redis-cli` or `redis-cli -h 127.0.0.1`
 - Include 3-5 basic commands for inspection
 - DO NOT include complex Redis commands
 - Focus on read-only inspection commands
@@ -368,12 +370,14 @@ Write practical, beginner-friendly tips in clear language so basic-level candida
 **Format Example:**
 ```
 **Connection Details:**
-- Host: <DROPLET_IP>
+- Host: localhost (127.0.0.1) — accessible only from the droplet via SSH
 - Port: 6379
 - Database: 0
 
-**Access Tools:**
-You can use redis-cli or RedisInsight to inspect the cache.
+**How to Access:**
+SSH into the droplet, then use one of these methods:
+- `docker exec -it <redis_container_name> redis-cli`
+- `redis-cli -h 127.0.0.1 -p 6379`
 
 **Useful Commands:**
 - View all keys: KEYS *

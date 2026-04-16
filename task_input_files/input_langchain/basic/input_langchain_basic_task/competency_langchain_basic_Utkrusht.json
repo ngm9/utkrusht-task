@@ -1,0 +1,10 @@
+[
+    {
+        "competency_id": "4b25f0dc-49b7-4351-b76c-bc82b10f57cd",
+        "created_at": "2025-03-25T04:14:43.337544+00:00",
+        "proficiency": "BASIC",
+        "organization_id": "0a44d515-1a04-4f19-b9cb-f47114ee7db7",
+        "name": "Langchain",
+        "scope": "A person with BASIC proficiency level in Langchain as a competency should be able to grasp foundational concepts like chains, agents, memory, and data connectors, and understand how Langchain interfaces with common LLMs for basic NLP tasks. They should be capable of writing simple functional scripts that orchestrate LLM calls, handle fundamental data ingestion (e.g., CSVs, APIs), and produce straightforward retrieval-augmented generation. They must demonstrate familiarity with standard Python libraries, ensuring code accuracy, clarity, and adherence to Pythonic best practices. They should troubleshoot simple errors or performance bottlenecks, integrating Langchain components into AI projects with guidance from senior developers. They are comfortable collaborating with a team, running and updating relevant documentation, and aligning their tasks with project goals. They can produce working prototypes that retrieve data, call an LLM, and output results in an end-to-end pipeline. They demonstrate minimal operational oversight to deploy and maintain these basic Langchain applications. They actively explore new features, read documentation, and seek mentorship for more complex problems. They handle smaller-scale or performance-light tasks, contributing to modules or utilities within AI-driven solutions. They acknowledge limitations in advanced usage but show consistent growth in learning. They know how to leverage essential libraries for data parsing, debugging, testing, and end-to-end validation, while respecting code review standards."
+    }
+]

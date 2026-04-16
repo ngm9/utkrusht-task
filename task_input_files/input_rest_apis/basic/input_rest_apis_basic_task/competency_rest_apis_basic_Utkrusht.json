@@ -1,0 +1,10 @@
+[
+    {
+        "competency_id": "c17ec1c5-4ea6-44ee-a905-2ae06da30659",
+        "created_at": "2025-11-04T10:58:13.575123+00:00",
+        "proficiency": "BASIC",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "REST APIs",
+        "scope": "A person with BASIC proficiency level in REST APIs as a competency should be able to explain what REST is, its purpose, and how it differs from other paradigms like SOAP or RPC; understand and apply core REST principles (statelessness, client-server, uniform interface, resource-based design, layered system); identify and use HTTP methods (GET, POST, PUT, DELETE, PATCH) appropriately; construct and interpret resource-oriented URIs using standard naming conventions; understand the structure of HTTP requests and responses including headers, body, and status codes (200, 201, 204, 400, 404, 500); consume APIs using tools like Postman, curl, or browser plugins; build basic REST endpoints with frameworks such as Express.js, Flask, Spring Boot, or ASP.NET Core to perform CRUD operations; handle JSON payloads and set/read common HTTP headers; demonstrate awareness of idempotency, statelessness, and content negotiation via Accept and Content-Type headers; implement simple authentication (API keys, basic auth) and input validation; read and write basic API documentation (Swagger/OpenAPI, Postman collections), including awareness of versioning strategies (e.g., URI versioning); use at least one API development library or framework and test APIs manually; perform basic logging and error handling; and recognize the boundaries of their knowledge, knowing when to seek help for advanced topics like HATEOAS, advanced security, or large-scale API design."
+    }
+]

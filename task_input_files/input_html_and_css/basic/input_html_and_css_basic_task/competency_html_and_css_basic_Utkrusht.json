@@ -1,0 +1,10 @@
+[
+    {
+        "competency_id": "mf7c1fe6-d669-414e-b066-e9733f0de7a8",
+        "created_at": "2024-12-11T11:13:21+00:00",
+        "proficiency": "BASIC",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "HTML and CSS",
+        "scope": "An BASIC level in HTML and CSS means the ability to structure complex web pages using semantic tags, create forms, and optimize accessibility with ARIA roles. They are proficient in using Flexbox and Grid for layouts, ensuring responsive designs with media queries. They are familiar with CSS preprocessors like SASS, can organize CSS using naming conventions (BEM, OOCSS), and work with CSS frameworks (Bootstrap, TailwindCSS). They know how to optimize for performance, handle cross-browser compatibility, and use browser dev tools for debugging. They are skilled in using custom CSS, CSS variables, and can implement basic animations or transitions. They can refactor and maintain existing codebases, improve load times, and ensure designs are SEO-friendly. They have a good understanding of CSS specificity, inheritance, and styling reusable components, ensuring scalability and maintainability."
+    }
+]

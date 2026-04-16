@@ -1,0 +1,10 @@
+[
+    {
+        "competency_id": "6c41ccb8-e3dd-4c5d-a432-c6f7750f9768",
+        "created_at": "2025-11-04T10:51:48.788975+00:00",
+        "proficiency": "INTERMEDIATE",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Microservices",
+        "scope": "A person with INTERMEDIATE proficiency level in Microservices as a competency should be able to design and implement microservices architectures using principles like single responsibility, bounded context, and decentralized data management; decompose services with DDD concepts; design RESTful, gRPC, and GraphQL APIs with versioning and documentation (Swagger/OpenAPI); develop and deploy microservices using frameworks like Java/Spring Boot, .NET Core, Node.js, Python/Flask/FastAPI; implement synchronous (HTTP/REST, gRPC) and asynchronous (RabbitMQ, Kafka) communication with JSON, Protobuf, Avro; manage data with database-per-service, polyglot persistence, eventual consistency, SAGA/2PC, and distributed caching (Redis); use service discovery (Eureka, Consul, etcd), centralized config (Spring Cloud Config, Consul), Docker, Kubernetes basics, and CI/CD tools (Jenkins, GitLab CI, GitHub Actions); apply resilience patterns (circuit breakers, retries, bulkheads), monitoring/logging (ELK, EFK, Prometheus, Grafana, Jaeger, Zipkin), and health checks; secure services with OAuth2, JWT, API gateways (Kong, Ambassador, NGINX), encryption, and service-to-service auth; integrate API gateways for routing, rate limiting, and cross-cutting concerns; write unit, integration, and contract tests (Pact, Spring Cloud Contract), automate testing in CI/CD, and use mocking tools (WireMock, MockServer); maintain API and service documentation, participate in design/code reviews, and collaborate using agile tools (JIRA, Confluence, Trello); tune performance, ensure horizontal scalability and statelessness; and demonstrate awareness of advanced topics like event sourcing, CQRS, service mesh (Istio, Linkerd), multi-tenancy, blue/green and canary deployments, and regulatory compliance (GDPR, HIPAA)."
+    }
+]

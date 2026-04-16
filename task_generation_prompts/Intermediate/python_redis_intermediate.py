@@ -122,7 +122,8 @@ Based on the real-world scenarios provided above, create a Redis optimization ta
 - **IMPORTANT**: The infrastructure setup is AUTOMATED - candidates will NOT manually deploy or run scripts. The task environment will be pre-deployed with working API and Redis connection.
 
 ### Docker-compose Instructions:
-  - Redis service with proper configuration (port, persistence options if needed)
+  - Redis service with proper configuration (persistence options if needed)
+  - **SECURITY-CRITICAL**: Redis ports MUST be bound to localhost only using `"127.0.0.1:6379:6379"` — NEVER use `"6379:6379"` which exposes Redis to the public internet. Candidates access Redis via SSH on the droplet, so localhost binding is sufficient.
   - FastAPI service with dependency on Redis using depends_on
   - Volume mounts for Redis data persistence if needed
   - Network configuration for service communication
@@ -296,7 +297,7 @@ Provide practical guidance without revealing specific implementations:
     * "Explore approaches for choosing the right data structure based on your access patterns"
     * "Review how to monitor and measure caching effectiveness to guide your optimization decisions"
     * "Consider how to design caching flows that are both performant and easy to debug"
-  - If Redis connection information is needed, include it briefly within a tip (e.g., "Redis is accessible at <DROPLET_IP>:6379 — use any preferred client tool for analysis")
+  - If Redis connection information is needed, include it briefly within a tip (e.g., "Redis is accessible at localhost:6379 from the droplet — SSH in and use redis-cli or any preferred client tool for analysis")
 
 ### NOT TO INCLUDE in README: Make sure you do not include the following in the README.md file:
   - MANUAL DEPLOYMENT INSTRUCTIONS (environment is automated via run.sh)

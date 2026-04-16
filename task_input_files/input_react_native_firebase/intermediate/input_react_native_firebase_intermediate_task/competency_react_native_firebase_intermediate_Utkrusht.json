@@ -1,0 +1,18 @@
+[
+    {
+        "competency_id": "9613d92e-364d-4c32-ac8b-bfa2716a1af2",
+        "created_at": "2026-04-06T12:00:00.000000+00:00",
+        "proficiency": "INTERMEDIATE",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "React Native",
+        "scope": "A person with INTERMEDIATE proficiency level in React Native (3-5 years experience) should be able to architect, build, and maintain complex mobile applications with well-structured codebases. They understand advanced navigation patterns including nested navigators, conditional navigation flows, and navigation state persistence. They can design scalable state management using Context API with useReducer for global state. They are proficient with performance optimization techniques including FlatList tuning, React.memo, useMemo and useCallback. They can build custom hooks that encapsulate complex business logic and compose hooks for reusable patterns. They implement robust API integration with proper error handling, retry logic, pagination, and pull-to-refresh patterns. They handle platform-specific code effectively and implement proper error boundaries with fallback UI."
+    },
+    {
+        "competency_id": "bcf87d4a-e013-4a25-a9c5-10df8532d57f",
+        "created_at": "2026-04-06T12:00:00.000000+00:00",
+        "proficiency": "INTERMEDIATE",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Firebase",
+        "scope": "A person with INTERMEDIATE proficiency level in Firebase (3-5 years experience) should be able to design and implement complex Firebase-backed mobile applications with well-architected data layers. They understand advanced Firestore patterns including compound queries across multiple fields, subcollection modeling, data denormalization for read-heavy access patterns, and when to use subcollections vs root-level collections. They can perform batch writes and transactions for atomic multi-document operations and understand when each is appropriate. They design efficient real-time listener architectures — managing multiple onSnapshot listeners across screens, implementing proper listener cleanup to prevent memory leaks, and using query cursors for paginated real-time data. They implement comprehensive auth architectures including role-based access patterns using Firestore user profiles, custom hooks for auth state management (useAuth), and protected navigation flows that handle edge cases like token refresh and session expiry. They can write Firestore security rules that validate data structure, enforce ownership, and implement role-based read/write permissions. They build custom hooks that abstract Firebase operations (useCollection, useDocument, useFirestoreQuery) providing loading/error/data states. They understand Firestore indexing requirements, read/write cost implications, and can optimize query patterns to minimize reads. They implement offline-capable patterns using Firestore's built-in persistence and handle the online/offline transition gracefully in the UI."
+    }
+]

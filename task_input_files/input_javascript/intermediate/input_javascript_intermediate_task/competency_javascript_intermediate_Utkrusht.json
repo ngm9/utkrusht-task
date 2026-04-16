@@ -1,0 +1,10 @@
+[
+    {
+        "competency_id": "10cd7e67-acdd-4ce2-ac8d-b4bce2f3f3f0",
+        "created_at": "2024-12-13T02:57:58.226346+00:00",
+        "proficiency": "INTERMEDIATE",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Javascript",
+        "scope": "An INTERMEDIATE JavaScript developer (3-6 years experience) should have a solid understanding of core language concepts such as closures, scope, `this`, async/await, and error handling (e.g., `try/catch`). They should be proficient in using JavaScript’s higher-order functions (e.g., `.map()`, `.filter()`, `.reduce()`), and understand the event loop, promises, and callback functions. They should know how to manipulate the DOM, handle user events, and manage the browser’s storage (e.g., localStorage, sessionStorage). They are capable of working with APIs (fetch, Axios) to integrate external data sources and understand JSON parsing. They should be familiar with front-end frameworks like React, Angular, or Vue.js, and state management tools such as Redux, Context API, or Vuex. An intermediate developer understands module bundlers (e.g., Webpack), build tools (e.g., Gulp, Grunt), and has experience using testing frameworks (e.g., Jest, Mocha). They can design and implement medium-sized applications using modular design principles and relevant design patterns (e.g., Singleton, Factory), while optimizing performance by identifying bottlenecks, reducing reflows/repaints, and improving memory usage. Additionally, they are comfortable with integrating backend services (e.g., Node.js), managing authentication (e.g., JWT), and handling security concerns such as XSS and CSRF. They actively participate in code reviews, collaborate effectively with teams, and can refactor legacy code and resolve bugs with minimal supervision."
+    }
+]
