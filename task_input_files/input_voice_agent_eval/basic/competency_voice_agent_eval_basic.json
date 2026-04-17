@@ -1,0 +1,10 @@
+[
+    {
+        "competency_id": "6f48edd8-fc80-48b7-844e-dea54da6ceaa",
+        "created_at": "2025-03-25T04:15:14.947689+00:00",
+        "proficiency": "BASIC",
+        "organization_id": "0a44d515-1a04-4f19-b9cb-f47114ee7db7",
+        "name": "Voice Agent Evaluation",
+        "scope": "A person with BASIC proficiency level in Voice Agent Evaluation should be able to design practical evaluation frameworks for conversational AI systems deployed in production. They can analyze operational data (call logs, transcripts, failure reports) to identify patterns in AI system failures such as interruptions, hallucinations, missed responses, and recommendation miscalibration. They understand the distinction between offline evaluation (testing against labeled datasets before deployment) and online evaluation (monitoring live traffic post-deployment). They can define 5-7 measurable quality dimensions for voice agent performance grounded in observed data. They can propose labeling schemes for sample datasets including annotator selection, label definitions, and basic inter-rater reliability checks. They can set data-informed ship/no-ship quality thresholds with specific metrics and cutoffs. They can reason about tradeoffs between automated evaluation methods (LLM-as-judge, regex pattern matching, latency monitoring) and human review (subjective quality assessment, edge case detection, bias auditing). They have familiarity with evaluation concepts like ground truth, precision/recall for classification tasks, and agreement rates. They collaborate with product, engineering, and QA teams to align evaluation criteria with business goals. They primarily focus on practical, evidence-backed frameworks and require guidance for statistically rigorous experimental design or building automated evaluation pipelines."
+    }
+]
