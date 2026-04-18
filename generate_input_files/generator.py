@@ -34,7 +34,7 @@ load_dotenv()
 
 # Constants
 BASE_DIR = Path(__file__).parent.parent / "task_input_files"
-MODEL = "gpt-5-nano-2025-08-07"
+MODEL = "gpt-5.4"
 
 PROFICIENCY_YOE_MAP = {
     "BEGINNER": "0+",
@@ -57,7 +57,7 @@ HARDCODED_ORGANIZATION = {
     ),
 }
 
-COMPETENCY_FIELDS = "competency_id, created_at, proficiency, organization_id, name, scope"
+COMPETENCY_FIELDS = "competency_id, created_at, proficiency, organization_id, name, scope, long_scope"
 
 # Pricing per million tokens for gpt-5-nano (https://platform.openai.com/docs/pricing)
 PRICE_PER_M_INPUT = 0.50    # $0.50 per 1M input tokens
@@ -176,26 +176,37 @@ def generate_role_context(client: openai.OpenAI, scope: str, name: str, proficie
     return response.output_text.strip(), extract_usage(response)
 
 
-def generate_questions_prompt(client: openai.OpenAI, scope: str, name: str, proficiency: str, yoe: str) -> tuple[str, dict]:
+def generate_questions_prompt(client: openai.OpenAI, long_scope: str, name: str, proficiency: str, yoe: str) -> tuple[str, dict]:
     """Generate questions_prompt from competency scope using OpenAI Responses API.
 
     Returns (text, usage_dict).
     """
-    prompt = (
-        "You are a technical assessment designer. Given a competency scope description, "
-        "generate a questions_prompt that serves as an assessment rubric. The format should:\n"
-        '1. Start with "Please ensure the questions you ask cover" followed by key areas\n'
-        "2. Include 3-5 bullet points, each starting with a dash and **bold category name**\n"
-        "3. Each bullet describes what the candidate should demonstrate\n"
-        '4. End with a summary sentence starting with "The goal is to evaluate..."\n'
-        f"Match the proficiency level: {proficiency} ({yoe} years experience) for {name}.\n"
-        "Use \\n for newlines within the output. Return only the prompt text.\n\n"
-        f"Competency scope:\n\n{scope}"
-    )
+    GENEARTE_QUESTIONS_PROMPT = f"""
+    You are a technical assessment designer with 15 years of experience in designing technical assessments. The assessments generated from the prompts you generate are like bar raiser questions.
+    They allow the candidate to solve / fix / build / review a real work item in a real scenario. Given a competency scope description, you take into account the 
+    proficiency, the years of experience related to that proficiency to design the difficulty level of the task. 
+    
+    The prompts you generate will include technical, conceptual ideas required in a task. But they are also not prompts that encourage generating trick questions or configuration or semantics 
+    related questions. Your prompt you will generate, always asks to generate logical or functional or other types of scenarios.
+
+    INSTRUCTIONS:
+    1. Start with "Please ensure the questions you ask cover" followed by key areas
+    2. Include all sections from the long_scope that are not related to testing or configuration or semantics
+    3. The question prompt includes lines to specify that BASIC proficiency task scenarios give the candidate only 15-20 minutes to solve the task, INTERMEDIATE proficiency task scenarios give 
+    the candidate only 25-30 mins to solve the task
+    4. End with a summary sentence starting with "The goal is to evaluate..." and add ideas of what the requirements for the tasks should be
+    5. Use \\n for newlines within the output. Return only the prompt text.
+    
+    INPUT:
+    Match the proficiency level: {{proficiency}} ({{yoe}} years experience) for {{name}}.
+    Competency Long Scope:\n\n
+    {{long_scope}}
+
+    """
 
     response = client.responses.create(
         model=MODEL,
-        input=[{"role": "user", "content": prompt}],
+        input=[{"role": "user", "content": GENEARTE_QUESTIONS_PROMPT}],
         reasoning={"effort": "low"},
     )
 
@@ -327,6 +338,7 @@ def generate_input_files(name, proficiency, folder_name, force, dry_run, env):
                 "organization_id": c["organization_id"],
                 "name": c["name"],
                 "scope": c["scope"],
+                "long_scope": c["long_scope"]
             })
 
     click.echo(f"Total: {len(competency_data)} competency row(s) combined.")
@@ -338,7 +350,7 @@ def generate_input_files(name, proficiency, folder_name, force, dry_run, env):
     all_names = [c["name"] for c in competency_data]
     combined_name = " & ".join(all_names)
     combined_scope = "\n\n---\n\n".join(
-        f"[{c['name']}]\n{c['scope']}" for c in competency_data
+        f"[{c['name']}]\n{c['long_scope']}" for c in competency_data
     )
 
     click.echo("Generating role_context and questions_prompt via LLM...")
