@@ -1,0 +1,10 @@
+[
+    {
+        "competency_id": "6f48edd8-fc80-48b7-844e-dea54da6ceaa",
+        "created_at": "2025-03-25T04:15:14.947689+00:00",
+        "proficiency": "BASIC",
+        "organization_id": "0a44d515-1a04-4f19-b9cb-f47114ee7db7",
+        "name": "Prompt Engineering",
+        "scope": "A person with BASIC proficiency level in Prompt Engineering as a competency should be able to create simple prompts for standard use cases like question answering or summarization, apply fundamental best practices like clear instructions and structured inputs/outputs, and handle basic system/user prompts. They can follow existing templates or guidelines to structure prompts effectively. They are also able to run experiments to compare prompt variations for output quality and adjust parameters (e.g., temperature) as needed. They can do simple debugging by iterating prompt structure or refining relevant parameters to fix common issues. They collaborate with developers, product managers, and UX designers to ensure alignment with product requirements. They integrate prompts into existing workflows or applications with limited guidance from senior engineers. They have familiarity with at least one or two popular LLM frameworks (e.g., OpenAI API, Hugging Face) and can apply these tools to test and refine prompts. They have a foundational grasp of NLP concepts (e.g., tokenization); they are aware of limitations and biases within AI text generation and follow general best practices for mitigating them. They primarily focus on refining prompt fundamentals and implementing minor improvements. They usually require guidance for more advanced optimization or complex use cases."
+    }
+]

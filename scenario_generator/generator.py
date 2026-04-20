@@ -104,6 +104,10 @@ NON_CODE_COMPETENCIES = {
     "Prompt Engineering for Product Managers",
     "AI Literacy",
     "AI Literacy for Leaders",
+    "AI Evals for Product Managers",
+    "AI Evals for Product Managers - Voice AI Applications",
+    "Voice Agent Evaluation",
+    "Prompt Engineering - Voice AI - Product Manager",
 }
 
 

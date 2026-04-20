@@ -155,7 +155,7 @@ Based on the provided `real_world_task_scenarios`, create a task that:
 
 {{
    "name": "Task Name — MUST be in format <verb><subject> and maximum 50 characters. Example: 'Design Voice Agent Eval Framework'",
-   "question": "A short description of the task scenario including the specific ask from the candidate — what evaluation framework needs to be designed and why?",
+   "question": "A structured task description that starts with the business scenario (2-3 sentences), then lists the 3 data files provided in Google Drive with what each contains, then gives 4 NUMBERED questions the candidate must answer: 1. WHAT TO MEASURE (5-7 dimensions with evidence from data), 2. HOW TO LABEL 100 CALLS (who reviews, what they score, disagreement handling), 3. SHIP OR DON'T SHIP (specific numeric thresholds backed by data patterns), 4. AUTOMATE VS HUMAN REVIEW (which dimensions are automated vs human-reviewed with cost reasoning). End with: Upload your answers as a single document (PDF, Word, or Google Doc link).",
    "code_files": {{
       "data/call_logs.csv": "[ACTUAL CSV content with 100 rows of call log data showing realistic patterns — call_id, candidate_id, duration_sec, agent_version, transcript_snippet, agent_summary, agent_recommendation, hiring_manager_override, failure_reason]",
       "prompts/interview_system_prompt.txt": "[ACTUAL system prompt content — 200-400 words — with embedded flaws for the candidate to identify: vague instructions, missing guardrails, aggressive thresholds]",
@@ -163,7 +163,7 @@ Based on the provided `real_world_task_scenarios`, create a task that:
    }},
    "outcomes": "A very short description (1-2 sentences) of what tangible deliverables should exist if the task is completed well, without revealing the solution. For example: a structured evaluation framework with defined dimensions, a labeling methodology, data-backed quality thresholds, and an automation vs. human-review breakdown tied to a go/no-go recommendation.",
    "short_overview": "Bullet-point list in simple language describing: (1) the business problem (voice agent quality issues before launch), (2) the evaluation design goal (framework covering dimensions, labeling, thresholds, automation), and (3) the expected outcome (evidence-backed ship/don't-ship recommendation).",
-   "pre_requisites": "List bullet-points required for knowledge and tools for the task:\\n- Access to spreadsheet software or Python/pandas for CSV analysis\\n- Understanding of evaluation frameworks and metrics for AI systems\\n- Basic knowledge of voice AI / conversational AI concepts\\n- Documentation tools (Word/Markdown editor)\\n- Ability to identify patterns in tabular data\\n- Critical thinking for tradeoff analysis (cost vs. coverage, automation vs. human review)",
+   "pre_requisites": "List bullet-points required for knowledge and tools for the task:\\n- Google account to open the data files (Google Sheets and Docs)\\n- Basic understanding of AI evaluation concepts (accuracy, precision, recall)\\n- Familiarity with voice AI or conversational AI products\\n- Ability to filter and analyze data in Google Sheets\\n- A text editor or Google Doc to write your evaluation framework\\n- Critical thinking about tradeoffs (cost vs coverage, automation vs human judgment)",
    "answer": "Only a high-level solution approach — identify key failure patterns in data, define dimensions anchored to observed issues, propose labeling with inter-rater reliability checks, set thresholds based on agreement rates and failure frequencies, map automatable dimensions (latency, format compliance) vs. human-required (summary quality, bias detection).",
    "hints": "Start by computing the hiring manager agreement rate per failure_reason category — the dimensions where humans disagree most with the agent are where your evaluation framework needs the most attention.",
    "definitions": {{
@@ -194,5 +194,10 @@ PROMPT_REGISTRY = {
         PROMPT_CONTEXT,
         PROMPT_VOICE_AGENT_EVAL_INPUT_AND_ASK,
         PROMPT_INSTRUCTIONS,
-    ]
+    ],
+    "AI Evals for Product Managers - Voice AI Applications (BASIC)": [
+        PROMPT_CONTEXT,
+        PROMPT_VOICE_AGENT_EVAL_INPUT_AND_ASK,
+        PROMPT_INSTRUCTIONS,
+    ],
 }

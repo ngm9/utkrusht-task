@@ -17,11 +17,24 @@ sys.path.append(str(Path(__file__).parent))
 # Import Pydantic model from separate file
 from models import TaskResponse
 
-from task_generation_prompts.Basic.Prompt_basic import (
-    PROMPT_INSTRUCTIONS,
-    PROMPT_CONTEXT,
-    PROMPT_PROMPT_ENGINEERING_INPUT_AND_ASK,
-)
+import importlib
+import pkgutil
+import task_generation_prompts.Basic as _basic_pkg
+import task_generation_prompts.Intermediate as _inter_pkg
+import task_generation_prompts.Beginner as _beginner_pkg
+
+
+def _build_prompt_registry() -> dict:
+    registry = {}
+    for pkg in [_basic_pkg, _inter_pkg, _beginner_pkg]:
+        for _, module_name, _ in pkgutil.iter_modules(pkg.__path__):
+            module = importlib.import_module(f"{pkg.__name__}.{module_name}")
+            if hasattr(module, "PROMPT_REGISTRY"):
+                registry.update(module.PROMPT_REGISTRY)
+    return registry
+
+
+_PROMPT_REGISTRY = _build_prompt_registry()
 
 def save_task_data_only(task_id: str, task_data: Dict) -> Path:
     """Save only clean task.json locally for reference (no extra files)."""
@@ -240,26 +253,31 @@ def load_relevant_scenarios(competencies: List[Dict], scenarios_file: Path) -> L
         return []
 
 def get_task_prompt_by_technology_stack(competency_stack, input_data):
-    """Get task prompt by technology stack"""
-    prompt_library = {
-        "AI Native Leadership":[
-            PROMPT_CONTEXT.format(
-                organization_background=input_data["background"]["organization"]["organization_background"],
-                role_context=input_data["background"]["role_context"]
-            ),
-            PROMPT_INSTRUCTIONS.format(
-                minutes_range=input_data.get("minutes_range", "15-20")
-            ),
-            PROMPT_PROMPT_ENGINEERING_INPUT_AND_ASK.format(
-                competencies=input_data.get("competencies"),
-                role_context=input_data.get("background").get("role_context", ""),
-                real_world_task_scenarios=input_data.get("scenarios", ""),
-                question_prompt=input_data.get("background").get("questions_prompt", ""),
-                sample_dataset=input_data.get("sample_dataset", "")
-            )
-        ],
-        }
-    return prompt_library.get(competency_stack, [])
+    """Get task prompt by technology stack. Auto-discovered from PROMPT_REGISTRY."""
+    competencies = input_data.get("competencies", [])
+    key_with_proficiency = ", ".join(
+        sorted([f"{c.get('name')} ({c.get('proficiency', '').upper()})" for c in competencies if c.get("name")])
+    ) if competencies else ""
+
+    templates = (
+        _PROMPT_REGISTRY.get(key_with_proficiency)
+        or _PROMPT_REGISTRY.get(competency_stack)
+    )
+    if not templates:
+        raise ValueError(
+            f"No prompt registered for tech stack: '{key_with_proficiency or competency_stack}'. "
+            f"Add PROMPT_REGISTRY to the prompt file."
+        )
+
+    fmt_args = {
+        "organization_background": input_data["background"]["organization"]["organization_background"],
+        "role_context": input_data["background"]["role_context"],
+        "minutes_range": input_data.get("minutes_range", "15-20"),
+        "competencies": input_data.get("competencies"),
+        "real_world_task_scenarios": input_data.get("scenarios", ""),
+        "question_prompt": input_data.get("background", {}).get("questions_prompt", ""),
+    }
+    return [t.format(**fmt_args) for t in templates]
 
 def generate_task_with_code(openai_client, input_data: Dict) -> Dict:
     """Generate task and code files using language_prompts with Responses.create + high reasoning."""

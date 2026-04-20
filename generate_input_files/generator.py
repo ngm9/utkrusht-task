@@ -198,9 +198,9 @@ def generate_questions_prompt(client: openai.OpenAI, long_scope: str, name: str,
     5. Use \\n for newlines within the output. Return only the prompt text.
     
     INPUT:
-    Match the proficiency level: {{proficiency}} ({{yoe}} years experience) for {{name}}.
+    Match the proficiency level: {proficiency} ({yoe} years experience) for {name}.
     Competency Long Scope:\n\n
-    {{long_scope}}
+    {long_scope}
 
     """
 
