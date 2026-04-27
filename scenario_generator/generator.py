@@ -30,6 +30,8 @@ from dotenv import load_dotenv
 from logger_config import logger
 from scenario_generator.prompts import (
     SCENARIO_SYSTEM_PROMPT,
+    SCENARIO_SYSTEM_PROMPT_NON_CODE,
+    NON_CODE_CLASSIFICATION_PROMPT,
     SCENARIO_GENERATION_SCHEMA,
     SCENARIO_EVAL_SCHEMA,
     PROFICIENCY_LIMITS,
@@ -98,22 +100,37 @@ def format_cost_summary(usage_by_model: Dict) -> str:
 # COMPETENCY NAME HELPERS
 # ============================================================================
 
-# Names that indicate non-code competencies (used only for file routing)
-NON_CODE_COMPETENCIES = {
-    "Prompt Engineering",
-    "Prompt Engineering for Product Managers",
-    "AI Literacy",
-    "AI Literacy for Leaders",
-}
+def non_code_scenarios_required(
+    client: openai.OpenAI,
+    competencies: List[Dict],
+    role_description: str | None,
+) -> bool:
+    """Use a cheap LLM call to decide if non-code scenarios should be generated.
 
+    Returns True for PM/analyst/business roles; False for engineering roles.
+    Falls back to False (coding path) on any error.
+    """
+    competency_name = competencies[0].get("name", "") if competencies else ""
+    proficiency = competencies[0].get("proficiency", "BASIC").upper() if competencies else "BASIC"
 
-def is_non_code_competency(competencies: List[Dict]) -> bool:
-    """Check if any competency is a non-code type (for file routing only)."""
-    for comp in competencies:
-        name = comp.get("name", "").strip()
-        if name in NON_CODE_COMPETENCIES:
-            return True
-    return False
+    prompt = NON_CODE_CLASSIFICATION_PROMPT.format(
+        role_description=role_description or "",
+        competency_name=competency_name,
+        proficiency=proficiency,
+    )
+
+    try:
+        response = client.responses.create(
+            model=GENERATION_MODEL,
+            input=[{"role": "user", "content": prompt}],
+            reasoning={"effort": "low"},
+        )
+        result = getattr(response, "output_text", "").strip().lower()
+        logger.info(f"Non-code classification for '{competency_name}': {result}")
+        return result == "non_code"
+    except Exception as e:
+        logger.warning(f"Non-code classification failed, defaulting to code path: {e}")
+        return False
 
 
 def get_competency_names(competencies: List[Dict]) -> str:
@@ -145,13 +162,13 @@ def build_scenario_key(competencies: List[Dict]) -> str:
     return ", ".join(sorted(formatted))
 
 
-def get_target_scenario_file(competencies: List[Dict]) -> Path:
+def get_target_scenario_file(competencies: List[Dict], is_non_code: bool = False) -> Path:
     """Determine the correct scenario file based on competency type and proficiency."""
     base = Path(__file__).parent.parent / "task_input_files" / "task_scenarios"
     proficiency = competencies[0].get("proficiency", "BASIC").upper() if competencies else "BASIC"
 
-    if is_non_code_competency(competencies):
-        return base / "task_sceanrio_no_code.json"
+    if is_non_code:
+        return base / "task_scenarios_no_code.json"
     elif proficiency == "INTERMEDIATE":
         return base / "task_scenarios_intermediate.json"
     else:
@@ -392,6 +409,7 @@ def call_llm_generate(
     existing_scenarios: List[str],
     eval_feedback: List[Dict] = None,
     background: Optional[Dict] = None,
+    is_non_code: bool = False,
 ) -> tuple:
     """Call the LLM to generate task scenarios.
 
@@ -400,6 +418,7 @@ def call_llm_generate(
                        previous evaluation failures, so the LLM avoids the same mistakes.
         background: Optional background dict from background_forQuestions_*.json,
                     used to inject assessment scope into the prompt.
+        is_non_code: If True, use the non-code system prompt and generation prompt.
 
     Returns:
         (scenarios: List[str], usage: Dict with input_tokens/output_tokens)
@@ -423,10 +442,12 @@ def call_llm_generate(
         eval_feedback=eval_feedback,
         background=background,
         competency_names_list=competency_names_list,
+        is_non_code=is_non_code,
     )
 
+    system_prompt = SCENARIO_SYSTEM_PROMPT_NON_CODE if is_non_code else SCENARIO_SYSTEM_PROMPT
     messages = [
-        {"role": "system", "content": SCENARIO_SYSTEM_PROMPT},
+        {"role": "system", "content": system_prompt},
         {"role": "user", "content": prompt},
     ]
 
@@ -452,7 +473,7 @@ def call_llm_generate(
     if not raw:
         raise RuntimeError("No output_text received from LLM for scenario generation")
 
-    logger.info(f"Raw LLM generation response: {raw[:300]}...")
+    logger.debug(f"Raw LLM generation response: {raw}")
 
     result = json.loads(raw)
     return result.get("scenarios", []), usage
@@ -462,6 +483,7 @@ def call_llm_evaluate(
     client: openai.OpenAI,
     scenarios: List[str],
     competencies: List[Dict],
+    is_non_code: bool = False,
 ) -> tuple:
     """Call the LLM to evaluate generated scenarios.
 
@@ -477,6 +499,7 @@ def call_llm_evaluate(
         proficiency=proficiency,
         tech_stack=tech_stack,
         scope_text=scope_text,
+        is_non_code=is_non_code,
     )
 
     messages = [{"role": "user", "content": prompt}]
@@ -518,6 +541,7 @@ def generate_scenarios_for_competencies(
     count: int = 6,
     existing_scenarios_files: Optional[List[Path]] = None,
     background: Optional[Dict] = None,
+    is_non_code: bool = False,
 ) -> tuple:
     """Generate, validate, evaluate, and return high-quality task scenarios.
 
@@ -527,6 +551,7 @@ def generate_scenarios_for_competencies(
         count: Number of scenarios to generate.
         existing_scenarios_files: Paths to existing scenario JSON files for deduplication.
         background: Optional background context from background_forQuestions_*.json.
+        is_non_code: If True, use non-code system prompt and guardrails.
 
     Returns:
         (scenarios: List[str], usage_by_model: Dict[str, Dict]) — scenarios and cost tracking data.
@@ -552,7 +577,7 @@ def generate_scenarios_for_competencies(
     default_files = [
         Path(__file__).parent.parent / "task_input_files" / "task_scenarios" / "task_scenarios.json",
         Path(__file__).parent.parent / "task_input_files" / "task_scenarios" / "task_scenarios_intermediate.json",
-        Path(__file__).parent.parent / "task_input_files" / "task_scenarios" / "task_sceanrio_no_code.json",
+        Path(__file__).parent.parent / "task_input_files" / "task_scenarios" / "task_scenarios_no_code.json",
     ]
     scenario_files = existing_scenarios_files or default_files
     all_existing = load_all_existing_scenarios(scenario_files)
@@ -579,6 +604,7 @@ def generate_scenarios_for_competencies(
                 existing_scenarios=key_existing + passing_scenarios,
                 eval_feedback=eval_failure_feedback if eval_failure_feedback else None,
                 background=background,
+                is_non_code=is_non_code,
             )
             usage_by_model[GENERATION_MODEL]["input_tokens"] += gen_usage["input_tokens"]
             usage_by_model[GENERATION_MODEL]["output_tokens"] += gen_usage["output_tokens"]
@@ -591,6 +617,11 @@ def generate_scenarios_for_competencies(
             continue
 
         logger.info(f"LLM generated {len(generated)} scenarios")
+
+        # Print generated scenarios in full for inspection
+        sep = "─" * 60
+        for i, s in enumerate(generated, 1):
+            logger.info(f"\n{sep}\nGENERATED scenario {i}/{len(generated)} (attempt {attempts}):\n{sep}\n{s}\n{sep}")
 
         # Structural validation (with per-proficiency limits)
         structurally_valid = []
@@ -615,7 +646,7 @@ def generate_scenarios_for_competencies(
 
         # LLM quality evaluation
         try:
-            evals, eval_usage = call_llm_evaluate(openai_client, unique, competencies)
+            evals, eval_usage = call_llm_evaluate(openai_client, unique, competencies, is_non_code=is_non_code)
             usage_by_model[EVAL_MODEL]["input_tokens"] += eval_usage["input_tokens"]
             usage_by_model[EVAL_MODEL]["output_tokens"] += eval_usage["output_tokens"]
         except Exception as e:
@@ -626,11 +657,10 @@ def generate_scenarios_for_competencies(
             idx = ev.get("scenario_index", -1)
             if 0 <= idx < len(unique) and ev.get("pass", False):
                 passing_scenarios.append(unique[idx])
-                logger.info(f"Scenario {idx+1} passed evaluation")
+                logger.info(f"\n{sep}\n✓ PASSED scenario {idx+1}:\n{sep}\n{unique[idx]}\n{sep}")
             elif 0 <= idx < len(unique):
                 reason = ev.get("reason", "unknown")
-                logger.warning(f"Scenario {idx+1} failed evaluation: {reason}")
-                # Collect failure feedback for next retry attempt
+                logger.warning(f"\n{sep}\n✗ FAILED scenario {idx+1}:\n{sep}\n{unique[idx]}\n{sep}\nREASON: {reason}\n{sep}")
                 eval_failure_feedback.append({
                     "scenario": unique[idx],
                     "reason": reason,

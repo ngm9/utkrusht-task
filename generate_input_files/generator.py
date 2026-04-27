@@ -3,19 +3,22 @@ Core logic for generating competency and background input files from Supabase.
 
 Usage:
     # Single competency
-    python -m generate_input_files --name "Java" --proficiency BASIC
+    python -m generate_input_files --competency-name "Java" --proficiency BASIC --role "Software Engineer"
 
     # Multiple competencies combined into one file (comma-separated)
-    python -m generate_input_files --name "React, Python, Node.js" --proficiency BASIC
+    python -m generate_input_files --competency-name "React, Python, Node.js" --proficiency BASIC --role "Frontend Engineer"
 
-    # Also works with multiple --name flags
-    python -m generate_input_files --name "Java" --name "Kafka" --proficiency BASIC
+    # Also works with multiple --competency-name flags
+    python -m generate_input_files --competency-name "Java" --competency-name "Kafka" --proficiency BASIC --role "Backend Engineer"
+
+    # Role from a file
+    python -m generate_input_files --competency-name "AI Evals for Product Managers" --proficiency BASIC --role path/to/role_description.txt
 
     # With custom folder name
-    python -m generate_input_files --name "Java, Kafka" --proficiency INTERMEDIATE --folder-name "input_java_kafka_intermediate_task"
+    python -m generate_input_files --competency-name "Java, Kafka" --proficiency INTERMEDIATE --role "Backend Engineer" --folder-name "input_java_kafka_intermediate_task"
 
     # Preview without writing
-    python -m generate_input_files --name "React" --proficiency BEGINNER --dry-run
+    python -m generate_input_files --competency-name "React" --proficiency BEGINNER --role "Frontend Engineer" --dry-run
 """
 
 import os
@@ -152,20 +155,51 @@ def calculate_cost(total_usage: dict) -> float:
     return input_cost + output_cost
 
 
-def generate_role_context(client: openai.OpenAI, scope: str, name: str, proficiency: str, yoe: str) -> tuple[str, dict]:
+def load_role_description(role: str | None) -> str | None:
+    """Resolve --role value: read from file if a valid path, otherwise return as-is."""
+    if not role:
+        return None
+    role_path = Path(role)
+    if role_path.exists() and role_path.is_file():
+        return role_path.read_text(encoding="utf-8").strip()
+    return role.strip()
+
+
+def generate_role_context(
+    client: openai.OpenAI,
+    scope: str,
+    name: str,
+    proficiency: str,
+    yoe: str,
+    role_description: str | None,
+) -> tuple[str, dict]:
     """Generate role_context from competency scope using OpenAI Responses API.
 
     Returns (text, usage_dict).
     """
-    prompt = (
-        "You are a technical hiring expert. Given a competency scope description, "
-        "generate a concise role_context paragraph (3-4 sentences) that describes "
-        f"what a software engineer with {yoe} years of experience in {name} is "
-        f"expected to do at the {proficiency} level. Focus on their expected "
-        "responsibilities, independence level, and technical expectations. "
-        "Do NOT use markdown formatting. Return only the paragraph text.\n\n"
-        f"Competency scope:\n\n{scope}"
-    )
+    role_line = f"Role: {role_description}" if role_description else f"Competency: {name}"
+
+    prompt = f"""
+You are a hiring expert with 15 years of experience writing role expectations for technical and non-technical assessments.
+
+Given a competency scope and role context, generate a role_context paragraph (3-4 sentences) that describes
+what a {role_description or name} with {yoe} years of experience is expected to do at the {proficiency} proficiency level.
+
+The paragraph must:
+- Describe the candidate's expected day-to-day responsibilities at this proficiency level
+- Reflect their degree of independence and the complexity of work they own vs. work guided by seniors
+- Capture the technical or functional depth and judgment expected, grounded in the competency scope
+- Be specific to the role — avoid generic filler like "works collaboratively" or "contributes to the team"
+
+Do NOT use markdown formatting. Return only the paragraph text.
+
+INPUT:
+{role_line}
+Proficiency: {proficiency} ({yoe} years experience)
+Competency scope:
+
+{scope}
+"""
 
     response = client.responses.create(
         model=MODEL,
@@ -181,28 +215,50 @@ def generate_questions_prompt(client: openai.OpenAI, long_scope: str, name: str,
 
     Returns (text, usage_dict).
     """
+    TIMING_AND_COMPLEXITY_INSTRUCTIONS = {
+        "BEGINNER": (
+            "This is a beginner proficiency, so the tasks need to be simple and not multi-step or complicated. "
+            "Let the candidate be able to finish this within 10 to 15 minutes."
+        ),
+        "BASIC": (
+            "This is a basic proficiency, so the tasks need to match one year of experience only. "
+            "Somebody with one year of experience does not have extensive production experience and their concepts are usually shaky, "
+            "so the complexity of the task needs to be basic only. "
+            "Let the candidate be able to finish this within 15 minutes."
+        ),
+        "INTERMEDIATE": (
+            "This is an intermediate proficiency, so somebody attempting this task has a few years of experience but is not an expert in these domains. "
+            "Ensure that tasks are around fundamentals, and candidates should be able to finish this within 20 minutes. "
+            "Let there be multiple ways to achieve the correct outcome — the idea is to see what paths the candidate picks. "
+            "Make the tasks subjective yet specific and clear in their expected outcomes."
+        ),
+    }
+    timing_instruction = TIMING_AND_COMPLEXITY_INSTRUCTIONS.get(proficiency, TIMING_AND_COMPLEXITY_INSTRUCTIONS["BASIC"])
+
     GENEARTE_QUESTIONS_PROMPT = f"""
-    You are a technical assessment designer with 15 years of experience in designing technical assessments. The assessments generated from the prompts you generate are like bar raiser questions.
-    They allow the candidate to solve / fix / build / review a real work item in a real scenario. Given a competency scope description, you take into account the 
-    proficiency, the years of experience related to that proficiency to design the difficulty level of the task. 
-    
-    The prompts you generate will include technical, conceptual ideas required in a task. But they are also not prompts that encourage generating trick questions or configuration or semantics 
-    related questions. Your prompt you will generate, always asks to generate logical or functional or other types of scenarios.
+You are a technical assessment designer with 15 years of experience designing bar-raiser style technical assessments.
+The assessments generated from the prompts you produce require candidates to solve / fix / build / review a real work item in a real scenario.
+You calibrate difficulty using the proficiency level and years of experience provided.
 
-    INSTRUCTIONS:
-    1. Start with "Please ensure the questions you ask cover" followed by key areas
-    2. Include all sections from the long_scope that are not related to testing or configuration or semantics
-    3. The question prompt includes lines to specify that BASIC proficiency task scenarios give the candidate only 15-20 minutes to solve the task, INTERMEDIATE proficiency task scenarios give 
-    the candidate only 25-30 mins to solve the task
-    4. End with a summary sentence starting with "The goal is to evaluate..." and add ideas of what the requirements for the tasks should be
-    5. Use \\n for newlines within the output. Return only the prompt text.
-    
-    INPUT:
-    Match the proficiency level: {{proficiency}} ({{yoe}} years experience) for {{name}}.
-    Competency Long Scope:\n\n
-    {{long_scope}}
+The prompts you generate surface technical and conceptual depth, but never encourage trick questions, configuration look-ups, or pure syntax/semantics questions.
+Your prompts always ask for logical, functional, architectural, or problem-solving scenarios.
 
-    """
+INSTRUCTIONS:
+1. Start with "Please ensure the questions you ask cover the key functional, logical, architectural, implementation, debugging, optimization, review, and problem-solving areas from the competency scope for {{name}}, matched to {{proficiency}} proficiency ({{yoe}} years experience)."
+2. Read the competency long scope provided below. Extract and list only the topic areas and sub-skills that are NOT about testing frameworks, test configuration, tool installation/setup, language/library syntax, or pure semantics. Embed these specific extracted items directly and explicitly in the output prompt — do NOT use a {{long_scope}} placeholder in your output.
+3. Include this line exactly: "{timing_instruction}"
+4. Include guidance that tasks should prefer scenarios assessing: understanding of requirements and constraints, reasoning about ambiguous real-world situations, quality of technical decisions and tradeoff analysis, identifying root causes / risks / edge cases, proposing or implementing pragmatic solutions, and reviewing/improving existing work.
+5. End with a summary sentence starting with "The goal is to evaluate applied competence, practical problem-solving, implementation and review ability, sound technical judgment, and the candidate's ability to deliver realistic solutions within the expected time constraints for their proficiency level."
+6. Use \\n for newlines. Return only the prompt text.
+7. In the output, use {{name}}, {{proficiency}}, {{yoe}} as template placeholders (literal curly braces) — these will be filled in at task generation time.
+
+INPUT:
+Competency: {name}
+Proficiency: {proficiency} ({yoe} years experience)
+Competency Long Scope:
+
+{long_scope}
+"""
 
     response = client.responses.create(
         model=MODEL,
@@ -281,13 +337,17 @@ def write_json_safe(file_path: Path, data, force: bool = False) -> bool:
 
 @click.command()
 @click.option(
-    "--name", "-n", required=True, multiple=True,
-    help='Competency name(s) to search for. Use comma-separated or multiple flags: --name "Java, Kafka"',
+    "--competency-name", "-n", required=True, multiple=True,
+    help='Competency name(s) to search for. Use comma-separated or multiple flags: --competency-name "Java, Kafka"',
 )
 @click.option(
     "--proficiency", "-p", required=True,
     type=click.Choice(["BEGINNER", "BASIC", "INTERMEDIATE", "ADVANCED"], case_sensitive=False),
     help="Proficiency level",
+)
+@click.option(
+    "--role", "-r", default=None,
+    help="Role title or description for this assessment — a short string (e.g. 'Product Manager') or a path to a text file with a longer description.",
 )
 @click.option("--folder-name", "-f", default=None, help="Override the auto-generated task subfolder name")
 @click.option("--force", is_flag=True, default=False, help="Overwrite existing files if they exist")
@@ -297,21 +357,21 @@ def write_json_safe(file_path: Path, data, force: bool = False) -> bool:
     type=click.Choice(["dev", "prod"]),
     help="Supabase environment (default: prod)",
 )
-def generate_input_files(name, proficiency, folder_name, force, dry_run, env):
+def generate_input_files(competency_name, proficiency, role, folder_name, force, dry_run, env):
     """Generate competency and background input files from the Supabase competency table.
 
     For multiple competencies in one combined file, use comma-separated names:
 
     \b
-        python -m generate_input_files --name "Java, Kafka" --proficiency BASIC
+        python -m generate_input_files --competency-name "Java, Kafka" --proficiency BASIC --role "Backend Engineer"
 
-    Or use --name multiple times:
+    Or use --competency-name multiple times:
 
     \b
-        python -m generate_input_files --name "Java" --name "Kafka" --proficiency BASIC
+        python -m generate_input_files --competency-name "Java" --competency-name "Kafka" --proficiency BASIC --role "Backend Engineer"
     """
-    # Support both comma-separated and multiple --name flags
-    raw_names = list(name)
+    # Support both comma-separated and multiple --competency-name flags
+    raw_names = list(competency_name)
     names = []
     for n in raw_names:
         parts = [part.strip() for part in n.split(",") if part.strip()]
@@ -320,6 +380,10 @@ def generate_input_files(name, proficiency, folder_name, force, dry_run, env):
     proficiency_upper = proficiency.upper()
     names_display = " + ".join(f"'{n}'" for n in names)
     click.echo(f"\nSearching for competencies: {names_display} at {proficiency_upper} level (env: {env})")
+
+    role_description = load_role_description(role)
+    if role_description:
+        click.echo(f"Role: {role_description[:80]}{'...' if len(role_description) > 80 else ''}")
 
     # 1. Init clients
     supabase = init_supabase(env)
@@ -358,15 +422,16 @@ def generate_input_files(name, proficiency, folder_name, force, dry_run, env):
     total_usage = {"input_tokens": 0, "output_tokens": 0}
 
     try:
-        role_context, usage = generate_role_context(openai_client, combined_scope, combined_name, proficiency_upper, yoe)
+        role_context, usage = generate_role_context(openai_client, combined_scope, combined_name, proficiency_upper, yoe, role_description)
         total_usage["input_tokens"] += usage["input_tokens"]
         total_usage["output_tokens"] += usage["output_tokens"]
         click.echo("  role_context generated.")
     except Exception as e:
         click.echo(f"  WARNING: Failed to generate role_context: {e}")
         click.echo("  Using fallback role_context.")
+        role_label = role_description or combined_name
         role_context = (
-            f"A software engineer with {yoe} years of experience in {combined_name} "
+            f"A {role_label} with {yoe} years of experience in {combined_name} "
             f"is expected to work at the {proficiency_upper} proficiency level."
         )
 

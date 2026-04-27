@@ -19,6 +19,7 @@ if sys.platform == "win32":
 
 from scenario_generator.generator import (
     generate_scenarios_for_competencies,
+    non_code_scenarios_required,
     build_scenario_key,
     get_competency_names,
     get_target_scenario_file,
@@ -96,12 +97,17 @@ def generate_scenarios_cli(competency_file, count, output, append, background_fi
         click.echo(f"Error: {e}", err=True)
         raise SystemExit(1)
 
+    # Classify: code vs non-code (uses role_context from background if available)
+    role_description = background.get("role_context", "") if background else None
+    is_non_code = non_code_scenarios_required(client, competencies, role_description)
+    click.echo(f"Scenario type: {'non-code (PM/analyst)' if is_non_code else 'code (engineering)'}")
+
     # Build key and determine output file
     scenario_key = build_scenario_key(competencies)
     if output:
         target_file = Path(output)
     else:
-        target_file = get_target_scenario_file(competencies)
+        target_file = get_target_scenario_file(competencies, is_non_code)
 
     click.echo(f"Scenario key: {scenario_key}")
     click.echo(f"Competencies: {get_competency_names(competencies)}")
@@ -115,6 +121,7 @@ def generate_scenarios_cli(competency_file, count, output, append, background_fi
         competencies=competencies,
         count=count,
         background=background,
+        is_non_code=is_non_code,
     )
 
     if not scenarios:
