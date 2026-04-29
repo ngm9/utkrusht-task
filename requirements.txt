@@ -8,3 +8,4 @@ supabase
 requests
 pydantic
 python-digitalocean
+e2b
