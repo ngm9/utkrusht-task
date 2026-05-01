@@ -79,21 +79,31 @@ The generated task MUST assess the following competencies:
 - Do NOT provide a rubric, hints, or any framing that signals what the right answer is
 - The data must require the candidate to compute or notice the skew themselves — do not label the distribution as "biased" or "unrepresentative"
 
+### Data Realism Principle
+Each file must match the volume a PM would receive in real production. Do not specify row counts arbitrarily — let the file's purpose dictate volume:
+- **Row-per-event files** (eval records, tickets, calls, transactions, sessions): generate enough rows that the candidate cannot eyeball patterns and must compute group-level statistics. A real pre-launch eval producing a 92% headline accuracy does not come from 30 cases — it comes from hundreds. Aim for a sample size that would actually be defensible in a launch review.
+- **Aggregation/summary tables** (composition breakdowns, per-category counts, daily totals): use only as many rows as the categories or buckets require. A 4-category breakdown has 4 rows. Do not pad summaries with synthetic categories.
+- The volume itself communicates what kind of file it is — under-populating raw record files makes the task feel toy-like, and over-populating summaries makes them feel artificial.
+
 ### Data File Requirements
 
-**data/eval_summary.csv** (~30 rows):
+**data/eval_summary.csv** — raw eval records, one row per test case
 - Columns: email_id (or case_id), true_label, predicted_label, correct (true/false), latency_ms, case_type, word_count
 - case_type values: use 4 types — e.g. `standard_domestic`, `long_thread`, `multi_issue`, `international_customs` (adapt names to the chosen domain)
-- Distribution: ~80% of rows should be the dominant easy type; the other three types should have 5–10 rows each
+- Volume: realistic for a pre-launch eval sample — large enough that group-level accuracy can only be computed, not eyeballed
+- Distribution: ~80% of rows should be the dominant easy type; the remaining types are minority (combined <20%) but each should have enough rows to be a real category, not a token presence
 - Overall accuracy: ~91–93% — driven almost entirely by the dominant type performing well (~96–97%)
-- The minority types should show meaningfully lower accuracy (75–85%) — but because there are so few rows, the headline number stays high
-- Latency: mostly 600–900ms, a few spikes to 1400–1800ms in the edge-case types
+- The minority types should show meaningfully lower accuracy (75–85%) — but because they are a small share of the total, the headline number stays high
+- Latency: mostly 600–900ms, with spikes to 1400–1800ms in the edge-case types
+- Vary word_count, latency_ms, and case_id meaningfully across rows — avoid repetitive patterns that look synthetic
 - Do NOT include a summary row or any aggregation — the candidate must compute it
 
-**data/test_set_composition.csv** (~8 rows):
+**data/test_set_composition.csv** — aggregation table grouping eval cases by type
 - Columns: case_type, count, percentage, source
-- Makes the distribution skew explicit in numbers — the candidate should be able to see at a glance that 3 of the 4 types are underrepresented
+- One row per case_type category — match the categories used in eval_summary.csv exactly
+- Makes the distribution skew explicit in numbers — the candidate should be able to see at a glance that the minority types are underrepresented
 - Source column: e.g. `production_sample`, `manual_collection`, `synthetic` — the minority types should show `manual_collection` or `synthetic`, signalling they were not drawn from real production traffic
+- The `count` and `percentage` columns must be internally consistent and must match the actual distribution in eval_summary.csv
 
 ### Proficiency Level Alignment
 - **BASIC level expectations**:
@@ -128,8 +138,8 @@ Based on the provided `real_world_task_scenarios`, create a task that:
    "name": "Task Name — format: <verb> <subject>, maximum 50 characters. Example: 'Review AI Router Pre-Launch Eval'",
    "question": "A short paragraph framing the work item — who is asking, what the AI tool does, what the eval showed at headline level, and what decision needs to be made. Should feel like a real message or brief, not a test prompt.",
    "code_files": {{
-      "data/eval_summary.csv": "[ACTUAL CSV content — ~30 rows — with columns: case_id, true_label, predicted_label, correct, latency_ms, case_type, word_count. Skewed distribution with lower accuracy on minority types.]",
-      "data/test_set_composition.csv": "[ACTUAL CSV content — ~8 rows — with columns: case_type, count, percentage, source. Makes the distribution skew and data provenance explicit.]"
+      "data/eval_summary.csv": "[ACTUAL CSV content — raw eval records, one row per test case at realistic production volume — with columns: case_id, true_label, predicted_label, correct, latency_ms, case_type, word_count. Skewed distribution with lower accuracy on minority types.]",
+      "data/test_set_composition.csv": "[ACTUAL CSV content — aggregation table, one row per case_type category — with columns: case_type, count, percentage, source. Counts and percentages must match the actual distribution in eval_summary.csv.]"
    }},
    "outcomes": "A 2–3 sentence description of what a good submission looks like: a specific launch recommendation with a rationale grounded in the data, two or more named missing scenario types tied to real risk, and a concrete next step — without revealing the answer.",
    "short_overview": "Bullet-point list in plain language: (1) the business situation and AI tool, (2) what the eval data shows and what it hides, (3) what the candidate must deliver.",
@@ -151,7 +161,7 @@ Based on the provided `real_world_task_scenarios`, create a task that:
 2. name must be short, verb-first, maximum 50 characters
 3. code_files must contain EXACTLY 2 files: eval_summary.csv and test_set_composition.csv
 4. Do NOT include a README, hints file, rubric, or any explanatory materials in code_files
-5. eval_summary.csv must have ~30 rows with a clear but non-obvious accuracy skew by case_type
+5. eval_summary.csv must contain raw eval records at realistic production volume with a clear but non-obvious accuracy skew by case_type
 6. The question must read like a real work item, not a test prompt
 7. The launch decision must require judgment — not be obvious from terrible numbers
 8. outcomes and short_overview must be concise and must NOT reveal the answer
