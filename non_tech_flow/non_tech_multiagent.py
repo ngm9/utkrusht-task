@@ -27,9 +27,8 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from logger_config import logger
 
-# Local test imports
-from test_utils import (
-    save_task_data_only, 
+from non_tech_utils import (
+    save_task_data_only,
     read_json_file_robust,
     load_relevant_scenarios,
     get_task_prompt_by_technology_stack,
@@ -37,7 +36,8 @@ from test_utils import (
     convert_empty_to_none,
     format_pre_requisites
 )
-from test_evals import run_evaluations
+from non_tech_evals import run_evaluations
+from google_utils import upload_resources_to_google
 
 # Load environment variables
 load_dotenv()
@@ -126,8 +126,8 @@ def create_test_task(competency_file: Path, background_file: Path, scenarios_fil
             competency_id = competency.get("competency_id") or competency.get("id") or "unknown"
             logger.info(f"Processing competency {i+1}: {competency_id} - {competency.get('name', 'unknown')}")
             
-            # Generate unique task ID
-            task_id = f"test-task-{uuid.uuid4().hex[:8]}"
+            # Generate unique task ID — single UUID used across Supabase row and Google Drive folder
+            task_id = str(uuid.uuid4())
             logger.info(f"Generated task ID: {task_id}")
             
             # Load relevant scenarios if provided 
@@ -166,6 +166,17 @@ def create_test_task(competency_file: Path, background_file: Path, scenarios_fil
                 "name": competency.get("name")
             }]
             
+            # Upload code_files to Google Sheets/Docs and collect public URLs
+            google_resources = {}
+            code_files = task_data.get("code_files", {})
+            task_name = task_data.get("name", "Untitled Task")
+            if code_files:
+                try:
+                    google_resources = upload_resources_to_google(task_name, task_id, code_files)
+                    logger.info(f"Uploaded {len(google_resources)} resources to Google: {list(google_resources.keys())}")
+                except Exception as e:
+                    logger.warning(f"Google resource upload failed, resources will be empty: {e}")
+
             # Add background to task_data for evals (needed for yoe)
             task_data["background"] = background_data
             
@@ -192,6 +203,7 @@ def create_test_task(competency_file: Path, background_file: Path, scenarios_fil
             eval_info = task_data.get("eval_info", {})
             
             task_data_for_db = {
+                "task_id": task_id,
                 "created_at": created_at.isoformat(),
                 "pre_requisites": pre_requisites_value,  # Store prerequisites properly
                 "answer": task_data.get("answer") or None,  # Convert empty to None
@@ -201,7 +213,7 @@ def create_test_task(competency_file: Path, background_file: Path, scenarios_fil
                     "title": task_data.get("name") or None,
                     "definitions": task_data.get("definitions") or {},
                     "hints": task_data.get("hints") or None,
-                    "resources": task_data.get("resources") or {},
+                    "resources": google_resources,
                     "outcomes": task_data.get("outcomes") or None,
                     "question": task_data.get("question") or None,
                     "task_overview": task_data.get("task_overview", []) if isinstance(task_data.get("task_overview"), list) else []
