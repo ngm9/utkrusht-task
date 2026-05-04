@@ -8,4 +8,10 @@ supabase
 requests
 pydantic
 python-digitalocean
+<<<<<<< feat/e2b-sandbox-poc
 e2b
+=======
+google-api-python-client
+google-auth
+google-auth-httplib2
+>>>>>>> main

@@ -22,6 +22,11 @@ from task_generation_prompts.Basic.Prompt_basic import (
     PROMPT_CONTEXT,
     PROMPT_PROMPT_ENGINEERING_INPUT_AND_ASK,
 )
+from task_generation_prompts.Basic.ai_evals_for_product_managers_basic_prompt import (
+    PROMPT_CONTEXT as PM_PROMPT_CONTEXT,
+    PROMPT_AI_EVALS_PM_BASIC_INPUT_AND_ASK as PM_PROMPT_INPUT_AND_ASK,
+    PROMPT_INSTRUCTIONS as PM_PROMPT_INSTRUCTIONS,
+)
 
 def save_task_data_only(task_id: str, task_data: Dict) -> Path:
     """Save only clean task.json locally for reference (no extra files)."""
@@ -242,7 +247,7 @@ def load_relevant_scenarios(competencies: List[Dict], scenarios_file: Path) -> L
 def get_task_prompt_by_technology_stack(competency_stack, input_data):
     """Get task prompt by technology stack"""
     prompt_library = {
-        "AI Native Leadership":[
+        "AI Native Leadership": [
             PROMPT_CONTEXT.format(
                 organization_background=input_data["background"]["organization"]["organization_background"],
                 role_context=input_data["background"]["role_context"]
@@ -258,7 +263,22 @@ def get_task_prompt_by_technology_stack(competency_stack, input_data):
                 sample_dataset=input_data.get("sample_dataset", "")
             )
         ],
-        }
+        "AI Evals for Product Managers": [
+            PM_PROMPT_CONTEXT.format(
+                organization_background=input_data["background"]["organization"]["organization_background"],
+                role_context=input_data["background"]["role_context"]
+            ),
+            PM_PROMPT_INPUT_AND_ASK.format(
+                competencies=input_data.get("competencies"),
+                role_context=input_data.get("background").get("role_context", ""),
+                real_world_task_scenarios=input_data.get("scenarios", ""),
+                minutes_range=input_data.get("minutes_range", "20-25")
+            ),
+            PM_PROMPT_INSTRUCTIONS.format(
+                minutes_range=input_data.get("minutes_range", "20-25")
+            ),
+        ],
+    }
     return prompt_library.get(competency_stack, [])
 
 def generate_task_with_code(openai_client, input_data: Dict) -> Dict:

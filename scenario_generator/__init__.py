@@ -13,6 +13,7 @@ Usage as module:
 
 from scenario_generator.generator import (
     generate_scenarios_for_competencies,
+    non_code_scenarios_required,
     build_scenario_key,
     get_competency_names,
     get_target_scenario_file,
@@ -24,6 +25,7 @@ from scenario_generator.generator import (
 
 __all__ = [
     "generate_scenarios_for_competencies",
+    "non_code_scenarios_required",
     "build_scenario_key",
     "get_competency_names",
     "get_target_scenario_file",
