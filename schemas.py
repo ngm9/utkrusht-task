@@ -15,9 +15,23 @@ ANSWER_CODE_SCHEMA = {
         "type": "object",
         "properties": {
             "files": {
-                "type": "object",
-                "description": "Object containing file paths as keys and their complete implementation as values",
-                "additionalProperties": {"type": "string"}
+                "type": "array",
+                "description": "Array of file objects, each with a path and its complete implementation",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "path": {
+                            "type": "string",
+                            "description": "File path (e.g. 'main.py', 'src/utils.py')"
+                        },
+                        "content": {
+                            "type": "string",
+                            "description": "Complete file content with correct implementation"
+                        }
+                    },
+                    "required": ["path", "content"],
+                    "additionalProperties": False
+                }
             },
             "steps": {
                 "type": "array",
@@ -28,7 +42,7 @@ ANSWER_CODE_SCHEMA = {
         "required": ["files", "steps"],
         "additionalProperties": False
     },
-    "strict": False
+    "strict": True
 }
 
 
