@@ -1,10 +1,10 @@
-"""
-usage: 
+r"""
+usage:
 python "c:\Utkrushta\Utkrushta\agents\infra_assessor\multiagent.py" generate-tasks -c "c:\Utkrushta\Utkrushta\utilities\input_collection\task\input_rag\basic\basic\competency_rag_basic_Utkrusht.json" -b "c:\Utkrushta\Utkrushta\utilities\input_collection\task\input_rag\basic\basic\background_for_task_utkrusht_rag_basic.json" -s "c:\Utkrushta\Utkrushta\utilities\input_collection\task_scenarios.json"
 
 python multiagent.py reset-task --task-id b77bcb57-48be-4cc9-b738-702659d764bc  --droplet-ip 157.245.96.154  --script-path  /root/task/kill.sh
 
-python multiagent.py deploy_task --task-id 6e20982e-9a4e-4a0d-b20f-1e0b1ba6e67a --droplet-ip 64.227.178.86 
+python multiagent.py deploy_task --task-id 6e20982e-9a4e-4a0d-b20f-1e0b1ba6e67a --droplet-ip 64.227.178.86
 """
 import json
 import subprocess
@@ -56,6 +56,15 @@ openai_client = openai.OpenAI(
     timeout=httpx.Timeout(None)
 )
 model = "claude-sonnet-4-6"
+
+# Direct OpenAI client (no Portkey routing) — used for the answer-code step
+# because Anthropic's structured-output validator rejects the schema shapes
+# OpenAI happily accepts. Override the model with ANSWER_CODE_MODEL env var.
+openai_direct_client = openai.OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    timeout=httpx.Timeout(None),
+)
+ANSWER_CODE_MODEL = os.getenv("ANSWER_CODE_MODEL", "gpt-5.4")
 
 # Static GitHub credentials
 GITHUB_UTKRUSHTAPPS_TOKEN = os.getenv("GITHUB_UTKRUSHTAPPS_TOKEN")
@@ -1869,26 +1878,52 @@ def generate_answer_code_and_steps(task_data: Dict) -> Dict:
             competency_info = f"Competencies: {', '.join(competency_names)}"
         else:
             competency_info = "No specific competencies"
-        
+
+        # Build a starter-code section so the LLM knows which files exist in
+        # the candidate template and writes a complete solution for each one.
+        # Skip files that don't need a solution (gitignore, env example, sample
+        # data, README which the candidate doesn't edit).
+        code_files = task_data.get("code_files", {}) or {}
+        SKIP_PREFIXES = (".env", ".gitignore", "README")
+        SKIP_DIRS = ("data/",)
+        starter_blocks = []
+        for path, content in code_files.items():
+            if any(path.startswith(p) for p in SKIP_PREFIXES):
+                continue
+            if any(path.startswith(d) for d in SKIP_DIRS):
+                continue
+            body = content if isinstance(content, str) else json.dumps(content)
+            starter_blocks.append(f"### {path}\n```\n{body}\n```")
+        starter_section = (
+            "STARTER CODE FILES (the candidate sees these — produce a fully working "
+            "solution for every listed path; do NOT invent unrelated files):\n\n"
+            + "\n\n".join(starter_blocks)
+            if starter_blocks
+            else "STARTER CODE: (not provided — infer from the question)"
+        )
+
         # Use imported schema from schema_models.py
         answer_code_schema = ANSWER_CODE_SCHEMA
-        
+
         system_prompt = (
             "You are an expert engineer. Given the following assessment task, generate the fully implemented solution code files (with correct implementation) for all files the candidate is supposed to complete. "
             "Also, provide a step-by-step solution guide (as an array of strings) that explains how to implement the solution. "
-            "The 'files' object must contain the full, correct implementation for each file the candidate is expected to complete. "
-            "The 'steps' field must be an array of clear, high-level, step-by-step instructions for a human to follow to implement the solution. "
-            "No need to generate the README file."
+            "The 'files' field must be an array of {path, content} objects covering EVERY non-trivial file in the starter code (skip README, .gitignore, .env.example, sample data). "
+            "Each path must match the path used in the starter code, and content must be a full, correct, runnable implementation. "
+            "The 'steps' field must be an array of clear, high-level, step-by-step instructions for a human to follow to implement the solution."
         )
-        
+
         user_prompt = (
             f"TASK NAME: {task_name}\n"
+            f"TASK TITLE: {task_data.get('title', '')}\n"
             f"TASK DESCRIPTION: {task_description}\n"
             f"QUESTION: {task_question}\n"
             f"EXPECTED OUTCOMES: {task_outcomes}\n"
             f"{competency_info}\n"
             "---\n"
-            "Generate the fully implemented code files for this task, and a step-by-step solution guide."
+            f"{starter_section}\n"
+            "---\n"
+            "Generate the fully implemented code files (one entry per starter file path that needs a solution), and a step-by-step solution guide."
         )
         
         # Build messages for Responses API
@@ -1897,9 +1932,11 @@ def generate_answer_code_and_steps(task_data: Dict) -> Dict:
             {"role": "user", "content": user_prompt}
         ]
         
-        # Use Responses API with reasoning and structured JSON output
-        response = openai_client.responses.create(
-            model=model,
+        # Use direct OpenAI (not Portkey/Anthropic) for the answer step.
+        # Anthropic rejects nested-object additionalProperties; OpenAI accepts the
+        # array-of-{path,content} shape used by ANSWER_CODE_SCHEMA cleanly.
+        response = openai_direct_client.responses.create(
+            model=ANSWER_CODE_MODEL,
             input=messages,
             reasoning={"effort": "medium"},
             text={
@@ -1912,16 +1949,26 @@ def generate_answer_code_and_steps(task_data: Dict) -> Dict:
                 }
             }
         )
-        
+
         # Extract output_text from response
         response_text = getattr(response, "output_text", None)
         if not response_text:
             logger.error("No output_text received from OpenAI Responses API")
             raise RuntimeError("Failed to get output_text from OpenAI Responses API")
-        
+
         # Parse JSON from response
         answer_data = json.loads(response_text)
-        
+
+        # Convert files from array form (schema-required) to the dict form the
+        # rest of the pipeline expects: {"path/to/file": "content", ...}.
+        raw_files = answer_data.get("files", [])
+        if isinstance(raw_files, list):
+            files_dict: Dict[str, str] = {}
+            for item in raw_files:
+                if isinstance(item, dict) and "path" in item and "content" in item:
+                    files_dict[item["path"]] = item["content"]
+            answer_data["files"] = files_dict
+
         logger.info(f"Generated solution with {len(answer_data.get('files', {}))} files and {len(answer_data.get('steps', []))} steps")
         return answer_data
         
