@@ -124,7 +124,7 @@ def create_and_setup(
 
 def kill(sandbox_id: str) -> bool:
     try:
-        sb = Sandbox(sandbox_id=sandbox_id)
+        sb = Sandbox.connect(sandbox_id)
         sb.kill()
         logger.info(f"Killed sandbox {sandbox_id}")
         return True
