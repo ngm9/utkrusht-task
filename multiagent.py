@@ -57,11 +57,17 @@ openai_client = openai.OpenAI(
 )
 model = "claude-sonnet-4-6"
 
-# Direct OpenAI client (no Portkey routing) — used for the answer-code step
-# because Anthropic's structured-output validator rejects the schema shapes
-# OpenAI happily accepts. Override the model with ANSWER_CODE_MODEL env var.
-openai_direct_client = openai.OpenAI(
+# Portkey → OpenAI client for the answer-code step. Uses GPT-5.4 (cheaper
+# + stronger structured-output support than Claude for this specific call)
+# but routed via Portkey for unified observability/billing. Override the
+# model with the ANSWER_CODE_MODEL env var.
+openai_via_portkey = openai.OpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
+    base_url=PORTKEY_GATEWAY_URL,
+    default_headers=createHeaders(
+        provider="openai",
+        api_key=os.environ.get("PORTKEY_API_KEY"),
+    ),
     timeout=httpx.Timeout(None),
 )
 ANSWER_CODE_MODEL = os.getenv("ANSWER_CODE_MODEL", "gpt-5.4")
@@ -1932,10 +1938,12 @@ def generate_answer_code_and_steps(task_data: Dict) -> Dict:
             {"role": "user", "content": user_prompt}
         ]
         
-        # Use direct OpenAI (not Portkey/Anthropic) for the answer step.
-        # Anthropic rejects nested-object additionalProperties; OpenAI accepts the
-        # array-of-{path,content} shape used by ANSWER_CODE_SCHEMA cleanly.
-        response = openai_direct_client.responses.create(
+        # Route via Portkey to OpenAI for the answer step. Schemas.py is now
+        # Anthropic-compatible too, but OpenAI's structured-output validator is
+        # more forgiving for array-of-{path,content} shapes — and going via
+        # Portkey keeps billing/observability consistent with the rest of the
+        # codebase.
+        response = openai_via_portkey.responses.create(
             model=ANSWER_CODE_MODEL,
             input=messages,
             reasoning={"effort": "medium"},
