@@ -20,6 +20,7 @@ import openai
 import httpx
 from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
 from dotenv import load_dotenv
+load_dotenv()
 import click
 from typing import Dict, List, Optional
 from supabase import Client, create_client
@@ -39,9 +40,6 @@ import shutil
 import random
 import paramiko
 
-
-# Load environment variables
-load_dotenv()
 
 # Configure Anthropic via Portkey
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY')
@@ -442,20 +440,15 @@ def create_task(competency_file: Path, background_file: Path, scenarios_file: Pa
         # Store in Supabase
         logger.info("Storing task in Supabase...")
         
-        # Determine is_shared_infra_required based on task type
-        # Backend tasks (with Docker/FastAPI/PostgreSQL) require shared infrastructure
-        # Frontend tasks (NextJS/React) typically don't
-        if task_type == 'backend':
-            is_shared_infra_required = True
-        else:  # frontend
-            is_shared_infra_required = False
-        
-        # Override with Docker detection if needed
+        # Drive is_shared_infra_required purely from whether the generated
+        # repo carries Docker / docker-compose artifacts. The previous heuristic
+        # marked every "backend" task True regardless of Docker, which flagged
+        # library-only tasks (LangChain / LlamaIndex / pure-Python) as needing
+        # a sandbox they can't actually use.
         code_data = task_data.get("code_files", {})
         has_docker = has_shared_infra_files(code_data)
-        if has_docker:
-            is_shared_infra_required = True
-            
+        is_shared_infra_required = bool(has_docker)
+
         logger.info(f"Setting is_shared_infra_required to {is_shared_infra_required} (task_type: {task_type}, has_docker: {has_docker})")
         
         task_data_for_db = {
