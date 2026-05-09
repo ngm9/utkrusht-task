@@ -1,6 +1,6 @@
 r"""
 usage:
-python "c:\Utkrushta\Utkrushta\agents\infra_assessor\multiagent.py" generate-tasks -c "c:\Utkrushta\Utkrushta\utilities\input_collection\task\input_rag\basic\basic\competency_rag_basic_Utkrusht.json" -b "c:\Utkrushta\Utkrushta\utilities\input_collection\task\input_rag\basic\basic\background_for_task_utkrusht_rag_basic.json" -s "c:\Utkrushta\Utkrushta\utilities\input_collection\task_scenarios.json"
+python multiagent.py generate-tasks -c path/to/competency.json -b path/to/background.json -s path/to/task_scenarios.json
 
 python multiagent.py reset-task --task-id b77bcb57-48be-4cc9-b738-702659d764bc  --droplet-ip 157.245.96.154  --script-path  /root/task/kill.sh
 
@@ -1972,7 +1972,7 @@ def generate_answer_code_and_steps(task_data: Dict) -> Dict:
 
         logger.info(f"Generated solution with {len(answer_data.get('files', {}))} files and {len(answer_data.get('steps', []))} steps")
         return answer_data
-        
+
     except Exception as e:
         logger.error(f"Error generating answer code and steps: {str(e)}")
         # Return empty structure as fallback

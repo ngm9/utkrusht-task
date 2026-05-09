@@ -1,0 +1,18 @@
+[
+    {
+        "competency_id": "91a0e826-b74a-4a80-a17b-7f5a38c8488b",
+        "created_at": "2024-11-12T12:00:00+00:00",
+        "proficiency": "INTERMEDIATE",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Python",
+        "scope": "An INTERMEDIATE Python developer, with 2-5 years experience, has a solid grasp of core programming concepts like data types, control flow, functions (including lambdas), and is adept with data structures such as lists, dictionaries, and sets. They are comfortable with object-oriented programming, able to create classes, implement inheritance, and understand polymorphism. They can manage modules and packages, use Python's standard library effectively, and handle third-party packages with tools like pip and virtual environments. Proficient in file operations and data serialization (JSON, CSV), they can interact with databases using SQL and ORMs like SQLAlchemy. They develop simple web applications using frameworks like Flask, consume and create APIs, and understand basic networking and concurrency (threading, multiprocessing). They write unit tests using unittest or pytest, debug code efficiently, and adhere to code quality standards like PEP 8 and best practices in documentation. Familiar with version control systems like Git, they collaborate using platforms like GitHub, participate in code reviews, and communicate effectively within a team. They can automate tasks with scripts, optimize code for performance, contribute to system design discussions, and improve existing systems while maintaining security awareness. Continuously learning, they stay updated with Python developments, seek feedback, and are capable of independent problem-solving on moderate-complexity projects."
+    },
+    {
+        "competency_id": "f556f5f4-02bd-4cca-9eb1-9f62ec764088",
+        "created_at": "2025-03-26T11:02:24.28045+00:00",
+        "proficiency": "INTERMEDIATE",
+        "organization_id": "606b570b-a678-492d-bea2-65891142a6ef",
+        "name": "SQL",
+        "scope": "A person with INTERMEDIATE proficiency level in SQL as a competency should be able to consistently write correct, efficient queries using joins, subqueries, aggregate functions, and window functions. They apply fundamental database concepts such as normalization, indexing, and transaction management while modifying moderate-level schemas. They handle bulk data operations (INSERT, UPDATE, DELETE, MERGE) with an understanding of locking and concurrency. They interpret data patterns in BFSI-related transactional logs through exploratory data analysis. They perform performance tuning using profiling tools or EXPLAIN plans to identify bottlenecks and propose schema or index adjustments. They develop and maintain stored procedures and functions that encapsulate moderately complex business logic. They integrate SQL queries into ETL workflows or pipelines using scripting languages like Python or shell. They understand secure interactions with cloud or on-premise databases such as AWS RDS or Azure SQL Database. They identify and correct common inefficiencies in query structures and data types. They maintain awareness of role-based permissions, database security practices, and compliance needs. They communicate SQL logic and findings effectively to both technical and non-technical stakeholders. They collaborate well within project teams and guide junior peers on foundational SQL concepts."
+    }
+]

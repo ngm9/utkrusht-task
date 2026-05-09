@@ -42,7 +42,7 @@ ANSWER_CODE_SCHEMA = {
         "required": ["files", "steps"],
         "additionalProperties": False
     },
-    "strict": False
+    "strict": True
 }
 
 
