@@ -24,7 +24,10 @@ DEFAULT_PROBE_PORTS = (
     7681,           # ttyd browser terminal (template.py)
     8443,           # code-server browser IDE (template.py)
 )
-DEFAULT_RUN_SH_TIMEOUT = 180  # seconds; compose-up + DB ready
+# Generous default for run.sh — first-run image pulls (e.g. pgvector,
+# qdrant) can take a few minutes before compose-up even begins. Override
+# via E2B_RUN_SH_TIMEOUT env var if a task needs more.
+DEFAULT_RUN_SH_TIMEOUT = int(os.getenv("E2B_RUN_SH_TIMEOUT", "600"))
 
 
 @dataclass
@@ -124,7 +127,7 @@ def create_and_setup(
 
 def kill(sandbox_id: str) -> bool:
     try:
-        sb = Sandbox(sandbox_id=sandbox_id)
+        sb = Sandbox.connect(sandbox_id)
         sb.kill()
         logger.info(f"Killed sandbox {sandbox_id}")
         return True

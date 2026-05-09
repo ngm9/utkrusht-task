@@ -16,17 +16,17 @@ ANSWER_CODE_SCHEMA = {
         "properties": {
             "files": {
                 "type": "array",
-                "description": "Array of file objects, each with a path and its complete implementation",
+                "description": "Array of file objects. Each item is {path, content}.",
                 "items": {
                     "type": "object",
                     "properties": {
                         "path": {
                             "type": "string",
-                            "description": "File path (e.g. 'main.py', 'src/utils.py')"
+                            "description": "Relative file path within the answer repo (e.g. 'app/main.py')"
                         },
                         "content": {
                             "type": "string",
-                            "description": "Complete file content with correct implementation"
+                            "description": "Full file contents as a single string, including newlines"
                         }
                     },
                     "required": ["path", "content"],
