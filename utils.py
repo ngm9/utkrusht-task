@@ -177,18 +177,27 @@ def parse_markdown_to_json(md_text):
     return sections
 
 def has_shared_infra_files(code_data: Dict) -> bool:
-    """Check if code_data contains Dockerfile or docker-compose files. Returns True if Docker files are found, False otherwise."""
-    docker_filenames = [
-        "Dockerfile", "docker-compose.yml", "docker-compose.yaml", "compose.yaml", "compose.yml"
-    ]
-    files = code_data.get("files", {})
-    
-    # First check for Docker files - if found, return True immediately
+    """Check if code_data contains Dockerfile or docker-compose files. Returns True if Docker files are found, False otherwise.
+
+    Accepts either the flat shape returned by the task-generation LLM
+    (``{"docker-compose.yml": "...", "app/main.py": "..."}``) or the legacy
+    nested shape (``{"files": {...}}``). The flat shape is what
+    ``multiagent.py`` actually passes; the nested fallback is kept so older
+    callers don't break.
+    """
+    docker_filenames = {
+        "dockerfile", "docker-compose.yml", "docker-compose.yaml",
+        "compose.yaml", "compose.yml",
+    }
+    nested = code_data.get("files") if isinstance(code_data, dict) else None
+    files = nested if isinstance(nested, dict) else (code_data if isinstance(code_data, dict) else {})
+
     for fname in files.keys():
-        if any(fname.lower() == d.lower() for d in docker_filenames):
+        # Match by basename so nested paths like "infra/Dockerfile" still count.
+        basename = fname.rsplit("/", 1)[-1].lower()
+        if basename in docker_filenames:
             return True
-    
-    # If no Docker files found, return False
+
     return False
 
 def format_pre_requisites(pre_requisites):

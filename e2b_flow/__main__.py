@@ -21,7 +21,12 @@ if sys.platform == "win32":
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
-load_dotenv()
+# override=True so the .env at cwd is the source of truth for this CLI.
+# Without it, when invoked from inside the fastapi container (which already
+# has GITHUB_UTKRUSHTAPPS_TOKEN / SUPABASE_* set from .env.local), those
+# values would shadow the (possibly different) ones in utkrusht-task/.env
+# and break things like git clone.
+load_dotenv(override=True)
 
 
 @click.group()

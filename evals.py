@@ -1,10 +1,29 @@
 import json
+import os
+
+import httpx
+import openai
 from openai import OpenAI
+from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
+
 from logger_config import logger
 from schemas import EVAL_RESPONSE_SCHEMA
 
-# Model configuration for evaluations
-EVAL_MODEL = "gpt-5-nano-2025-08-07"
+# Model configuration for evaluations.
+# Routed via Portkey → OpenAI because EVAL_MODEL is an OpenAI model name and
+# the openai_client passed in from multiagent.py points at Portkey → Anthropic
+# (which 404s on this model name).
+EVAL_MODEL = os.getenv("EVAL_MODEL", "gpt-5-nano-2025-08-07")
+
+eval_openai_client = openai.OpenAI(
+    api_key=os.getenv("OPENAI_API_KEY"),
+    base_url=PORTKEY_GATEWAY_URL,
+    default_headers=createHeaders(
+        provider="openai",
+        api_key=os.environ.get("PORTKEY_API_KEY"),
+    ),
+    timeout=httpx.Timeout(None),
+)
 
 def clean_llm_json_response(response: str) -> str:
     """Clean LLM response to extract valid JSON"""
@@ -93,7 +112,7 @@ def llm_task_eval(task_json, proficiency, yoe, time_constraint, openai_client, m
     
     try:
         # Use configured eval model for efficient evaluations
-        response = openai_client.responses.create(
+        response = eval_openai_client.responses.create(
             model=EVAL_MODEL,
             input=messages,
             reasoning={"effort": "medium"},
@@ -159,7 +178,7 @@ def llm_code_eval(code_data, task_description, openai_client, model):
     
     try:
         # Use configured eval model for efficient evaluations
-        response = openai_client.responses.create(
+        response = eval_openai_client.responses.create(
             model=EVAL_MODEL,
             input=messages,
             reasoning={"effort": "medium"},
