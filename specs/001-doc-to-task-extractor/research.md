@@ -126,47 +126,72 @@ construction:**
 - *Why rejected:* unnecessary. Sonnet output quality has been good enough on
   the Nerdium engagement to not justify the price step.
 
-## Decision 5 — Cloudflare bypass via `undetected_chromedriver` (visible browser)
+## Decision 5 — Do NOT bypass Cloudflare / CAPTCHA / other bot protection
 
-**Choice:** for CodePen specifically, run `undetected_chromedriver` in
-non-headless mode (a visible Chrome window briefly appears, then closes).
+**Choice:** the tool MUST NOT attempt to bypass Cloudflare challenges,
+CAPTCHAs, rate-limits, or any other bot-protection mechanism deployed by
+a third-party service. When such protection is detected (or known in
+advance for a given platform — currently: CodePen), the tool returns
+`status="bot_protected"` and the agent emits an inline `**Note:**`
+asking the operator to paste the source manually and re-run.
 
-**Rationale:** during the Nerdium engagement we verified this is the only
-reliable approach today. Plain HTTP (`requests`/`curl` with any User-Agent)
-gets a 403 Cloudflare challenge page. Headless Chrome also gets blocked —
-Cloudflare detects the fingerprint. Visible Chrome via
-`undetected_chromedriver` passes in ~5 seconds and gives us a clearance
-cookie that the same browser session then uses to fetch the `.html`/`.css`/
-`.js` raw exports.
+**Rationale:** circumvention of bot protection sits in a legal-grey area
+across jurisdictions (CFAA in the US, CMA in the UK, equivalent statutes
+elsewhere). The legality is unsettled even when the underlying content
+is publicly shared — the site owner has explicitly deployed the
+protection, and circumventing it can be construed as unauthorised
+access. We are not willing to ship a v1 feature whose legality requires
+case-by-case analysis. Additionally:
 
-**Implication:** this feature cannot run on a headless server today. CI
-support requires `xvfb` (Linux) or a managed browser service (Browserless
-etc.). Out of scope for v1; documented as a constraint.
+- **Maintenance burden.** Cloudflare and similar services iterate their
+  detection regularly; any bypass we build (`undetected_chromedriver`,
+  `cloudscraper`, etc.) becomes a perpetual cat-and-mouse maintenance
+  cost for a small feature.
+- **Operational constraint.** A working bypass requires a visible Chrome
+  window (headless Chrome is detected and blocked); this would prevent
+  the parser from ever running in CI / on a headless server.
+- **Reputational risk.** Being a tool that quietly circumvents bot
+  protection is bad press waiting to happen.
 
-**Alternative rejected — Plain HTTP with rotating User-Agents and proxies:**
-- *Why rejected:* doesn't actually pass Cloudflare's JS challenge. Higher
-  ops complexity (proxy pool management), lower reliability.
+**Operational consequence:** for v1, CodePen URLs in customer briefs
+result in an inline `**Note:**` directing the operator to paste the
+source manually. This is a small UX cost — copy-paste once per pen, the
+parser then re-runs successfully — in exchange for staying clearly on
+the right side of the legality / reputational / maintenance equation.
 
-**Alternative rejected — `cloudscraper` library or similar JS-execution shims:**
-- *Why rejected:* Cloudflare's fingerprint detection has gotten stricter;
-  these libraries' bypass rate has degraded. `undetected_chromedriver` with
-  a real Chrome is the only thing that worked reliably during the engagement.
+**Prior pilot (revisited):** during the Nerdium engagement we did get
+`undetected_chromedriver` working past Cloudflare for one specific pen.
+That code lives in git history and `tmp/fetch_codepen.py`; if legal ever
+signs off on a specific platform or pattern in the future, we can revive
+it as a per-platform exception. The default policy remains "do not
+bypass".
 
-**Alternative rejected — Ask the user to manually paste the CodePen source:**
-- *Why rejected:* defeats the point of automation. The manual workflow
-  already does this; automating it is the whole feature.
+**Alternative considered and rejected — Implement bypass anyway:**
+- *Why rejected:* explicit PR-review direction from tech lead;
+  documented rationale above.
+
+**Alternative considered and rejected — Use a managed scraping service
+(Browserless, Brightdata, etc.):**
+- *Why rejected:* outsources the bypass but doesn't change the legality
+  question; adds a paid dependency for a small feature.
 
 ## Decision 6 — v1 scope of supported scraping platforms
 
-**Choice:** v1 ships with CodePen + GitHub Gist. Everything else (CodeSandbox,
-JSFiddle, Pastebin, Replit, GitLab snippets) returns a structured "not yet
-supported" error that the agent surfaces as an inline `**Note:**` in the affected task's markdown.
+**Choice:** v1 ships with **GitHub Gist only** as a fully-fetchable
+platform. CodePen URLs are detected and returned as `bot_protected` per
+Decision 5 (no bypass). All other platforms (CodeSandbox, JSFiddle,
+Pastebin, Replit, GitLab snippets) return `platform_not_supported` and
+the agent emits an inline `**Note:**` asking the operator to paste the
+source manually.
 
-**Rationale:** CodePen is the only platform observed in real customer briefs
-so far (Nerdium engagement). Gist is the second-most-common in the broader
-ecosystem and is trivially easy to support (plain HTTP, no auth, no
-bypass). Adding the others is a per-platform module of ~30 lines each; we
-add them when a real brief needs them.
+**Rationale:** Gist is the only platform we can fetch from cleanly
+without touching bot protection: it has a stable public API
+(`https://api.github.com/gists/<id>`), no auth required for public
+gists, and trivial filename + content parsing. Adding the other
+non-bot-protected platforms (CodeSandbox API access via their open
+endpoints, JSFiddle's embed format) is a per-platform module of ~30
+lines each — we add them when a real customer brief needs them, not
+speculatively.
 
 **Alternative rejected — Support all major platforms in v1:**
 - *Why rejected:* speculative work for platforms we haven't seen yet in real

@@ -10,8 +10,8 @@ see [`current-state.md`](./current-state.md).
 
 ## One-paragraph architecture
 
-A new sub-package `parser/` (sibling to `non_tech_flow/`, `pr_review_flow/`)
-invoked as `python -m parser <brief-path>`. Python deterministically parses
+A new sub-package `task_input_parser/` (sibling to `non_tech_flow/`, `pr_review_flow/`)
+invoked as `python -m task_input_parser <brief-path>`. Python deterministically parses
 the input into a structured AST, hands it to a single LLM call with function
 calling enabled, and dispatches tool requests as the agent makes them. The
 agent decides task boundaries, fetches resources via tools, and emits
@@ -27,16 +27,16 @@ of resource fetches the agent explicitly initiates.
                                    │
                                    ▼
                 ┌────────────────────────────────────┐
-                │  parser/cli.py:main                 │
+                │  task_input_parser/cli.py:main                 │
                 │  - parse CLI args                   │
                 │  - create tmp/extract_<timestamp>/  │
                 │  - initialize cost accumulator      │
-                │  - call into parser.ast then agent  │
+                │  - call into task_input_parser.ast then agent  │
                 └─────────────────┬──────────────────┘
                                    │
                                    ▼
                 ┌────────────────────────────────────┐
-                │  parser/ast.py                      │
+                │  task_input_parser/ast.py                      │
                 │  Parse the brief into a structured  │
                 │  AST. Deterministic.                │
                 │   - .docx → python-docx + zipfile   │
@@ -50,7 +50,7 @@ of resource fetches the agent explicitly initiates.
                                    │
                                    ▼
                 ┌────────────────────────────────────┐
-                │  parser/agent.py                    │
+                │  task_input_parser/agent.py                    │
                 │  Single Portkey call to Claude      │
                 │  Sonnet with function-calling.      │
                 │  Loops on tool requests:            │
@@ -88,7 +88,7 @@ can call.
 ## The agent loop in detail
 
 ```python
-# parser/agent.py — pseudocode (~30 lines)
+# task_input_parser/agent.py — pseudocode (~30 lines)
 from .cost import CostAccumulator
 from .tools import all_tools, dispatch
 
@@ -141,7 +141,7 @@ or in tools.**
 | Tool | What it does | Implementation summary |
 |---|---|---|
 | `process_image(image_ref)` | Extracts an image from the source doc, uploads it to the shared Drive `task-resources/` folder, returns Drive thumbnail URL + view URL + basic metadata (width, height, content-hash). **No vision-LLM analysis** — image understanding by downstream consumers is out of scope. | `zipfile` for `.docx` extraction; existing `non_tech_flow/google_utils.py` for Drive upload. Drive upload result cached by `sha256(image_bytes)` so the same image bytes deduplicate to one Drive file across re-runs and across task references within a brief. |
-| `fetch_external_code(url)` | Detects the platform from URL pattern, fetches starter-code files using the right fetcher, returns `{filename: source_content}` dict + platform-detected metadata. v1 supports CodePen + GitHub Gist. Other platforms (CodeSandbox, JSFiddle, Pastebin, Replit) return a structured "not yet supported" error that the agent surfaces as an inline `**Note:**` in the affected task's markdown. | CodePen: `undetected_chromedriver` running visible Chrome (Cloudflare bypass). Gist: plain HTTP. Result cached by `sha256(url)`. Failed fetches also cached. |
+| `fetch_external_code(url)` | Detects the platform from URL pattern; for GitHub Gist (the only v1-supported platform) fetches via the public Gists API and returns `{filename: source_content}` plus a `platform_detected` field. For CodePen URLs (Cloudflare-gated) returns `status="bot_protected"` with the canonical operator-facing message. For other platforms returns `status="platform_not_supported"`. **No bot-protection bypass is attempted under any condition** (constitution Principle V). | Gist: plain HTTP via `https://api.github.com/gists/<id>`. CodePen + others: structured non-OK status only; the agent emits an inline `**Note:**` in the affected task's markdown. Result cached by `sha256(url)`. |
 | `emit_task(slug, markdown_content)` | Writes the final per-task markdown to `tmp/extract_*/task-N-slug.md`. Runs the leak-check regex BEFORE writing; rejects on any banned domain match. Counts the inline `**Note:**` entries in the markdown and returns the count to the agent so the run summary can reflect them. | The leak check is the safety gate for constitution Principle VIII. If the markdown contains `codepen.io`, `codesandbox.io`, etc., the tool returns a structured error to the agent (the agent retries with the URL removed). |
 
 All three tools have Pydantic input/output schemas. The agent sees these
@@ -156,7 +156,7 @@ is no separate gap-tracking file.
 
 ## The system prompt — the agent's brain
 
-Located at `parser/prompts/system.md`. The Python wrapper is intentionally
+Located at `task_input_parser/prompts/system.md`. The Python wrapper is intentionally
 "dumb" — the prompt is where the agent's behaviour is defined. The prompt
 covers:
 
@@ -181,8 +181,9 @@ quality of output is bounded by quality of this prompt.
 Two caches, both content-addressed, in `tmp/parser_cache/`:
 
 - **Resource cache:** `tmp/parser_cache/<sha256(url)>.json` records the
-  result of `fetch_external_code`. Cache hits skip the network + Cloudflare
-  bypass. Failed fetches also cached with a `retry_allowed` flag.
+  result of `fetch_external_code`. Cache hits skip the network round-trip.
+  Failed fetches and `bot_protected` / `platform_not_supported` outcomes
+  are also cached so dead URLs don't trigger repeat work on every re-run.
 - **Image-upload cache:** `tmp/parser_cache/<sha256(image_bytes)>.drive.json`
   records the Drive URL set returned by `process_image`. Same image bytes
   resolve to one Drive file across tasks and across re-runs (no second
@@ -194,7 +195,7 @@ gets a fresh timestamped directory.
 
 ## Cost discipline
 
-`parser/cost.py` accumulates LLM cost across every Portkey call:
+`task_input_parser/cost.py` accumulates LLM cost across every Portkey call:
 
 ```python
 @dataclass
@@ -218,19 +219,19 @@ breach aborts with a clear error; the CLI catches at the top, writes
 
 | Question | Code lives in |
 |---|---|
-| How does it parse `.docx` / `.md` / `.txt`? | `parser/ast.py` |
-| How does the agent loop? | `parser/agent.py` (~30 lines of orchestration) |
-| What does the agent know about the task? | `parser/prompts/system.md` |
-| How does it extract images from `.docx`? | `parser/tools/image.py` (uses `zipfile`) |
-| How does it upload images to Drive? | `parser/tools/image.py` (wraps `non_tech_flow/google_utils.py`) |
-| How does it handle a design image? | `parser/tools/image.py` extracts + uploads to Drive; no vision analysis. The downstream consumer follows the Drive link to view the image. |
+| How does it parse `.docx` / `.md` / `.txt`? | `task_input_parser/ast.py` |
+| How does the agent loop? | `task_input_parser/agent.py` (~30 lines of orchestration) |
+| What does the agent know about the task? | `task_input_parser/prompts/system.md` |
+| How does it extract images from `.docx`? | `task_input_parser/tools/image.py` (uses `zipfile`) |
+| How does it upload images to Drive? | `task_input_parser/tools/image.py` (wraps `non_tech_flow/google_utils.py`) |
+| How does it handle a design image? | `task_input_parser/tools/image.py` extracts + uploads to Drive; no vision analysis. The downstream consumer follows the Drive link to view the image. |
 | How does it extract a role description? | LLM does it as part of `emit_task` content composition (no separate tool); system prompt instructs the LLM to scan for role-introducing prose and emit a `## Role Description` section when found |
-| How does it fetch CodePen / Gist source? | `parser/tools/fetch.py` + `parser/tools/scrape/{codepen,gist}.py` |
-| How does it bypass Cloudflare? | `parser/tools/scrape/codepen.py` (uses `undetected_chromedriver` visible Chrome) |
-| How does it stay under $2? | `parser/cost.py` accumulator with cap-and-abort |
-| How does it prevent source-URL leaks? | `parser/leak_check.py` (shared module); `emit_task` runs it before writing |
+| How does it fetch Gist source? | `task_input_parser/tools/fetch.py` + `task_input_parser/tools/scrape/gist.py` (plain HTTP via the public Gists API) |
+| What about CodePen / other bot-protected platforms? | `task_input_parser/tools/fetch.py` returns `status="bot_protected"` immediately; no bypass is attempted. The agent emits an inline `**Note:**` asking the operator to paste manually. (Per constitution Principle V.) |
+| How does it stay under $2? | `task_input_parser/cost.py` accumulator with cap-and-abort |
+| How does it prevent source-URL leaks? | `task_input_parser/leak_check.py` (shared module); `emit_task` runs it before writing |
 | How does it flag uncertainty? | The LLM includes an inline `**Note:**` paragraph in the relevant section of the emitted markdown. No separate gap-tracking file. |
-| How does the CLI work? | `parser/cli.py` (Click `@click.command()`) |
+| How does the CLI work? | `task_input_parser/cli.py` (Click `@click.command()`) |
 
 ## Constitution alignment (summary)
 
@@ -239,7 +240,7 @@ of how this flow honours each applicable principle:
 
 - **I. Small Correct Thing First** — US1 alone is shippable in one
   iteration.
-- **II. CLI-First with Plugin Registry** — `python -m parser` matches the
+- **II. CLI-First with Plugin Registry** — `python -m task_input_parser` matches the
   existing sub-package convention.
 - **III. Portkey Gateway Only** — the agent's LLM call goes through Portkey.
 - **V. Local-First Artifact Saving** — output stays in `tmp/`.
@@ -247,7 +248,7 @@ of how this flow honours each applicable principle:
 - **VII. Pre-flight Validation** — tool I/O via Pydantic schemas.
 - **VIII. No Customer-Source Leakage** — `emit_task` runs leak-check
   regex before writing.
-- **X. Cost Discipline** — $2 cap enforced in `parser/cost.py`.
+- **X. Cost Discipline** — $2 cap enforced in `task_input_parser/cost.py`.
 - **XI. DRY** — one `fetch_external_code` tool with internal dispatch,
   not five separate scrapers.
 
