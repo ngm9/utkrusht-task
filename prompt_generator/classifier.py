@@ -3,16 +3,18 @@ Task category classification — determines the infrastructure category of a tas
 from its competency mix.
 
 Categories drive what Docker/file structure the generated prompt should specify:
-  - PURE_CODE        : language only, no infrastructure (e.g. Python BASIC, React)
-  - DB_ONLY          : SQL/database tasks with no app code (e.g. SQL BASIC)
-  - SCRIPT_AND_DB    : Python/Node script that talks to a DB (e.g. Python+SQL)
-  - APP_AND_DB       : web framework + database (e.g. Node+Postgres, FastAPI+DB)
-  - FRONTEND         : browser-side only (React, Next, Vue)
-  - LLM_FRAMEWORK    : Python + LLM ecosystem (Langchain, Llamaindex, RAG)
-  - VECTOR_DB        : Python + vector store (Milvus, Chroma, Pinecone)
-  - MESSAGING        : Kafka/queue tasks paired with a backend
-  - MICROSERVICES    : multi-service architecture
-  - NON_CODE         : evaluation/PM tasks with no executable code
+  - PURE_CODE         : language only, no infrastructure (e.g. Python BASIC, React)
+  - DB_ONLY           : SQL/database tasks with no app code (e.g. SQL BASIC)
+  - SCRIPT_AND_DB     : Python/Node script that talks to a DB (e.g. Python+SQL)
+  - APP_AND_DB        : web framework + database (e.g. Node+Postgres, FastAPI+DB)
+  - FRONTEND          : browser-side only (React, Next, Vue)
+  - LLM_FRAMEWORK     : Python + LLM ecosystem (Langchain, Llamaindex, RAG)
+  - VECTOR_DB         : Python + vector store (Milvus, Chroma, Pinecone)
+  - MESSAGING         : Kafka/queue tasks paired with a backend
+  - MICROSERVICES     : multi-service architecture
+  - CONTAINERIZED_APP : language/framework packaged into Docker/Kubernetes,
+                        no DB (e.g. Java+Docker, Python+FastAPI+Docker)
+  - NON_CODE          : evaluation/PM tasks with no executable code
 """
 
 from __future__ import annotations
@@ -32,12 +34,18 @@ class TaskCategory(str, Enum):
     VECTOR_DB = "vector_db"
     MESSAGING = "messaging"
     MICROSERVICES = "microservices"
+    CONTAINERIZED_APP = "containerized_app"
     NON_CODE = "non_code"
 
 
 # Competency name fragments grouped by what they imply about infrastructure.
 # Lowercased; matched as substring against competency names.
-_DB_TOKENS = ("sql", "postgres", "postgresql", "mongo", "mongodb", "mysql", "redis_cache")
+# "redis" intentionally added alongside legacy "redis_cache" so a plain "Redis"
+# competency name is recognised as a data store.
+_DB_TOKENS = (
+    "sql", "postgres", "postgresql", "mongo", "mongodb", "mysql",
+    "redis", "redis_cache",
+)
 _WEB_FRAMEWORK_TOKENS = (
     "fastapi", "flask", "django", "express", "nest", "spring boot", "spring mvc",
     "spring webservices", "rails", "laravel",
@@ -53,6 +61,10 @@ _LLM_TOKENS = ("langchain", "llamaindex", "llama-index", "rag", "rags")
 _VECTOR_DB_TOKENS = ("vector database", "vector db", "pinecone", "milvus", "chroma", "weaviate", "qdrant", "faiss")
 _MESSAGING_TOKENS = ("kafka", "rabbitmq", "pubsub", "sqs", "sns")
 _MICROSERVICES_TOKENS = ("microservices",)
+# Containerization signals — Docker/Kubernetes change task structure even when
+# no DB is present. Without this, Java+Docker fell through to PURE_CODE and the
+# generated prompt lost all infrastructure context.
+_CONTAINER_TOKENS = ("docker", "kubernetes", "k8s", "podman", "containerization")
 _NON_CODE_TOKENS = (
     "ai evals for product managers",
     "voice agent evaluation",
@@ -101,6 +113,10 @@ def _has_frontend_only(comps: list[Competency]) -> bool:
     )
 
 
+def _has_container(comps: list[Competency]) -> bool:
+    return any(_matches_any(c.name_lower, _CONTAINER_TOKENS) for c in comps)
+
+
 def classify_task_category(competencies: list[Competency]) -> TaskCategory:
     """Classify a task's infrastructure category from its competency mix.
 
@@ -140,9 +156,12 @@ def classify_task_category(competencies: list[Competency]) -> TaskCategory:
     has_framework = _has_web_framework(competencies)
     has_backend = _has_backend_language(competencies)
     has_web_app_lang = any(_matches_any(c.name_lower, _WEB_APP_LANG_TOKENS) for c in competencies)
+    has_container = _has_container(competencies)
 
     # APP_AND_DB — explicit web framework + database, OR a web-app-defaulting language + DB.
     # Node.js/Java/Ruby + DB conventionally means a web app, even without an explicit framework.
+    # Checked before CONTAINERIZED_APP because a DB is the stronger infrastructure signal —
+    # an app+DB task that also uses Docker is still primarily app+DB.
     if has_db and (has_framework or has_web_app_lang):
         return TaskCategory.APP_AND_DB
 
@@ -154,6 +173,11 @@ def classify_task_category(competencies: list[Competency]) -> TaskCategory:
     # DB_ONLY — only a DB competency, nothing else (e.g. SQL BASIC alone)
     if has_db:
         return TaskCategory.DB_ONLY
+
+    # CONTAINERIZED_APP — Docker/Kubernetes paired with a language or framework,
+    # no DB. Catches Java+Docker, Python+Docker, Go+Docker, Python+FastAPI+Docker.
+    if has_container and (has_backend or has_framework):
+        return TaskCategory.CONTAINERIZED_APP
 
     # Default — pure code (language-only or framework-only without DB)
     return TaskCategory.PURE_CODE

@@ -56,6 +56,29 @@ TECH_FAMILY = {
     "expressjs":         ["nodejs"],
     "javascript":        ["typescript", "html and css"],
     "typescript":        ["javascript"],
+    "docker":            ["kubernetes", "python", "java", "go"],
+    "kubernetes":        ["docker"],
+    "redis":             ["postgresql", "mongodb", "sql"],
+}
+
+
+# Alias map — competencies whose canonical slug differs from how they appear in
+# filenames. Tokens listed here are the set of names the retriever will look for
+# when matching a filename, replacing the default slug-only behaviour. Without
+# this, a "Go" competency (slug "go") cannot match "golang_docker_prompt.py".
+COMPETENCY_ALIASES: dict[str, set[str]] = {
+    "go":         {"go", "golang"},
+    "golang":     {"go", "golang"},
+    "nodejs":     {"node", "nodejs"},
+    "node":       {"node", "nodejs"},
+    "javascript": {"javascript", "js"},
+    "typescript": {"typescript", "ts"},
+    "postgres":   {"postgres", "postgresql"},
+    "postgresql": {"postgres", "postgresql"},
+    "mongo":      {"mongo", "mongodb"},
+    "mongodb":    {"mongo", "mongodb"},
+    "k8s":        {"k8s", "kubernetes"},
+    "kubernetes": {"k8s", "kubernetes"},
 }
 
 
@@ -86,10 +109,36 @@ def _level_folder(proficiency: str) -> Path:
 
 
 def _list_prompt_files(proficiency: str) -> list[Path]:
+    """Return curated prompt files at this proficiency level.
+
+    Two layouts are supported under ``<level>/``::
+
+        <level>/<slug>.py                          # flat, legacy
+        <level>/<slug>/<slug>.py                   # per-slug folder, canonical
+
+    The canonical per-slug convention is required so that historical originals
+    under ``<level>/<slug>/original_temp_prompt/<...>.py`` are skipped — without
+    this, retriever results would include both the curated file and its archived
+    predecessor.
+    """
     folder = _level_folder(proficiency)
     if not folder.exists():
         return []
-    return sorted(p for p in folder.glob("*.py") if not p.name.startswith("__"))
+    out: list[Path] = []
+    # Flat layout — direct .py files in the level folder.
+    for p in folder.glob("*.py"):
+        if p.name.startswith("__"):
+            continue
+        out.append(p)
+    # Per-slug folders — only the canonical <slug>/<slug>.py is treated as
+    # curated. Anything else (original_temp_prompt/, tests/, etc.) is ignored.
+    for child in folder.iterdir():
+        if not child.is_dir() or child.name.startswith("__"):
+            continue
+        canonical = child / f"{child.name}.py"
+        if canonical.exists():
+            out.append(canonical)
+    return sorted(out)
 
 
 def _slugify(name: str) -> str:
@@ -103,21 +152,40 @@ def _slugify(name: str) -> str:
     return s
 
 
-def _name_tokens(comp: Competency) -> list[str]:
-    """Tokens we look for in prompt filenames to spot a competency match."""
+# Filename-token splitter — same boundaries we expect prompt files to use.
+_FILENAME_TOKEN_RE = re.compile(r"[_\-.]+")
+
+
+def _name_tokens(comp: Competency) -> set[str]:
+    """Tokens we look for in prompt filenames to spot a competency match.
+
+    Returns a set so callers can do constant-time membership tests against
+    tokenised filenames. Includes the slug, its underscore parts (so
+    "java_spring_mvc" matches a "spring_mvc" filename), and any known aliases
+    (e.g. "Go" expands to both "go" and "golang").
+    """
     slug = _slugify(comp.name)
-    parts = [slug]
-    # Also split on underscore so "java_spring_mvc" matches a "spring_mvc" filename
-    parts.extend(slug.split("_"))
-    return [p for p in parts if p and len(p) > 1]
+    parts: set[str] = {slug}
+    parts.update(slug.split("_"))
+    if slug in COMPETENCY_ALIASES:
+        parts.update(COMPETENCY_ALIASES[slug])
+    return {p for p in parts if p and len(p) > 1}
+
+
+def _filename_tokens(path: Path) -> set[str]:
+    """Split the filename stem on common separators for word-boundary matching."""
+    return {t for t in _FILENAME_TOKEN_RE.split(path.stem.lower()) if t}
 
 
 def _file_matches_competency(path: Path, comp: Competency) -> bool:
-    fname = path.name.lower()
-    for tok in _name_tokens(comp):
-        if tok in fname:
-            return True
-    return False
+    """True if any competency token appears as a whole word in the filename.
+
+    Word-boundary matching is required to prevent substring leakage. With plain
+    ``tok in fname``, "java" matched "javascript_*.py" and "go" matched
+    "mongodb_*.py", polluting every retrieval result.
+    """
+    file_tokens = _filename_tokens(path)
+    return any(tok in file_tokens for tok in _name_tokens(comp))
 
 
 def _find_exact_match_file(competencies: list[Competency], proficiency: str) -> Optional[Path]:
@@ -187,6 +255,10 @@ def _find_category_examples(category: TaskCategory, proficiency: str, limit: int
             out.append(path)
         elif category == TaskCategory.FRONTEND and any(
             tok in fname for tok in ("react", "vue", "next", "javascript", "typescript")
+        ):
+            out.append(path)
+        elif category == TaskCategory.CONTAINERIZED_APP and any(
+            tok in fname for tok in ("docker", "kubernetes", "k8s")
         ):
             out.append(path)
         if len(out) >= limit:
