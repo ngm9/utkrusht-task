@@ -273,7 +273,7 @@ Practical guidance without revealing implementations:
 """
 
 PROMPT_REGISTRY = {
-    "MongoDb (BASIC), NodeJs (BASIC), ReactJs (BASIC)": [
+    "MongoDB (BASIC), NodeJs (BASIC), React (BASIC)": [
         PROMPT_FULLSTACK_BASIC_CONTEXT,
         PROMPT_FULLSTACK_BASIC_INPUT_AND_ASK,
         PROMPT_FULLSTACK_BASIC,

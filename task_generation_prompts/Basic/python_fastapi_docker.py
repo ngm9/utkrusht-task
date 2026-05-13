@@ -516,7 +516,7 @@ Provide practical guidance without revealing specific implementations:
 """
 
 PROMPT_REGISTRY = {
-    "Docker (BASIC), Python - FastAPI (BASIC)": [
+    "Docker (BASIC), Python (BASIC), Python - FastAPI (BASIC)": [
         PROMPT_FASTAPI_DOCKER_BASIC_CONTEXT,
         PROMPT_FASTAPI_DOCKER_BASIC_INPUT_AND_ASK,
         PROMPT_FASTAPI_DOCKER_OPTIMIZATION_INSTRUCTIONS_BASIC,

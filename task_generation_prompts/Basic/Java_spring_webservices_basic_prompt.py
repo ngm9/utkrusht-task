@@ -204,14 +204,9 @@ Verification approaches for the task:
 13. **"title"** must be in `<action verb> <subject>` format and different from `"name"` — name is kebab-case for GitHub repo, title is human-readable for display
 """
 PROMPT_REGISTRY = {
-    "Java - Spring Webservices": [
+    "Java (BASIC), Java - Spring Webservices (BASIC)": [
         PROMPT_JAVA_SPRING_WEBSERVICES_CONTEXT_BASIC,
         PROMPT_JAVA_SPRING_WEBSERVICES_INPUT_AND_ASK_BASIC,
         PROMPT_JAVA_SPRING_WEBSERVICES_BASIC,
-    ],
-    "Java - Spring Webservices (BASIC)": [
-        PROMPT_JAVA_SPRING_WEBSERVICES_CONTEXT_BASIC,
-        PROMPT_JAVA_SPRING_WEBSERVICES_INPUT_AND_ASK_BASIC,
-        PROMPT_JAVA_SPRING_WEBSERVICES_BASIC,
-    ],
+    ]
 }

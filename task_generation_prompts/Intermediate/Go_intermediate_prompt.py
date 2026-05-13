@@ -248,7 +248,7 @@ Make sure you do not include the following in the README.md file:
   
   """
 PROMPT_REGISTRY = {
-    "Golang (INTERMEDIATE)": [
+    "Go (INTERMEDIATE)": [
         PROMPT_GOLANG_CONTEXT,
         PROMPT_GOLANG_INPUT_AND_ASK,
         PROMPT_GO_INTERMEDIATE_INSTRUCTIONS,

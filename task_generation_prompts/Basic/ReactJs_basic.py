@@ -185,7 +185,7 @@ Verification approaches after implementation:
 10. **Select a different real-world scenario** each time for variety
 """
 PROMPT_REGISTRY = {
-    "ReactJs (BASIC)": [
+    "React (BASIC)": [
         PROMPT_REACT_BASIC_CONTEXT,
         PROMPT_REACT_BASIC_INPUT_AND_ASK,
         PROMPT_REACT_BASIC,

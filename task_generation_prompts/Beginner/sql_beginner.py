@@ -202,7 +202,7 @@ Practical guidance without revealing implementations:
 """
 
 PROMPT_REGISTRY = {
-    "SQL": [
+    "SQL (BEGINNER)": [
         PROMPT_SQL_BEGINNER_CONTEXT,
         PROMPT_SQL_BEGINNER_INPUT_AND_ASK,
         PROMPT_SQL_BEGINNER,

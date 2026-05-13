@@ -259,7 +259,7 @@ Provide practical guidance without revealing specific implementations:
   - Spring Security configuration details or specific authentication approaches
 """
 PROMPT_REGISTRY = {
-    "Java - Spring Boot (INTERMEDIATE)": [
+    "Java (INTERMEDIATE), Java - Spring Boot (INTERMEDIATE)": [
         PROMPT_JAVA_SPRING_BOOT_CONTEXT_INTERMEDIATE,
         PROMPT_JAVA_SPRING_BOOT_INPUT_AND_ASK_INTERMEDIATE,
         PROMPT_JAVA_SPRING_BOOT_INTERMEDIATE_INSTRUCTIONS,

@@ -351,9 +351,9 @@ Provide practical guidance without revealing specific implementations:
 - `"title"` must be in `<action verb> <subject>` format and different from `"name"` — name is kebab-case for GitHub repo, title is human-readable for display
 """
 PROMPT_REGISTRY = {
-    "Python - FastAPI (INTERMEDIATE), Redis (INTERMEDIATE)": [
+    "Python (INTERMEDIATE), Redis (INTERMEDIATE)": [
         PROMPT_FASTAPI_REDIS_CONTEXT,
         PROMPT_FASTAPI_REDIS_INPUT_AND_ASK,
         PROMPT_FASTAPI_REDIS_OPTIMIZATION_INSTRUCTIONS_INTER,
-    ],
+    ]
 }

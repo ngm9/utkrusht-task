@@ -239,7 +239,7 @@ Provide practical guidance without revealing specific implementations:
 10. **Use Python 3.8+ and modern Pandas/NumPy best practices** throughout
   """
 PROMPT_REGISTRY = {
-    "Python - Numpy (BASIC), Python - Pandas (BASIC)": [
+    "Python (BASIC), Python - Numpy (BASIC), Python - Pandas (BASIC)": [
         PROMPT_PANDAS_NUMPY_CONTEXT_BASIC,
         PROMPT_PANDAS_NUMPY_INPUT_AND_ASK_BASIC,
         PROMPT_PANDAS_NUMPY_BASIC,

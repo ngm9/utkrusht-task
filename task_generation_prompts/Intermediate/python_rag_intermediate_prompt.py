@@ -133,7 +133,7 @@ This task must run on the sandboxed E2B environment, which is CPU-only and disk-
 The task MUST generate these files in addition to the application code. They are non-negotiable for E2B deployment:
 
 - `docker-compose.yml` — defines a single `db` service using `pgvector/pgvector:pg16` with a healthcheck (`pg_isready`).
-- `run.sh` — `set -e`, brings up `docker-compose up -d`, polls until pg is healthy, `pip install -r requirements.txt`, runs ingestion / migration script, then starts uvicorn on `0.0.0.0:5000`. Must export `DATABASE_URL=postgresql://USER:PASS@localhost:5432/DB`. Must NOT block forever — uvicorn should be started with `nohup` or similar so the script returns.
+- `run.sh` — `set -e`, brings up `docker-compose up -d`, polls until pg is healthy, `pip install -r requirements.txt`, runs ingestion / migration script via `python3 -m app.ingestion` (NEVER `python -m …` — production droplets have only `python3` on PATH and bare `python` exits 127), then starts uvicorn on `0.0.0.0:5000`. Must export `DATABASE_URL=postgresql://USER:PASS@localhost:5432/DB`. Must NOT block forever — uvicorn should be started with `nohup` or similar so the script returns.
 - `kill.sh` — `docker-compose down -v` and `pkill -f uvicorn || true`.
 - `requirements.txt` — pinned to fastembed, fastapi, uvicorn, psycopg[binary]>=3.1 (or psycopg2-binary>=2.9.10), pydantic, openai, python-dotenv, plus pypdf or markdown loader as the scenario needs.
 - `.env.example` — `OPENAI_API_KEY=`, `DATABASE_URL=postgresql://courseuser:coursepass@localhost:5432/coursedb` (placeholders).
@@ -164,7 +164,7 @@ The task MUST generate these files in addition to the application code. They are
     "requirements.txt": "Python dependencies (see INFRASTRUCTURE section). MUST pin fastembed; MUST NOT include sentence-transformers/torch/transformers.",
     ".env.example": "OPENAI_API_KEY= and DATABASE_URL=postgresql://courseuser:coursepass@localhost:5432/coursedb",
     "docker-compose.yml": "Single `db` service using pgvector/pgvector:pg16 on port 5432 with a pg_isready healthcheck",
-    "run.sh": "set -e; docker-compose up -d; wait-for-healthy loop; pip install -r requirements.txt; python -m app.ingestion (or schema.sql apply); nohup uvicorn app.main:app --host 0.0.0.0 --port 5000 > uvicorn.log 2>&1 &",
+    "run.sh": "set -e; docker-compose up -d; wait-for-healthy loop; pip install -r requirements.txt; python3 -m app.ingestion (or schema.sql apply); nohup uvicorn app.main:app --host 0.0.0.0 --port 5000 > uvicorn.log 2>&1 & (NOTE: always use `python3`, not `python` — droplet hosts have no `python` symlink, so bare `python` exits 127)",
     "kill.sh": "docker-compose down -v; pkill -f uvicorn || true",
     "app/main.py": "FastAPI app entry point with the RAG endpoint(s)",
     "app/schema.sql": "CREATE EXTENSION vector; CREATE TABLE documents (id, source, chunk, metadata, embedding vector(384), ...); CREATE INDEX (HNSW or IVFFlat) on embedding",
@@ -280,12 +280,13 @@ The README must be concise and open-ended. Each section should contain only the 
 10. The generated task must reflect the selected real-world scenario closely.
 11. docker-compose.yml must use `pgvector/pgvector:pg16` and only the `db` service. The Python app runs on the host.
 12. run.sh must end with uvicorn started in the background so the script returns.
+13. Every Python invocation inside run.sh, kill.sh, and any other shell script MUST use `python3` (never bare `python`). Production droplets do not have a `python` symlink — bare `python` exits 127. This applies to ingestion scripts, schema-apply scripts, and any helper invocation. uvicorn itself is fine because `pip install` creates an executable named `uvicorn` directly.
 """
 
 PROMPT_REGISTRY = {
-    "Python (INTERMEDIATE), Retrieval Augmented Generation (RAG) (INTERMEDIATE)": [
+    "Python (INTERMEDIATE), RAG (INTERMEDIATE)": [
         PROMPT_RAG_PYTHON_INTERMEDIATE_CONTEXT,
         PROMPT_RAG_PYTHON_INTERMEDIATE_INPUT_AND_ASK,
         PROMPT_RAG_PYTHON_INTERMEDIATE_INSTRUCTIONS,
-    ],
+    ]
 }

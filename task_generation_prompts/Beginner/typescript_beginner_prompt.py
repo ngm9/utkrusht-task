@@ -215,14 +215,9 @@ Verification approaches after implementation:
 """
 
 PROMPT_REGISTRY = {
-    "Typescript": [
-        PROMPT_TYPESCRIPT_BEGINNER_CONTEXT,
-        PROMPT_TYPESCRIPT_BEGINNER_INPUT_AND_ASK,
-        PROMPT_TYPESCRIPT_BEGINNER,
-    ],
     "Typescript (BEGINNER)": [
         PROMPT_TYPESCRIPT_BEGINNER_CONTEXT,
         PROMPT_TYPESCRIPT_BEGINNER_INPUT_AND_ASK,
         PROMPT_TYPESCRIPT_BEGINNER,
-    ],
+    ]
 }

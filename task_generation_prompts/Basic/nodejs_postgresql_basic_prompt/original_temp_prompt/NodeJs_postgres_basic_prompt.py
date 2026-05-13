@@ -323,7 +323,7 @@ Verification approaches for schema design and Node.js integration:
 }}
 """
 PROMPT_REGISTRY = {
-    "NodeJs, PostgreSQL": [
+    "NodeJs (BASIC), PostgreSQL (BASIC)": [
         PROMPT_NODEJS_POSTGRESQL_CONTEXT,
         PROMPT_NODEJS_POSTGRESQL_INPUT_AND_ASK,
         PROMPT_NODEJS_POSTGRESQL_INSTRUCTIONS,

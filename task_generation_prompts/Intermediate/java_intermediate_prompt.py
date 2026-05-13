@@ -247,7 +247,7 @@ Provide practical guidance without revealing specific implementations:
   - Specific Java API recommendations that would reveal the solution approach
 """
 PROMPT_REGISTRY = {
-    "Java": [
+    "Java (INTERMEDIATE)": [
         PROMPT_JAVA_CONTEXT,
         PROMPT_JAVA_INTERMEDIATE_INSTRUCTIONS,
         PROMPT_JAVA_INPUT_AND_ASK,
