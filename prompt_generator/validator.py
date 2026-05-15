@@ -26,13 +26,27 @@ REQUIRED_FORMAT_VARS = {
 # Optional format vars — present in many but not all prompt files.
 OPTIONAL_FORMAT_VARS = {"minutes_range", "question_prompt", "sample_dataset"}
 
+# Sample arguments used to dry-run ``str.format`` on each PROMPT_REGISTRY
+# template. The downstream task-generation pipeline supplies these exact keys —
+# any OTHER ``{...}`` substring in a template must be escaped as ``{{...}}``.
+_FMT_DRYRUN_ARGS = {key: "<x>" for key in (REQUIRED_FORMAT_VARS | OPTIONAL_FORMAT_VARS)}
+
 # JSON-schema keys the downstream task-generation LLM must emit. The pipeline
-# (multiagent.py) reads these off task_data and stores them in Supabase:
-#   - `answer`  → top-level `tasks.answer` column (server-side solution, never
-#                 shown to candidates — `task_blob` is the candidate-visible blob)
-# If a prompt template omits any of these from its REQUIRED OUTPUT JSON STRUCTURE
-# block, the LLM won't produce them and the corresponding DB column stays empty.
-REQUIRED_JSON_SCHEMA_KEYS = ("answer",)
+# (multiagent.py + utils.generate_task_with_code) reads these off task_data.
+# A prompt that instructs synonym keys (task_title / files / context) makes
+# multiagent.py read every field as empty -> a HOLLOW task. This was confirmed
+# during the 2026-05-15 validation run as the PHP+Laravel failure root cause.
+#
+#   - `code_files` → file map written to the GitHub repo
+#   - `question`   → candidate-facing task description
+#   - `answer`     → top-level `tasks.answer` column (server-side solution)
+#
+# `name`/`title` is checked separately because EITHER is accepted by multiagent.
+REQUIRED_JSON_SCHEMA_KEYS = ("code_files", "question", "answer")
+
+# At least one of these must appear as a JSON key — multiagent.py reads
+# `task_data.get("title") or task_data.get("name")`.
+TITLE_KEY_ALTERNATIVES = ("name", "title")
 
 
 @dataclass
@@ -82,17 +96,69 @@ def _extract_format_vars_in_string(source: str) -> set[str]:
     return found
 
 
-def _missing_json_schema_keys(source: str) -> list[str]:
-    """Return required JSON-schema keys that don't appear as JSON keys in source.
+def _json_key_present(source: str, key: str) -> bool:
+    """True if `key` appears as a JSON key (`"key":`) anywhere in source.
 
-    Looks for `"key":` (quoted, followed by colon). Prose mentions like
-    `"answer" field` won't match because there's no colon after the quoted string.
+    Prose mentions like `"answer" field` won't match — there's no colon after
+    the quoted string.
     """
-    missing = []
-    for key in REQUIRED_JSON_SCHEMA_KEYS:
-        if not re.search(rf'"{re.escape(key)}"\s*:', source):
-            missing.append(key)
+    return bool(re.search(rf'"{re.escape(key)}"\s*:', source))
+
+
+def _missing_json_schema_keys(source: str) -> list[str]:
+    """Return canonical output-schema keys absent from the prompt source.
+
+    Covers both the always-required keys and the title alternatives (where any
+    one of `name`/`title` satisfies the requirement).
+    """
+    missing = [k for k in REQUIRED_JSON_SCHEMA_KEYS if not _json_key_present(source, k)]
+    if not any(_json_key_present(source, k) for k in TITLE_KEY_ALTERNATIVES):
+        missing.append("/".join(TITLE_KEY_ALTERNATIVES))
     return missing
+
+
+def _simulate_format_call(source: str) -> list[str]:
+    """Exec the source in a sandbox namespace and dry-run ``str.format`` on
+    every template inside PROMPT_REGISTRY. Returns a list of issues.
+
+    Catches the most common LLM mistake: embedding a raw JSON example like
+    ``{"title": "..."}`` without doubling the braces. When that lands on disk,
+    ``utils.get_task_prompt_by_technology_stack`` crashes with
+    ``KeyError: '\\n  "title"'`` and no task is ever generated.
+    """
+    issues: list[str] = []
+    try:
+        ns: dict = {}
+        exec(compile(source, "<prompt_dryrun>", "exec"), ns)
+    except Exception as e:
+        return [f"Could not exec source to dry-run str.format(): {type(e).__name__}: {e}"]
+    registry = ns.get("PROMPT_REGISTRY")
+    if not isinstance(registry, dict):
+        return ["PROMPT_REGISTRY is not a dict after exec; cannot dry-run format()"]
+    for key, templates in registry.items():
+        if not isinstance(templates, (list, tuple)):
+            issues.append(f"PROMPT_REGISTRY[{key!r}] is not a list of templates")
+            continue
+        for i, template in enumerate(templates):
+            if not isinstance(template, str):
+                issues.append(f"PROMPT_REGISTRY[{key!r}][{i}] is not a str")
+                continue
+            try:
+                template.format(**_FMT_DRYRUN_ARGS)
+            except KeyError as e:
+                bad = repr(e.args[0]) if e.args else "?"
+                preview = bad[:80] + ("..." if len(bad) > 80 else "")
+                issues.append(
+                    f"PROMPT_REGISTRY[{key!r}][{i}] str.format() raises KeyError on placeholder "
+                    f"{preview} — looks like an unescaped {{...}} inside the template (typically "
+                    f"a JSON example). Double the braces to '{{{{' / '}}}}' or remove the example."
+                )
+            except (IndexError, ValueError) as e:
+                issues.append(
+                    f"PROMPT_REGISTRY[{key!r}][{i}] str.format() raises "
+                    f"{type(e).__name__}: {e} — malformed format string."
+                )
+    return issues
 
 
 def _expected_registry_key(competencies: list[dict], proficiency: str) -> str:
@@ -156,17 +222,19 @@ def validate_prompt_file(
             f"Found: {sorted(found_vars)}"
         )
 
-    # 5. Must request all required JSON-schema keys from the downstream LLM.
-    # Without these, the task-generation step produces JSON missing fields that
-    # multiagent.py expects when writing to Supabase (e.g. the server-side
-    # `answer` column).
+    # 5. Must instruct the downstream LLM to use the CANONICAL output JSON keys.
+    # multiagent.py reads `code_files`, `question`, `answer`, and `name`/`title`
+    # off the generated task. A prompt that instructs synonym keys (task_title,
+    # files, context, ...) makes every field read empty -> a HOLLOW task. This
+    # was the PHP+Laravel failure root cause (2026-05-15 validation run, F10).
     missing_keys = _missing_json_schema_keys(source)
     if missing_keys:
         quoted = ", ".join(f'"{k}"' for k in missing_keys)
         result.add_issue(
-            f"REQUIRED OUTPUT JSON STRUCTURE is missing required key(s): {quoted}. "
-            f"multiagent.py reads these off the generated task and writes them to Supabase. "
-            f"Add them to the JSON template inside the INSTRUCTIONS prompt."
+            f"INSTRUCTIONS prompt does not request the canonical output JSON key(s): {quoted}. "
+            f"multiagent.py reads exactly these names — synonyms like 'task_title', 'files', "
+            f"'context' cause a hollow task. Use the canonical keys in the output schema "
+            f"inside the INSTRUCTIONS prompt."
         )
 
     # 6. Must define the three prompt variables (CONTEXT, INPUT_AND_ASK, INSTRUCTIONS)
@@ -181,5 +249,12 @@ def validate_prompt_file(
             f"Could not find PROMPT_*_{{stage}} for stages: {missing_stages}. "
             "This is OK if the file uses a different naming convention but reduces consistency."
         )
+
+    # 7. Every template inside PROMPT_REGISTRY must survive
+    # ``str.format(**fmt_args)`` with the known placeholder set. Catches
+    # unescaped JSON examples / dict literals — the single most common LLM
+    # mistake we observed in the smoke test.
+    for issue in _simulate_format_call(source):
+        result.add_issue(issue)
 
     return result

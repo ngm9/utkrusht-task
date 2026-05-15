@@ -138,6 +138,19 @@ class GeneratePromptSignature(dspy.Signature):
         where <key> is exactly: 'Name1 (LEVEL), Name2 (LEVEL)' (alphabetically
         sorted competency names with proficiency in parentheses).
 
+    HARD CONSTRAINT — brace escaping:
+    Every `{` and `}` inside the prompt strings is passed through
+    Python `str.format(**fmt_args)` downstream. Only the following are valid
+    single-brace placeholders: `{organization_background}`, `{role_context}`,
+    `{competencies}`, `{real_world_task_scenarios}`, `{minutes_range}`,
+    `{question_prompt}`. Any OTHER `{` or `}` (JSON example, dict literal,
+    f-string snippet, set notation) MUST be doubled (`{{` and `}}`). For
+    example, when embedding an output schema example, write
+    `{{"title": "...", "code_files": {{"a.py": "..."}}}}`, NOT
+    `{"title": "...", "code_files": {"a.py": "..."}}`. A single unescaped
+    JSON example causes downstream `KeyError: '\\n  "title"'` and no task is
+    ever generated.
+
     HARD CONSTRAINT — infrastructure category:
     The `task_category` field determines the file structure. Match it exactly:
       - PURE_CODE: no Docker, just source + requirements.txt or package.json
@@ -150,6 +163,25 @@ class GeneratePromptSignature(dspy.Signature):
       - MESSAGING: backend + Kafka/queue infrastructure (broker container)
       - MICROSERVICES: multi-service Docker setup
       - NON_CODE: data files only (CSV/JSON), no executable code
+
+    HARD CONSTRAINT — generated-task output JSON schema (CANONICAL KEYS):
+    The INSTRUCTIONS prompt you produce tells a downstream LLM to emit a JSON
+    object describing the assessment task. multiagent.py reads SPECIFIC top-level
+    keys off that JSON. You MUST instruct the downstream LLM to use exactly these
+    canonical key names — NOT synonyms:
+      - "name"          (string) — the task title. NOT "task_title", NOT "title".
+      - "question"      (string) — the full candidate-facing task description.
+                          NOT "context", NOT "candidate_instructions".
+      - "code_files"    (object) — maps each filepath to its full contents.
+                          NOT "files", NOT "repository_structure".
+      - "answer"        (object) — the evaluator-facing canonical solution summary.
+      - "definitions", "hints", "outcomes", "pre_requisites", "short_overview"
+                          — supporting fields stored in the candidate task_blob.
+    A prompt that instructs ANY other key name (task_title / files / context /
+    repository_structure / acceptance_criteria) causes multiagent.py to read
+    every field as empty and produce a HOLLOW task that is rejected by the eval
+    gate. When `reference_prompts` is empty (bootstrap mode), you MUST still use
+    these exact canonical keys — do not invent your own schema.
 
     HARD CONSTRAINT — proficiency level boundaries:
       - BEGINNER (0-1 yrs, 20-30 min): single concept, syntax fixes, basic logic.

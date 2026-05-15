@@ -24,10 +24,10 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 from pathlib import Path
 
 from prompt_generator.classifier import Competency
+from prompt_generator.slugs import competency_tokens, name_tokens, slugify
 
 logger = logging.getLogger("prompt_generator")
 
@@ -43,78 +43,106 @@ ROLE_CONTEXT_HARD_CHAR_CAP = 1200
 SCENARIO_HARD_CHAR_CAP = 1200
 
 
-def _slugify(name: str) -> str:
-    """Mirror of the slug logic in ``__main__.py`` / ``retriever.py``."""
-    s = name.lower()
-    s = re.sub(r"\.js\b", "js", s)
-    s = re.sub(r"\s*[-/&]\s*", "_", s)
-    s = re.sub(r"[\s.]+", "_", s)
-    s = re.sub(r"[^a-z0-9_]", "", s)
-    s = re.sub(r"_+", "_", s).strip("_")
-    return s
-
-
 def _combo_slug(competency_names: list[str]) -> str:
-    """Build the combined slug used in ``input_<slug>/`` directory names."""
-    return "_".join(_slugify(n) for n in competency_names)
+    """Build the combined slug used in ``input_<slug>/`` directory names.
+
+    Kept for logging / metadata only — directory matching now goes through
+    token-based scoring (see :func:`_find_background_file`), so the exact
+    composite slug no longer needs to align with the on-disk folder name.
+    """
+    return "_".join(slugify(n) for n in competency_names)
 
 
 def _level_lower(proficiency: str) -> str:
     return proficiency.lower()
 
 
-def _find_background_file(combo_slug: str, proficiency: str) -> Path | None:
-    """Find the background_*.json file for this (combo, level).
+def _find_background_file(
+    competency_names: list[str],
+    proficiency: str,
+) -> Path | None:
+    """Find background_*.json by token-matching competencies against directory names.
 
-    Folder layouts vary across combos — some have ``input_<slug>/<level>/<task>/``,
-    others ``input_<slug>_<level>_task/`` flat. Glob recursively to be robust.
+    Replaces the old strict ``input_{combo_slug}*`` glob, which assumed every
+    on-disk folder followed the same naming convention as the slug builder
+    (it doesn't — some folders use ``node``/others ``nodejs``,
+    ``react``/``reactjs``/``react_framework``, and word order varies).
+
+    Strategy: enumerate every ``input_*/`` directory, score each by how many
+    competencies have at least one alias-aware token in the directory name, and
+    require ALL competencies to match before considering the folder. Among
+    matches, prefer folders whose name also contains the proficiency level.
     """
-    logger.debug("input_files: looking for background file slug=%r level=%s "
-                 "under %s", combo_slug, proficiency, INPUT_FILES_ROOT)
+    logger.debug(
+        "input_files: looking for background file for %r at %s under %s",
+        competency_names, proficiency, INPUT_FILES_ROOT,
+    )
     if not INPUT_FILES_ROOT.exists():
         logger.debug("input_files: INPUT_FILES_ROOT does not exist")
         return None
     level = _level_lower(proficiency)
+    comp_token_sets = [competency_tokens(n) for n in competency_names]
+    if not comp_token_sets:
+        return None
 
-    candidates: list[Path] = []
+    # (comp_matches, level_in_dirname, level_in_filename, -path_len) — higher is better.
+    scored: list[tuple[tuple[int, int, int, int], Path]] = []
     parents_seen = 0
-    for parent in INPUT_FILES_ROOT.glob(f"input_{combo_slug}*"):
+    for parent in INPUT_FILES_ROOT.glob("input_*"):
         if not parent.is_dir():
             continue
         parents_seen += 1
-        logger.debug("input_files: scanning %s", parent.name)
+        dir_tokens = name_tokens(parent.name)
+        comp_matches = sum(1 for tset in comp_token_sets if tset & dir_tokens)
+        if comp_matches < len(comp_token_sets):
+            logger.debug(
+                "input_files: skip %s — only %d/%d competencies matched in dir tokens",
+                parent.name, comp_matches, len(comp_token_sets),
+            )
+            continue
+        level_in_dirname = 1 if level in dir_tokens else 0
         for path in parent.rglob("background_*.json"):
-            fname = path.name.lower()
-            if level in fname:
-                logger.debug("input_files:   candidate %s", path.name)
-                candidates.append(path)
-            else:
-                logger.debug("input_files:   skip %s (no level=%s in filename)",
-                             path.name, level)
+            fname_lower = path.name.lower()
+            level_in_filename = 1 if level in fname_lower else 0
+            # Require the level to appear somewhere — filename, dir, or
+            # subpath — otherwise we'd cross-pollute Basic with Intermediate.
+            subpath_has_level = (
+                level_in_filename
+                or level_in_dirname
+                or any(level in name_tokens(p) for p in path.relative_to(parent).parts[:-1])
+            )
+            if not subpath_has_level:
+                logger.debug(
+                    "input_files:   skip %s (no level=%s anywhere on path)",
+                    path.name, level,
+                )
+                continue
+            score = (comp_matches, level_in_dirname, level_in_filename, -len(str(path)))
+            scored.append((score, path))
+            logger.debug(
+                "input_files:   candidate %s  score=%s", path.name, score,
+            )
 
-    logger.debug("input_files: parents matching glob=%d, candidates=%d",
-                 parents_seen, len(candidates))
-    if not candidates:
-        logger.debug("input_files: NO background file found for %r at %s",
-                     combo_slug, proficiency)
+    logger.debug(
+        "input_files: parents scanned=%d, candidates=%d", parents_seen, len(scored),
+    )
+    if not scored:
+        logger.debug(
+            "input_files: NO background file found for %r at %s",
+            competency_names, proficiency,
+        )
         return None
-
-    slug_tokens = set(combo_slug.split("_"))
-
-    def score(p: Path) -> tuple[int, int]:
-        fname = p.name.lower()
-        matched = sum(1 for tok in slug_tokens if tok in fname)
-        return (matched, -len(str(p)))
-
-    candidates.sort(key=score, reverse=True)
-    logger.debug("input_files: picked %s (best slug-token overlap)",
-                 candidates[0].name)
-    return candidates[0]
+    scored.sort(key=lambda t: t[0], reverse=True)
+    picked = scored[0][1]
+    logger.debug("input_files: picked %s (best score=%s)", picked.name, scored[0][0])
+    return picked
 
 
-def load_background(combo_slug: str, proficiency: str) -> dict | None:
+def load_background(
+    competency_names: list[str], proficiency: str,
+) -> dict | None:
     """Load the background JSON for this (combo, level), or None if missing."""
-    path = _find_background_file(combo_slug, proficiency)
+    path = _find_background_file(competency_names, proficiency)
     if not path:
         return None
     try:
@@ -124,9 +152,11 @@ def load_background(combo_slug: str, proficiency: str) -> dict | None:
         return None
 
 
-def load_role_context(combo_slug: str, proficiency: str) -> str:
+def load_role_context(
+    competency_names: list[str], proficiency: str,
+) -> str:
     """Return the candidate role_context string, or '' if not available."""
-    bg = load_background(combo_slug, proficiency)
+    bg = load_background(competency_names, proficiency)
     if not bg:
         return ""
     role = (bg.get("role_context") or "").strip()
@@ -135,9 +165,11 @@ def load_role_context(combo_slug: str, proficiency: str) -> str:
     return role
 
 
-def load_questions_prompt(combo_slug: str, proficiency: str) -> str:
+def load_questions_prompt(
+    competency_names: list[str], proficiency: str,
+) -> str:
     """Return the questions_prompt sub-skill checklist, truncated to top bullets."""
-    bg = load_background(combo_slug, proficiency)
+    bg = load_background(competency_names, proficiency)
     if not bg:
         return ""
     raw = (bg.get("questions_prompt") or "").strip()
@@ -234,10 +266,9 @@ def build_detailed_skill_signal(
     (so users can see whether input files were found).
     """
     comp_names = [c.name for c in competencies]
-    slug = _combo_slug(comp_names)
 
-    questions = load_questions_prompt(slug, proficiency)
-    role = load_role_context(slug, proficiency)
+    questions = load_questions_prompt(comp_names, proficiency)
+    role = load_role_context(comp_names, proficiency)
     scenarios = load_scenarios_for_combo(competencies)
 
     parts: list[str] = []

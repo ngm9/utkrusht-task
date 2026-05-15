@@ -9,15 +9,25 @@ See docs/research/prompt-generator-agent.md for the design.
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
 from prompt_generator.classifier import Competency, TaskCategory, classify_task_category
+from prompt_generator.slugs import (
+    COMPETENCY_ALIASES,
+    competency_tokens,
+    name_tokens,
+    slugify,
+)
 
 
 PROMPT_ROOT = Path(__file__).parent.parent / "task_generation_prompts"
+
+# Competency-agnostic last-resort reference prompts. Loaded only at Level 6
+# (the 5-level ladder returned nothing). They carry the canonical output JSON
+# schema so bootstrap-mode generations don't invent their own key names.
+GENERAL_REFERENCE_DIR = PROMPT_ROOT / "_general_reference"
 
 # Map proficiency level → folder under task_generation_prompts/
 LEVEL_FOLDERS = {
@@ -62,24 +72,8 @@ TECH_FAMILY = {
 }
 
 
-# Alias map — competencies whose canonical slug differs from how they appear in
-# filenames. Tokens listed here are the set of names the retriever will look for
-# when matching a filename, replacing the default slug-only behaviour. Without
-# this, a "Go" competency (slug "go") cannot match "golang_docker_prompt.py".
-COMPETENCY_ALIASES: dict[str, set[str]] = {
-    "go":         {"go", "golang"},
-    "golang":     {"go", "golang"},
-    "nodejs":     {"node", "nodejs"},
-    "node":       {"node", "nodejs"},
-    "javascript": {"javascript", "js"},
-    "typescript": {"typescript", "ts"},
-    "postgres":   {"postgres", "postgresql"},
-    "postgresql": {"postgres", "postgresql"},
-    "mongo":      {"mongo", "mongodb"},
-    "mongodb":    {"mongo", "mongodb"},
-    "k8s":        {"k8s", "kubernetes"},
-    "kubernetes": {"k8s", "kubernetes"},
-}
+# COMPETENCY_ALIASES lives in slugs.py and is re-exported above for callers
+# that historically imported it from retriever.
 
 
 @dataclass
@@ -92,9 +86,31 @@ class RetrievalResult:
     bootstrap_mode: bool = False
     fallback_level: int = 1
     notes: list[str] = field(default_factory=list)
+    # True when the 5-level ladder found nothing and we fell back to the
+    # competency-agnostic general reference (Level 6). Callers should treat
+    # such generations as needing extra review.
+    used_general_fallback: bool = False
 
     def has_references(self) -> bool:
         return bool(self.references)
+
+
+def _general_reference_path(proficiency: str) -> Optional[Path]:
+    """Path to the general reference prompt for this proficiency, or None.
+
+    Falls back BASIC→nearest if an exact level file is missing, so a future
+    proficiency value never produces a hard miss.
+    """
+    level = proficiency.upper()
+    candidate = GENERAL_REFERENCE_DIR / f"general_{level.lower()}_prompt.py"
+    if candidate.exists():
+        return candidate
+    # Fall back to BASIC, then to whatever general reference exists.
+    basic = GENERAL_REFERENCE_DIR / "general_basic_prompt.py"
+    if basic.exists():
+        return basic
+    existing = sorted(GENERAL_REFERENCE_DIR.glob("general_*_prompt.py"))
+    return existing[0] if existing else None
 
 
 # ----------------------------------------------------------------------
@@ -142,39 +158,18 @@ def _list_prompt_files(proficiency: str) -> list[Path]:
 
 
 def _slugify(name: str) -> str:
-    """Match how prompt filenames are typically formed from competency names."""
-    s = name.lower()
-    s = re.sub(r"\.js\b", "js", s)            # node.js -> nodejs
-    s = re.sub(r"\s*[-/&]\s*", "_", s)        # "Java - Spring" -> java_spring
-    s = re.sub(r"[\s.]+", "_", s)
-    s = re.sub(r"[^a-z0-9_]", "", s)
-    s = re.sub(r"_+", "_", s).strip("_")
-    return s
-
-
-# Filename-token splitter — same boundaries we expect prompt files to use.
-_FILENAME_TOKEN_RE = re.compile(r"[_\-.]+")
+    """Compatibility shim — delegates to ``slugs.slugify``."""
+    return slugify(name)
 
 
 def _name_tokens(comp: Competency) -> set[str]:
-    """Tokens we look for in prompt filenames to spot a competency match.
-
-    Returns a set so callers can do constant-time membership tests against
-    tokenised filenames. Includes the slug, its underscore parts (so
-    "java_spring_mvc" matches a "spring_mvc" filename), and any known aliases
-    (e.g. "Go" expands to both "go" and "golang").
-    """
-    slug = _slugify(comp.name)
-    parts: set[str] = {slug}
-    parts.update(slug.split("_"))
-    if slug in COMPETENCY_ALIASES:
-        parts.update(COMPETENCY_ALIASES[slug])
-    return {p for p in parts if p and len(p) > 1}
+    """Compatibility shim — delegates to ``slugs.competency_tokens``."""
+    return competency_tokens(comp.name)
 
 
 def _filename_tokens(path: Path) -> set[str]:
     """Split the filename stem on common separators for word-boundary matching."""
-    return {t for t in _FILENAME_TOKEN_RE.split(path.stem.lower()) if t}
+    return name_tokens(path.stem)
 
 
 def _file_matches_competency(path: Path, comp: Competency) -> bool:
@@ -184,8 +179,7 @@ def _file_matches_competency(path: Path, comp: Competency) -> bool:
     ``tok in fname``, "java" matched "javascript_*.py" and "go" matched
     "mongodb_*.py", polluting every retrieval result.
     """
-    file_tokens = _filename_tokens(path)
-    return any(tok in file_tokens for tok in _name_tokens(comp))
+    return bool(_name_tokens(comp) & _filename_tokens(path))
 
 
 def _find_exact_match_file(competencies: list[Competency], proficiency: str) -> Optional[Path]:
@@ -276,7 +270,7 @@ def retrieve_references(
     max_refs: int = 5,
     exclude_paths: Optional[set[Path]] = None,
 ) -> RetrievalResult:
-    """Retrieve reference prompt files via the 5-level fallback ladder.
+    """Retrieve reference prompt files via the 6-level fallback ladder.
 
     Levels:
       1. Exact-match prompt for this combination at this level.
@@ -284,6 +278,8 @@ def retrieve_references(
       3. Per-competency prompts at this level + tech-family siblings.
       4. Per-competency prompts at any level.
       5. Same-category prompts at this level (generic).
+      6. Competency-agnostic general reference for this proficiency — the
+         last-resort skeleton carrying the canonical output JSON schema.
 
     Args:
         competencies: list of Competency to look up.
@@ -371,6 +367,18 @@ def retrieve_references(
                 result.references.append(path)
                 result.notes.append(f"Level 5 (category example {category.value}): {path.name}")
                 result.fallback_level = max(result.fallback_level, 5)
+
+    # LEVEL 6 — last-resort general reference. Only fires when the ladder found
+    # NOTHING. Guarantees the generator always has at least the canonical
+    # output JSON schema to copy, so bootstrap-mode combos can't silently
+    # invent synonym keys and produce a hollow task.
+    if not result.has_references():
+        general = _general_reference_path(proficiency)
+        if general and general not in excluded:
+            result.references.append(general)
+            result.notes.append(f"Level 6 (general reference): {general.name}")
+            result.fallback_level = max(result.fallback_level, 6)
+            result.used_general_fallback = True
 
     return _trim_and_return(result, max_refs)
 

@@ -25,7 +25,7 @@ import click
 from typing import Dict, List, Optional
 from supabase import Client, create_client
 import traceback
-from evals import MAX_EVAL_RETRIES, llm_task_eval, llm_code_eval
+from evals import MAX_EVAL_RETRIES, EvalGateError, llm_task_eval, llm_code_eval
 from logger_config import logger
 from schemas import ANSWER_CODE_SCHEMA
 from utils import (parse_markdown_to_json,has_shared_infra_files,format_pre_requisites,format_outcomes,save_files_locally,load_relevant_scenarios,generate_task_with_code,read_json_file_robust,create_gist_from_template,)
@@ -75,6 +75,59 @@ GITHUB_UTKRUSHTAPPS_TOKEN = os.getenv("GITHUB_UTKRUSHTAPPS_TOKEN")
 REPO_OWNER = os.getenv("REPO_OWNER")
 GITHUB_GIST_TOKEN = os.getenv("GITHUB_GIST_TOKEN")
 
+def _is_task_hollow(task_data: Dict) -> tuple[bool, list[str]]:
+    """Return (is_hollow, reasons). A task is hollow when any required field
+    is empty — guards Supabase against placeholder rows when the LLM produces
+    a structurally-shaped but content-empty response."""
+    reasons: list[str] = []
+    title = (task_data.get("title") or task_data.get("name") or "").strip()
+    question = (task_data.get("question") or "").strip()
+    code = task_data.get("code_files") or {}
+    if not title:
+        reasons.append("title is empty")
+    if not question:
+        reasons.append("question is empty")
+    if not code:
+        reasons.append("code_files is empty")
+    return (bool(reasons), reasons)
+
+
+# Reminder appended to retry feedback whenever output was hollow — the hollow
+# failure mode is almost always a synonym-key mistake (task_title/files/context
+# instead of name/code_files/question).
+_CANONICAL_KEYS_REMINDER = (
+    'The response MUST be ONE JSON object using these EXACT top-level keys: '
+    '"name" (string), "question" (string), "code_files" (object: filepath -> '
+    'file contents), "answer", "outcomes", "short_overview", "pre_requisites", '
+    '"hints", "definitions". Do NOT use synonym names such as "task_title", '
+    '"files", "context", or "candidate_instructions" — synonyms make the task '
+    'unusable.'
+)
+
+
+def _build_retry_feedback(hollow_reasons: list[str], eval_info: Optional[Dict]) -> str:
+    """Compose the feedback message handed to the next generation attempt.
+
+    Concrete failure detail (hollow reasons, eval issues) so the LLM corrects
+    its own prior output rather than re-rolling blind.
+    """
+    parts = ["PREVIOUS ATTEMPT FAILED. Correct it and return the full task JSON again."]
+    if hollow_reasons:
+        parts.append("Problem: the response was hollow — " + "; ".join(hollow_reasons) + ".")
+        parts.append(_CANONICAL_KEYS_REMINDER)
+    if eval_info:
+        te = eval_info.get("task_eval", {})
+        ce = eval_info.get("code_eval", {})
+        if not te.get("pass", True):
+            detail = "; ".join(te.get("issues") or []) or te.get("feedback") or "unspecified"
+            parts.append(f"Task eval FAILED — {detail}")
+        if not ce.get("pass", True):
+            detail = "; ".join(ce.get("issues") or []) or ce.get("feedback") or "unspecified"
+            parts.append(f"Code eval FAILED — {detail}")
+    parts.append("Address every issue above. Return ONLY the corrected JSON object.")
+    return "\n\n".join(parts)
+
+
 def run_evaluations(task_data: Dict) -> Dict:
     """Run LLM-based evaluations on the task and code."""
     # Get highest proficiency level
@@ -97,15 +150,21 @@ def run_evaluations(task_data: Dict) -> Dict:
                                    model)
 
                       
-    # Add evaluation info to task data
+    # Add evaluation info to task data. `issues` and `feedback` are preserved
+    # (not just `pass`) so the retry loop can feed concrete failure detail back
+    # into the next generation attempt instead of re-rolling blind.
     eval_info = {
         "task_eval": {
             "pass": task_eval_result.get("pass", False),
-            "validated_criteria": task_eval_result.get("validated_criteria", [])
+            "validated_criteria": task_eval_result.get("validated_criteria", []),
+            "issues": task_eval_result.get("issues", []),
+            "feedback": task_eval_result.get("feedback", ""),
         },
         "code_eval": {
             "pass": code_eval_result.get("pass", False),
-            "validated_criteria": code_eval_result.get("validated_criteria", [])
+            "validated_criteria": code_eval_result.get("validated_criteria", []),
+            "issues": code_eval_result.get("issues", []),
+            "feedback": code_eval_result.get("feedback", ""),
         }
     }
     
@@ -343,24 +402,60 @@ def create_task(competency_file: Path, background_file: Path, scenarios_file: Pa
             "background": background,
             "scenarios": scenarios
         }
-        # Generate task with code in one step
-        task_data = generate_task_with_code(openai_client, input_data)
-        
-        # Add metadata
-        task_data["criterias"] = [{
+        # Generate task with code, then gate on the eval critics. Retry up
+        # to MAX_EVAL_RETRIES times before raising EvalGateError. Nothing
+        # downstream of this loop (GitHub repo, Gist, Supabase row) runs unless
+        # both task_eval and code_eval pass AND the task is non-hollow.
+        criterias = [{
             "name": comp.get("name"),
             "proficiency": comp.get("proficiency"),
-            "competency_id": comp.get("competency_id") or comp.get("id")
+            "competency_id": comp.get("competency_id") or comp.get("id"),
         } for comp in competencies]
-        
-        # Generate code files and save them
-        if "code_files" not in task_data:
-            task_data["code_files"] = {}
-    
-        # Run evaluations
-        # we need check conditions that if the eval_info is true then it should be passed
-        logger.info("Running task evaluations")
-        eval_info = run_evaluations(task_data)
+
+        max_attempts = MAX_EVAL_RETRIES + 1   # initial + retries
+        task_data = None
+        eval_info = None
+        last_failure: Dict = {}
+        feedback = ""   # carries the prior attempt's failure detail forward
+        for attempt in range(1, max_attempts + 1):
+            logger.info(f"Task generation attempt {attempt}/{max_attempts}")
+            candidate = generate_task_with_code(openai_client, input_data, feedback=feedback)
+            candidate.setdefault("code_files", {})
+            candidate["criterias"] = criterias
+
+            hollow, reasons = _is_task_hollow(candidate)
+            if hollow:
+                logger.warning(
+                    f"Attempt {attempt}: hollow output ({', '.join(reasons)}); "
+                    f"regenerating with corrective feedback"
+                )
+                last_failure = {
+                    "task_eval": {"pass": False, "issues": reasons},
+                    "code_eval": {"pass": False, "issues": ["task_data hollow before eval"]},
+                }
+                feedback = _build_retry_feedback(reasons, None)
+                continue
+
+            logger.info("Running task evaluations")
+            candidate_eval = run_evaluations(candidate)
+            last_failure = candidate_eval
+            t_pass = candidate_eval["task_eval"]["pass"]
+            c_pass = candidate_eval["code_eval"]["pass"]
+            if t_pass and c_pass:
+                task_data = candidate
+                eval_info = candidate_eval
+                logger.info(f"Attempt {attempt}: both evals passed - proceeding to storage")
+                break
+
+            logger.warning(
+                f"Attempt {attempt}: evals failed "
+                f"(task_eval.pass={t_pass}, code_eval.pass={c_pass}); "
+                f"will retry with feedback if budget remains"
+            )
+            feedback = _build_retry_feedback([], candidate_eval)
+
+        if task_data is None or eval_info is None:
+            raise EvalGateError(max_attempts, last_failure)
         
         # Determine task type for shared infrastructure requirement
         task_type = determine_task_type(competencies, task_data)
@@ -473,7 +568,14 @@ def create_task(competency_file: Path, background_file: Path, scenarios_file: Pa
             "is_shared_infra_required": is_shared_infra_required,
             "readme_content": parse_markdown_to_json(code_data.get("README.md", "")),
             "eval_info": eval_info,
-            "solutions": solutions_for_db
+            "solutions": solutions_for_db,
+            # `task_type` is a text[] consumed by the backend's
+            # /end_task_session handler — if it's empty/missing the handler
+            # 400s before queueing kill.sh / repo cleanup, leaving droplets
+            # dirty. Default to ['BUILD'] for code-build tasks; PR-review and
+            # design-review flows have their own pipelines that set their
+            # own values (e.g. ['PR_REVIEW']).
+            "task_type": ["BUILD"],
         }
         
         supabase = init_supabase()
@@ -510,7 +612,12 @@ def create_task(competency_file: Path, background_file: Path, scenarios_file: Pa
             logger.info(f"Could not rename local directory to task ID: {str(e)}")
         
         return task_data
-        
+
+    except EvalGateError:
+        # Distinct from generic failures — nothing was committed, the caller
+        # can decide whether to skip the combo or schedule a manual review.
+        logger.error("Eval gate rejected the task — no GitHub repo or Supabase row was created.")
+        raise
     except Exception as e:
         logger.error(f"Error in create_task function: {str(e)}")
         logger.error(traceback.format_exc())
@@ -844,25 +951,38 @@ def generate_tasks(competency_file: Path, background_file: Path, scenarios_file:
         validate_environment()
         
         result = create_task(competency_file, background_file, scenarios_file)
-        
+
         task_type = result.get("task_type", "unknown")
+        # task_type is a Postgres text[] (e.g. ['BUILD']) — normalize before
+        # any string operations so the success banner doesn't crash post-commit.
+        if isinstance(task_type, list):
+            task_type_display = ", ".join(task_type) if task_type else "unknown"
+        else:
+            task_type_display = str(task_type)
         competencies_covered = result.get("competencies_covered", [])
-        
+
         print(f" Task Creation Successful!")
-        print(f" Task Type: {task_type.replace('_', ' ').title()}")
+        print(f" Task Type: {task_type_display.replace('_', ' ').title()}")
         print(f" Task ID: {result.get('task_id')}")
         print(f" Task Name: {result.get('name', 'N/A')}")
         print(f" Competencies Covered: {', '.join(competencies_covered)}")
         print(f" GitHub Repository: {result.get('resources', {}).get('github_repo', 'N/A')}")
         print()
-        
+
         print(" TASK CREATION COMPLETED SUCCESSFULLY!")
         print("=" * 70)
-        print(f" Task Type: {task_type.replace('_', ' ').title()}")
+        print(f" Task Type: {task_type_display.replace('_', ' ').title()}")
         print(f" Competencies: {', '.join(competencies_covered)}")
         print(f" Repository: {result.get('resources', {}).get('github_repo')}")
         print()
-        
+
+    except EvalGateError as e:
+        print(" EVAL GATE REJECTED TASK")
+        print("=" * 70)
+        print(f" Reason: {e}")
+        print(" No GitHub repo or Supabase row was created. Inspect the eval")
+        print(" feedback in the log, fix the prompt or scope, then retry.")
+        print("=" * 70)
     except Exception as e:
         print(f" ERROR CREATING TASK!")
         print("=" * 70)
