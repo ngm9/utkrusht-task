@@ -55,7 +55,7 @@ class Section(BaseModel):
 
 class BriefAST(BaseModel):
     source_path: str
-    source_format: Literal["docx", "md", "txt"]
+    source_format: Literal["docx", "md", "txt", "pdf"]
     source_hash: str             # sha256(file_bytes), for cache keying
     sections: List[Section] = Field(default_factory=list)
     tables: List[Table] = Field(default_factory=list)
@@ -76,9 +76,11 @@ def parse(path: Path) -> BriefAST:
         return _parse_markdown(path)
     if suffix == ".txt":
         return _parse_text(path)
+    if suffix == ".pdf":
+        return _parse_pdf(path)
     raise ValueError(
         f"Unsupported brief format: {suffix!r}. "
-        f"v1 supports .docx, .md, .txt. PDF support is in a later spec."
+        f"Supported formats: .docx, .md, .txt, .pdf"
     )
 
 
@@ -325,6 +327,98 @@ def _parse_text(path: Path) -> BriefAST:
         source_hash=_hash_file(path),
         sections=sections,
         tables=[],
+        embedded_images=[],
+        external_links=external_links,
+        code_fences=[],
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# .pdf
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _parse_pdf(path: Path) -> BriefAST:
+    """Parse a .pdf brief into a BriefAST using pdfplumber.
+
+    Extracts text page-by-page, detects headings with the same heuristic used
+    for .txt files, extracts tables from each page, and collects hyperlinks.
+    Embedded images are not extracted (no Drive upload path for PDF media).
+    """
+    import pdfplumber
+
+    sections: List[Section] = []
+    tables: List[Table] = []
+    external_links: List[ExternalLink] = []
+    current = Section(index=0, level=1, heading=None, paragraphs=[])
+    sections.append(current)
+    buffer: List[str] = []
+
+    def flush_paragraph() -> None:
+        """Flush buffered lines into the current section as a single paragraph."""
+        if buffer:
+            para = " ".join(buffer).strip()
+            if para:
+                current.paragraphs.append(para)
+                for anchor, url in _LINK_RE.findall(para):
+                    external_links.append(ExternalLink(url=url, anchor_text=anchor or None, section_index=current.index))
+                for url in _BARE_URL_RE.findall(para):
+                    external_links.append(ExternalLink(url=url, section_index=current.index))
+            buffer.clear()
+
+    with pdfplumber.open(str(path)) as pdf:
+        for page in pdf.pages:
+            # ── Extract hyperlinks from page annotations ──────────────────────
+            for annot in (page.annots or []):
+                uri = annot.get("uri") or annot.get("URI") or ""
+                if uri.startswith("http"):
+                    external_links.append(ExternalLink(
+                        url=uri,
+                        section_index=current.index,
+                    ))
+
+            # ── Extract tables before text so table cells aren't double-counted
+            for pdf_table in page.extract_tables() or []:
+                if not pdf_table:
+                    continue
+                rows = [[cell.strip() if cell else "" for cell in row] for row in pdf_table]
+                rows = [r for r in rows if any(r)]  # drop fully empty rows
+                if len(rows) < 2:
+                    continue
+                headers, *body = rows
+                tables.append(Table(
+                    section_index=current.index,
+                    headers=headers,
+                    rows=body,
+                ))
+
+            # ── Extract text lines, detect headings heuristically ─────────────
+            text = page.extract_text(x_tolerance=2, y_tolerance=2) or ""
+            for raw_line in text.splitlines():
+                line = raw_line.rstrip()
+                if not line:
+                    flush_paragraph()
+                    continue
+                if _HEADING_HEURISTIC_RE.match(line):
+                    flush_paragraph()
+                    level = line.count("#") if line.startswith("#") else 1
+                    heading = line.lstrip("#").strip().rstrip(":")
+                    current = Section(
+                        index=len(sections),
+                        level=level,
+                        heading=heading or None,
+                        paragraphs=[],
+                    )
+                    sections.append(current)
+                    continue
+                buffer.append(line.strip())
+            flush_paragraph()
+
+    return BriefAST(
+        source_path=str(path),
+        source_format="pdf",
+        source_hash=_hash_file(path),
+        sections=sections,
+        tables=tables,
         embedded_images=[],
         external_links=external_links,
         code_fences=[],
