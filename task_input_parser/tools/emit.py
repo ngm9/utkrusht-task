@@ -1,10 +1,7 @@
-"""emit_task tool — writes the final per-task markdown after leak-check.
+"""emit_task tool — writes the final per-task markdown after checking for protected domains.
 
-The leak-check is the safety gate for constitution Principle VIII (No
-Customer-Source Leakage). If the markdown contains a banned code-hosting
-domain (codepen.io, gist.github.com, etc.), `emit_task` rejects the write
-with a structured `LeakDetectedError` that the agent loop forwards back to
-the LLM as a tool-error response. The LLM must remove the URL and retry.
+If the markdown contains a banned code-hosting domain (codepen.io, gist.github.com, etc.),
+`emit_task` rejects the write with a LeakDetectedError so the caller can strip the URL and retry.
 """
 from __future__ import annotations
 
@@ -14,7 +11,21 @@ from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
-from task_input_parser.leak_check import check_leak
+# Domains that must never appear in candidate-facing markdown (Principle VIII).
+_PROTECTED_DOMAINS = [
+    r"codepen\.io",
+    r"codesandbox\.io",
+    r"jsfiddle\.net",
+    r"gist\.github\.com",
+    r"pastebin\.com",
+    r"replit\.com",
+    r"gitlab\.com/snippets",
+]
+_PROTECTED_DOMAIN_RE = re.compile("|".join(_PROTECTED_DOMAINS), re.IGNORECASE)
+
+
+def _find_protected_domains(text: str) -> List[str]:
+    return list(set(_PROTECTED_DOMAIN_RE.findall(text)))
 
 
 class LeakDetectedError(Exception):
@@ -59,7 +70,7 @@ def emit_task(inp: EmitTaskInput, output_dir: Optional[Path] = None) -> EmitTask
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    matched = check_leak(inp.markdown_content)
+    matched = _find_protected_domains(inp.markdown_content)
     if matched:
         raise LeakDetectedError(matched_domains=matched, slug=inp.slug)
 

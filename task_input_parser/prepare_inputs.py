@@ -1,4 +1,4 @@
-"""Convert a parser-emitted task markdown into multiagent.py input JSON files.
+"""Convert a parser-emitted task markdown into scenario_generator input JSON files.
 
 Usage (one invocation per emitted task):
 
@@ -138,7 +138,7 @@ def main(
     force: bool,
     dry_run: bool,
 ) -> None:
-    """Convert a parser-emitted task markdown into pipeline input JSON files.
+    """Convert a parser-emitted task markdown into scenario_generator input JSON files.
 
     TASK_MD is the path to a task-*.md file produced by the parser
     (e.g. tmp/extract_2026-05-14_05-09-43/task-1-mysql.md).
