@@ -1,0 +1,438 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Task Builder — Chat Flow (Imagination)</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #161a22;
+    --panel-2: #1d222c;
+    --border: #262c38;
+    --text: #e6e8ee;
+    --muted: #8a93a6;
+    --accent: #7c5cff;
+    --accent-2: #4ea3ff;
+    --bot: #232938;
+    --user: linear-gradient(135deg, #7c5cff, #4ea3ff);
+    --chip: #2a3142;
+    --chip-hover: #343c52;
+    --good: #34d399;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+    background: radial-gradient(1200px 600px at 20% -10%, #1c1f2e 0%, var(--bg) 60%);
+    color: var(--text);
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 0;
+  }
+  header {
+    grid-column: 1 / -1;
+    padding: 14px 22px;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: 10px;
+    background: rgba(15,17,21,0.7);
+    backdrop-filter: blur(8px);
+    position: sticky; top: 0; z-index: 10;
+  }
+  .logo {
+    width: 26px; height: 26px; border-radius: 8px;
+    background: var(--user);
+    box-shadow: 0 4px 14px rgba(124,92,255,0.35);
+  }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: 0.2px; }
+  header .sub { color: var(--muted); font-size: 12px; margin-left: 6px; }
+
+  main {
+    padding: 28px 0 140px;
+    display: flex; justify-content: center;
+  }
+  .chat {
+    width: min(760px, 92vw);
+    display: flex; flex-direction: column; gap: 14px;
+  }
+
+  .row { display: flex; gap: 10px; align-items: flex-end; }
+  .row.user { justify-content: flex-end; }
+  .avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    display: grid; place-items: center;
+    font-size: 12px; font-weight: 700;
+    flex-shrink: 0;
+  }
+  .avatar.bot { background: #2b3142; color: #cdd3e0; }
+  .avatar.user { background: var(--user); color: white; }
+
+  .bubble {
+    max-width: 78%;
+    padding: 11px 14px;
+    border-radius: 14px;
+    border: 1px solid transparent;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+  .bot .bubble {
+    background: var(--bot);
+    border-color: var(--border);
+    border-bottom-left-radius: 4px;
+  }
+  .user .bubble {
+    background: var(--user);
+    color: white;
+    border-bottom-right-radius: 4px;
+  }
+  .bubble small {
+    display: block;
+    color: var(--muted);
+    margin-top: 6px;
+    font-size: 11.5px;
+  }
+  .user .bubble small { color: rgba(255,255,255,0.8); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .chip {
+    background: var(--chip);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 5px 10px;
+    border-radius: 999px;
+    font-size: 12.5px;
+    cursor: default;
+  }
+  .chip.selected {
+    background: rgba(124,92,255,0.18);
+    border-color: var(--accent);
+    color: #d6ccff;
+  }
+
+  .step-tag {
+    display: inline-block;
+    font-size: 10.5px;
+    letter-spacing: 0.4px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin: 18px 0 4px 38px;
+  }
+
+  .summary-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 14px 16px;
+    margin-top: 6px;
+  }
+  .summary-card h4 {
+    margin: 0 0 10px;
+    font-size: 13px;
+    color: #cdd3e0;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .summary-card h4::before {
+    content: "";
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--good);
+    box-shadow: 0 0 0 3px rgba(52,211,153,0.15);
+  }
+  .kv { display: grid; grid-template-columns: 130px 1fr; gap: 6px 12px; font-size: 13px; }
+  .kv .k { color: var(--muted); }
+
+  .cta {
+    margin-top: 12px;
+    display: inline-flex; gap: 8px; align-items: center;
+    background: var(--user);
+    color: white;
+    padding: 9px 14px;
+    border-radius: 10px;
+    border: 0;
+    font-weight: 600;
+    cursor: pointer;
+    box-shadow: 0 6px 18px rgba(124,92,255,0.35);
+  }
+
+  /* Input dock */
+  .dock {
+    position: fixed; left: 0; right: 360px; bottom: 0;
+    padding: 14px 22px 18px;
+    background: linear-gradient(180deg, transparent, rgba(15,17,21,0.85) 30%, var(--bg));
+  }
+  .dock-inner {
+    width: min(760px, 92vw);
+    margin: 0 auto;
+    display: flex; gap: 8px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 8px 8px 8px 14px;
+    align-items: center;
+  }
+  .dock input {
+    flex: 1; background: transparent; border: 0; outline: 0;
+    color: var(--text); font-size: 14px; padding: 8px 4px;
+  }
+  .dock input::placeholder { color: #5b6477; }
+  .dock button {
+    background: var(--user); color: white; border: 0;
+    padding: 9px 14px; border-radius: 10px; cursor: pointer; font-weight: 600;
+  }
+
+  /* Right rail: live mapping to modules */
+  aside {
+    border-left: 1px solid var(--border);
+    background: var(--panel);
+    position: sticky; top: 53px;
+    align-self: flex-start;
+    height: calc(100vh - 53px);
+    overflow-y: auto;
+    padding: 18px 18px 24px;
+  }
+  aside h3 {
+    margin: 4px 0 4px;
+    font-size: 12px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  aside p.lead { color: var(--muted); font-size: 12.5px; margin: 0 0 16px; }
+  .module {
+    border: 1px solid var(--border);
+    background: var(--panel-2);
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+  }
+  .module .name { font-weight: 600; font-size: 13px; }
+  .module .file { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--accent-2); font-size: 11.5px; }
+  .module ul { margin: 8px 0 0; padding-left: 16px; color: #c9cfdd; font-size: 12.5px; }
+  .module li { margin: 2px 0; }
+  .module li code {
+    background: #11151c; padding: 1px 5px; border-radius: 4px;
+    color: #d6ccff; font-size: 11.5px;
+  }
+
+  .arrow {
+    text-align: center; color: var(--muted); font-size: 14px;
+    margin: -2px 0;
+  }
+
+  @media (max-width: 960px) {
+    body { grid-template-columns: 1fr; }
+    aside { display: none; }
+    .dock { right: 0; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="logo"></div>
+  <h1>Task Builder</h1>
+  <span class="sub">imagined chat flow · mockup</span>
+</header>
+
+<main>
+  <div class="chat">
+
+    <div class="step-tag">Welcome</div>
+    <div class="row bot">
+      <div class="avatar bot">U</div>
+      <div class="bubble">
+        Hey! I'll help you put together a coding assessment.
+        We'll figure out <b>what the candidate should know</b>, <b>what we want to see them do</b>, and <b>the context they'll work in</b> — then I'll generate the task.
+        Ready to start?
+      </div>
+    </div>
+
+    <div class="step-tag">1 · Tech stack</div>
+    <div class="row bot">
+      <div class="avatar bot">U</div>
+      <div class="bubble">
+        First — what stack will this person work in day-to-day? You can pick more than one if the role straddles a few.
+        <div class="chips">
+          <span class="chip">Java</span>
+          <span class="chip selected">Java + Spring Boot</span>
+          <span class="chip selected">Kafka</span>
+          <span class="chip">React</span>
+          <span class="chip">Python</span>
+          <span class="chip">Node.js</span>
+          <span class="chip">PostgreSQL</span>
+          <span class="chip">+ add your own</span>
+        </div>
+        <small>Maps to <code>--competency-name</code> in <code>generate_input_files</code>.</small>
+      </div>
+    </div>
+
+    <div class="row user">
+      <div class="bubble">Java with Spring Boot, and Kafka. Mostly backend.</div>
+      <div class="avatar user">Y</div>
+    </div>
+
+    <div class="step-tag">2 · Proficiency</div>
+    <div class="row bot">
+      <div class="avatar bot">U</div>
+      <div class="bubble">
+        Got it. How experienced is this role? This sets the depth of the problem and how forgiving the scaffolding is.
+        <div class="chips">
+          <span class="chip">Beginner · 0–1 yrs</span>
+          <span class="chip">Basic · 1–3 yrs</span>
+          <span class="chip selected">Intermediate · 3–6 yrs</span>
+          <span class="chip">Advanced · 6+ yrs</span>
+        </div>
+        <small>Picks the prompt folder under <code>task_generation_prompts/{level}/</code>.</small>
+      </div>
+    </div>
+
+    <div class="row user">
+      <div class="bubble">Intermediate. Around 4 years.</div>
+      <div class="avatar user">Y</div>
+    </div>
+
+    <div class="step-tag">3 · Role description</div>
+    <div class="row bot">
+      <div class="avatar bot">U</div>
+      <div class="bubble">
+        Quick sketch of the role — what would they actually be doing on Day 30? A sentence or two is plenty; paste a JD if you have one handy.
+        <small>Feeds <code>--role</code> and ends up in the generated <code>background_*.json</code>.</small>
+      </div>
+    </div>
+
+    <div class="row user">
+      <div class="bubble">
+        Backend Engineer on the payments platform. Owns one or two services, designs new endpoints, and handles event flows over Kafka — refunds, settlement, ledger updates. Has to think about idempotency, retries, and "what happens when the consumer crashes mid-batch."
+      </div>
+      <div class="avatar user">Y</div>
+    </div>
+
+    <div class="step-tag">4 · What to assess</div>
+    <div class="row bot">
+      <div class="avatar bot">U</div>
+      <div class="bubble">
+        Nice — that gives me a lot to work with. Which of these do you actually want the task to surface?
+        Pick the 2–3 that matter most for this hire — I'll bias scenarios toward them.
+        <div class="chips">
+          <span class="chip selected">API design & request validation</span>
+          <span class="chip selected">Event-driven correctness (idempotency, retries)</span>
+          <span class="chip">Concurrency & race conditions</span>
+          <span class="chip selected">Error handling & observability</span>
+          <span class="chip">Data modeling</span>
+          <span class="chip">Performance / N+1</span>
+          <span class="chip">Test discipline</span>
+          <span class="chip">Code readability & structure</span>
+        </div>
+        <small>Becomes assessment focus in <code>scenario_generator</code>'s prompt.</small>
+      </div>
+    </div>
+
+    <div class="row user">
+      <div class="bubble">Those three you've highlighted. Idempotency is the big one — we keep getting bitten by it in prod.</div>
+      <div class="avatar user">Y</div>
+    </div>
+
+    <div class="step-tag">5 · Company domain</div>
+    <div class="row bot">
+      <div class="avatar bot">U</div>
+      <div class="bubble">
+        Last bit — what domain should the scenario live in? Candidates do better when the world feels familiar, and "fintech / payments" already came through in your role description. Stick with that, or pick another?
+        <div class="chips">
+          <span class="chip selected">Fintech · payments</span>
+          <span class="chip">E-commerce</span>
+          <span class="chip">Healthcare</span>
+          <span class="chip">Logistics</span>
+          <span class="chip">SaaS / B2B</span>
+          <span class="chip">Gaming</span>
+        </div>
+        <small>Flavors the scenario narratives; doesn't change the tech.</small>
+      </div>
+    </div>
+
+    <div class="row user">
+      <div class="bubble">Fintech, payments. Refund flow specifically would be perfect.</div>
+      <div class="avatar user">Y</div>
+    </div>
+
+    <div class="step-tag">6 · Confirm & generate</div>
+    <div class="row bot">
+      <div class="avatar bot">U</div>
+      <div class="bubble">
+        Here's what I'll hand off. Anything you want to tweak before I kick off generation?
+
+        <div class="summary-card">
+          <h4>Task brief</h4>
+          <div class="kv">
+            <div class="k">Tech stack</div><div>Java + Spring Boot, Kafka</div>
+            <div class="k">Proficiency</div><div>Intermediate (3–6 yrs)</div>
+            <div class="k">Role</div><div>Backend Engineer · payments platform</div>
+            <div class="k">Focus areas</div><div>API design · Event idempotency · Error handling & observability</div>
+            <div class="k">Domain</div><div>Fintech — refund flow</div>
+            <div class="k">Scenarios</div><div>6 (default)</div>
+          </div>
+          <button class="cta">Generate task →</button>
+        </div>
+
+        <small>This bundles the equivalent of <code>generate_input_files</code> + <code>scenario_generator</code> + <code>multiagent.py generate-tasks</code> behind one button.</small>
+      </div>
+    </div>
+
+  </div>
+</main>
+
+<div class="dock">
+  <div class="dock-inner">
+    <input placeholder="Type a message… (e.g. ‘make scenario 3 more about retries’)" />
+    <button>Send</button>
+  </div>
+</div>
+
+<aside>
+  <h3>Behind the chat</h3>
+  <p class="lead">Each question maps to an input one of the existing modules already takes. Nothing new under the hood — just a friendlier doorway.</p>
+
+  <div class="module">
+    <div class="name">generate_input_files</div>
+    <div class="file">generate_input_files/</div>
+    <ul>
+      <li>Q1 → <code>--competency-name</code></li>
+      <li>Q2 → <code>--proficiency</code></li>
+      <li>Q3 → <code>--role</code></li>
+    </ul>
+  </div>
+  <div class="arrow">↓</div>
+
+  <div class="module">
+    <div class="name">scenario_generator</div>
+    <div class="file">scenario_generator/</div>
+    <ul>
+      <li>Q4 → focus areas injected into scenario prompt</li>
+      <li>Q5 → domain flavor for the scenario narrative</li>
+      <li>defaults <code>--count 6</code></li>
+    </ul>
+  </div>
+  <div class="arrow">↓</div>
+
+  <div class="module">
+    <div class="name">task prompt selection</div>
+    <div class="file">task_generation_prompts/{level}/</div>
+    <ul>
+      <li>Picked automatically from Q1 + Q2</li>
+      <li>e.g. <code>Intermediate/Java_spring_boot_prompt.py</code></li>
+    </ul>
+  </div>
+  <div class="arrow">↓</div>
+
+  <div class="module">
+    <div class="name">generate-tasks</div>
+    <div class="file">multiagent.py</div>
+    <ul>
+      <li>Takes the three JSONs above</li>
+      <li>Runs eval loop, creates repo + gist</li>
+      <li>Stores in Supabase</li>
+    </ul>
+  </div>
+</aside>
+
+</body>
+</html>
