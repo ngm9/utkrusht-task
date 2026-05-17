@@ -68,5 +68,5 @@ def validate_files(files: List[FetchedFile]) -> tuple[bool, Optional[str]]:
         if not f.filename:
             return False, "file with empty filename"
         # Empty content is allowed (CodePen pens often have an empty JS pane);
-        # the agent decides whether an empty file is a problem in context.
+        # the extractor decides whether an empty file is a problem in context.
     return True, None

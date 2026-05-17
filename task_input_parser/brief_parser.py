@@ -5,7 +5,7 @@ The parser branches on file extension:
   .md    → markdown-it-py
   .txt   → plain read with heuristic section splits
 
-The agent operates on this AST, NOT on the raw file bytes. All entries are
+The extractor operates on this AST, NOT on the raw file bytes. All entries are
 Pydantic models so downstream consumers get validated, serialisable data.
 """
 from __future__ import annotations

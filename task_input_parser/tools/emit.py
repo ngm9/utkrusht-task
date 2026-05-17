@@ -1,7 +1,9 @@
-"""emit_task tool — writes the final per-task markdown after checking for protected domains.
+"""emit_task — writes one task-N-slug.md file after a protected-domain check.
 
-If the markdown contains a banned code-hosting domain (codepen.io, gist.github.com, etc.),
-`emit_task` rejects the write with a LeakDetectedError so the caller can strip the URL and retry.
+Called directly by extractor.run() in the post-process step, after the LLM call.
+By that point extractor.run() has already stripped protected domains from the markdown
+using its own regex pass. emit_task runs a final domain check as a safety net and
+raises LeakDetectedError if anything slipped through, which extractor.run() catches and logs.
 """
 from __future__ import annotations
 
@@ -64,7 +66,12 @@ class EmitTaskOutput(BaseModel):
 
 
 def emit_task(inp: EmitTaskInput, output_dir: Optional[Path] = None) -> EmitTaskOutput:
-    """Run leak-check on the markdown, then write it as task-N-<slug>.md in output_dir; raises LeakDetectedError if a banned domain is found."""
+    """Write the task markdown to task-N-<slug>.md after a final protected-domain check.
+
+    Called directly by extractor.run() for each task returned by the LLM.
+    Raises LeakDetectedError if a protected domain is still present in the markdown
+    (extractor.run() catches this and logs it rather than writing a bad file).
+    """
     if output_dir is None:
         raise ValueError("emit_task requires an output_dir")
     output_dir = Path(output_dir)

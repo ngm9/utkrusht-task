@@ -1,10 +1,11 @@
-"""process_image tool — extract from doc + upload to Drive (no vision analysis).
+"""process_image — extracts an embedded image from the source doc and uploads it to Drive.
 
-Per research.md Decision 3: this tool does NOT run vision-LLM analysis.
-It extracts the image bytes from the source document, uploads to the
-shared Drive task-resources/ folder via the existing non_tech_flow
-helpers, and returns Drive URLs plus basic metadata. Image *understanding*
-is downstream's concern.
+Called directly by extractor._prefetch_images() before the LLM call, once per embedded
+image in the BriefAST. Returns Drive thumbnail and full-res URLs that are embedded
+in the LLM prompt so the LLM can reference them in the task markdown without needing
+to make any tool calls itself.
+
+Does NOT run vision-LLM analysis — image understanding is downstream's concern.
 """
 from __future__ import annotations
 
@@ -102,7 +103,12 @@ def _upload_to_drive(data: bytes, filename: str) -> tuple[str, str, str]:
 
 
 def process_image(inp: ProcessImageInput, output_dir: Optional[Path] = None) -> ProcessImageOutput:
-    """Extract → cache-check → upload (if needed) → return URLs."""
+    """Extract the image from the source doc, upload to Drive, and return its URLs.
+
+    Called directly by extractor._prefetch_images() before the LLM call.
+    Checks the on-disk cache first — if the same image (by content hash) was
+    already uploaded in a previous run, returns the cached Drive URLs immediately.
+    """
     if output_dir is None:
         raise ValueError("process_image requires an output_dir")
     output_dir = Path(output_dir)

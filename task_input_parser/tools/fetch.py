@@ -1,14 +1,14 @@
-"""fetch_external_code tool — one entry point, internal platform dispatch.
+"""fetch_external_code — fetches starter code from external URLs before the LLM call.
 
-Per policy (constitution Principle V — Security by Default): the parser
-does NOT circumvent CAPTCHAs, Cloudflare challenges, or any other
-bot-protection mechanism. v1 supports only **GitHub Gist** (plain HTTP).
-All other platforms — including CodePen, which is gated behind
-Cloudflare — return `status="bot_protected"` (when bot protection is
-known/detected) or `status="platform_not_supported"` (when no scraper
-exists), and the LLM agent surfaces an inline `**Note:**` in the
-affected task's markdown asking the operator to paste the source
-manually.
+Called directly by _prefetch_links() in extractor.py for every URL found in the BriefAST.
+The result (fetched files or an error status) is embedded in the LLM prompt so the
+LLM can include the code in the task markdown without making any tool calls itself.
+
+v1 supports GitHub Gist (plain HTTP). Other platforms return a status that the LLM
+uses to add an inline **Note:** in the task markdown:
+  - "bot_protected"          — CodePen and other Cloudflare-gated platforms.
+  - "platform_not_supported" — CodeSandbox, JSFiddle, Pastebin, Replit, GitLab snippets.
+  - "fetch_failed"           — network or parse error on a supported platform.
 """
 from __future__ import annotations
 
@@ -59,7 +59,14 @@ def fetch_external_code(
     inp: FetchExternalCodeInput,
     output_dir: Optional[Path] = None,
 ) -> FetchExternalCodeOutput:
-    """Detect the URL platform, check cache, and fetch starter-code files; returns status + files or an error message for unsupported/protected platforms."""
+    """Fetch starter-code files from an external URL and return the result.
+
+    Called directly by extractor._prefetch_links() before the LLM call.
+    Detects the URL platform, checks the on-disk cache, and fetches if needed.
+    Returns FetchExternalCodeOutput with status="ok" and file contents on success,
+    or status="bot_protected"/"platform_not_supported"/"fetch_failed" with an
+    error message the LLM embeds as a **Note:** in the task markdown.
+    """
     if output_dir is None:
         raise ValueError("fetch_external_code requires an output_dir")
     output_dir = Path(output_dir)

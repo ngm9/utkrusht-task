@@ -10,7 +10,7 @@ import click
 
 from logger_config import logger
 from task_input_parser.brief_parser import parse
-from task_input_parser.agent import run as run_agent
+from task_input_parser.extractor import run as run_extractor
 
 
 def _make_run_dir(output_root: Path) -> Path:
@@ -49,10 +49,10 @@ def main(brief_path: Path, output_root: Path):
                f"{len(ast.code_fences)} code fences")
 
     try:
-        summary = run_agent(ast, output_dir)
+        summary = run_extractor(ast, output_dir)
     except Exception as e:
-        click.echo(f"[parser] ABORTED: agent loop failed: {e}", err=True)
-        logger.exception("[parser] agent loop crashed")
+        click.echo(f"[parser] ABORTED: extraction failed: {e}", err=True)
+        logger.exception("[parser] extraction crashed")
         sys.exit(3)
 
     elapsed = time.monotonic() - start
