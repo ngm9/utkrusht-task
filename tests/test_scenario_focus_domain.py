@@ -1,4 +1,7 @@
 """Layer B — focus_areas and domain wiring in scenario_generator prompts."""
+from unittest.mock import MagicMock
+
+from scenario_generator.generator import call_llm_generate
 from scenario_generator.prompts import (
     build_focus_areas_block,
     build_domain_rule_block,
@@ -87,3 +90,32 @@ def test_generation_prompt_injects_focus_on_non_code_path():
     assert "metric selection" in prompt
     assert "ALL scenarios" in prompt
     assert "fintech" in prompt
+
+
+def _fake_response(payload: str):
+    resp = MagicMock()
+    resp.output_text = payload
+    resp.usage = MagicMock(input_tokens=10, output_tokens=10)
+    return resp
+
+
+def test_call_llm_generate_passes_focus_and_domain_into_prompt():
+    client = MagicMock()
+    client.responses.create.return_value = _fake_response('{"scenarios": ["s1"]}')
+
+    competencies = [{"name": "Java", "proficiency": "BASIC",
+                     "scope": "x", "long_scope": "x"}]
+    call_llm_generate(
+        client=client,
+        competencies=competencies,
+        count=1,
+        existing_scenarios=[],
+        focus_areas=["idempotency"],
+        domain="fintech",
+    )
+
+    sent = client.responses.create.call_args.kwargs["input"]
+    user_msg = next(m["content"] for m in sent if m["role"] == "user")
+    assert "idempotency" in user_msg
+    assert "fintech" in user_msg
+    assert "ALL scenarios" in user_msg

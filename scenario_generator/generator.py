@@ -410,6 +410,8 @@ def call_llm_generate(
     eval_feedback: List[Dict] = None,
     background: Optional[Dict] = None,
     is_non_code: bool = False,
+    focus_areas: List[str] = None,
+    domain: str = None,
 ) -> tuple:
     """Call the LLM to generate task scenarios.
 
@@ -419,6 +421,11 @@ def call_llm_generate(
         background: Optional background dict from background_forQuestions_*.json,
                     used to inject assessment scope into the prompt.
         is_non_code: If True, use the non-code system prompt and generation prompt.
+        focus_areas: Optional list of skill/concept areas that ALL generated scenarios
+                     must exercise (e.g. ["idempotency", "error handling"]).
+        domain: Optional business domain to pin for ALL generated scenarios
+                (e.g. "fintech", "healthcare"). When None, each scenario uses a
+                different domain for variety.
 
     Returns:
         (scenarios: List[str], usage: Dict with input_tokens/output_tokens)
@@ -443,6 +450,8 @@ def call_llm_generate(
         background=background,
         competency_names_list=competency_names_list,
         is_non_code=is_non_code,
+        focus_areas=focus_areas,
+        domain=domain,
     )
 
     system_prompt = SCENARIO_SYSTEM_PROMPT_NON_CODE if is_non_code else SCENARIO_SYSTEM_PROMPT
@@ -542,6 +551,8 @@ def generate_scenarios_for_competencies(
     existing_scenarios_files: Optional[List[Path]] = None,
     background: Optional[Dict] = None,
     is_non_code: bool = False,
+    focus_areas: List[str] = None,
+    domain: str = None,
 ) -> tuple:
     """Generate, validate, evaluate, and return high-quality task scenarios.
 
@@ -552,6 +563,11 @@ def generate_scenarios_for_competencies(
         existing_scenarios_files: Paths to existing scenario JSON files for deduplication.
         background: Optional background context from background_forQuestions_*.json.
         is_non_code: If True, use non-code system prompt and guardrails.
+        focus_areas: Optional list of skill/concept areas that ALL generated scenarios
+                     must exercise (e.g. ["idempotency", "error handling"]).
+        domain: Optional business domain to pin for ALL generated scenarios
+                (e.g. "fintech", "healthcare"). When None, each scenario uses a
+                different domain for variety.
 
     Returns:
         (scenarios: List[str], usage_by_model: Dict[str, Dict]) — scenarios and cost tracking data.
@@ -605,6 +621,8 @@ def generate_scenarios_for_competencies(
                 eval_feedback=eval_failure_feedback if eval_failure_feedback else None,
                 background=background,
                 is_non_code=is_non_code,
+                focus_areas=focus_areas,
+                domain=domain,
             )
             usage_by_model[GENERATION_MODEL]["input_tokens"] += gen_usage["input_tokens"]
             usage_by_model[GENERATION_MODEL]["output_tokens"] += gen_usage["output_tokens"]
