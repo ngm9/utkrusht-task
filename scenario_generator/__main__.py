@@ -66,7 +66,17 @@ from scenario_generator.generator import (
     default=False,
     help="Print generated scenarios to stdout without saving to file.",
 )
-def generate_scenarios_cli(competency_file, count, output, append, background_file, dry_run):
+@click.option(
+    "--focus-areas",
+    multiple=True,
+    help="Areas to bias scenarios toward. Comma-separated or repeated.",
+)
+@click.option(
+    "--domain",
+    default=None,
+    help="Pin all scenarios to a single business domain (e.g. 'fintech payments').",
+)
+def generate_scenarios_cli(competency_file, count, output, append, background_file, dry_run, focus_areas, domain):
     """Generate task scenarios for coding assessments based on competency definitions."""
 
     # Load competency file
@@ -112,6 +122,14 @@ def generate_scenarios_cli(competency_file, count, output, append, background_fi
     click.echo(f"Scenario key: {scenario_key}")
     click.echo(f"Competencies: {get_competency_names(competencies)}")
     click.echo(f"Target file: {target_file}")
+    focus_list = []
+    for item in focus_areas:
+        focus_list.extend(p.strip() for p in item.split(",") if p.strip())
+    if focus_list:
+        click.echo(f"Focus areas: {', '.join(focus_list)}")
+    if domain:
+        click.echo(f"Domain (pinned): {domain}")
+
     click.echo(f"Generating {count} scenarios...")
     click.echo()
 
@@ -122,6 +140,8 @@ def generate_scenarios_cli(competency_file, count, output, append, background_fi
         count=count,
         background=background,
         is_non_code=is_non_code,
+        focus_areas=focus_list or None,
+        domain=domain,
     )
 
     if not scenarios:

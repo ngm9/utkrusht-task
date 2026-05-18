@@ -1,6 +1,8 @@
 """Layer B — focus_areas and domain wiring in scenario_generator prompts."""
 from unittest.mock import MagicMock
 
+from click.testing import CliRunner
+
 from scenario_generator.generator import call_llm_generate
 from scenario_generator.prompts import (
     build_focus_areas_block,
@@ -119,3 +121,12 @@ def test_call_llm_generate_passes_focus_and_domain_into_prompt():
     assert "idempotency" in user_msg
     assert "fintech" in user_msg
     assert "ALL scenarios" in user_msg
+
+
+def test_cli_accepts_focus_areas_and_domain_options():
+    from scenario_generator.__main__ import generate_scenarios_cli
+    runner = CliRunner()
+    result = runner.invoke(generate_scenarios_cli, ["--help"])
+    assert result.exit_code == 0
+    assert "--focus-areas" in result.output
+    assert "--domain" in result.output
