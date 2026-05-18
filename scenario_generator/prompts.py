@@ -304,8 +304,10 @@ CRITICAL FORMAT CONSTRAINTS:
 
 {assessment_scope_block}
 
+{focus_areas_block}
+
 QUALITY RULES:
-- Each scenario MUST use a DIFFERENT business domain (fintech, healthcare, logistics, e-commerce, SaaS, edtech, travel, food delivery, media/streaming, HR/recruiting, real estate)
+{domain_rule_block}
 - Each scenario MUST test a DIFFERENT area from the competency scope above
 - Scenarios must feel like real product or business decisions, NOT academic exercises or trivia
 - Do NOT ask the candidate to write, debug, fix, or review code
@@ -355,8 +357,10 @@ CRITICAL FORMAT CONSTRAINTS:
 
 {assessment_scope_block}
 
+{focus_areas_block}
+
 QUALITY RULES:
-- Each scenario MUST use a DIFFERENT business domain (fintech, healthcare, logistics, e-commerce, SaaS, edtech, travel, food delivery, IoT, media/streaming, HR/recruiting, real estate)
+{domain_rule_block}
 - Each scenario MUST test a DIFFERENT primary skill from the competency scope above
 - Include realistic details: endpoint paths, function names, error messages, table names
 - Every scenario must have a clear "current broken state" → "target fixed state"
@@ -416,6 +420,41 @@ NOT a standalone {first_tech} bug with no {second_tech} involvement."""
 INTEGRATION_RULE_BLOCK_EMPTY = ""
 
 
+# ============================================================================
+# FOCUS AREAS BLOCK — user-chosen areas to bias scenarios toward (Layer B)
+# ============================================================================
+
+FOCUS_AREAS_BLOCK = """ASSESSMENT FOCUS — bias scenarios toward these areas:
+{focus_areas_text}
+
+At least one scenario MUST primarily exercise each focus area listed above. Stay within the competency scope, but prioritise these areas when choosing what each scenario tests."""
+
+FOCUS_AREAS_BLOCK_EMPTY = ""
+
+
+# ============================================================================
+# DOMAIN RULE BLOCK — vary domains (default) or pin one domain (Layer B)
+# ============================================================================
+
+# Unified domain list for both code and non-code prompts (the non-code prompt previously omitted "IoT").
+DOMAIN_RULE_BLOCK_VARIED = "- Each scenario MUST use a DIFFERENT business domain (fintech, healthcare, logistics, e-commerce, SaaS, edtech, travel, food delivery, IoT, media/streaming, HR/recruiting, real estate)"
+
+DOMAIN_RULE_BLOCK_PINNED = "- ALL scenarios MUST take place in the {domain} business domain. Do NOT vary the business domain across scenarios — every scenario lives in {domain}."
+
+
+def build_focus_areas_block(focus_areas: list[str] | None) -> str:
+    """Render the focus-areas emphasis block, or empty string when unset."""
+    if not focus_areas:
+        return FOCUS_AREAS_BLOCK_EMPTY
+    focus_areas_text = "\n".join(f"- {area}" for area in focus_areas)
+    return FOCUS_AREAS_BLOCK.format(focus_areas_text=focus_areas_text)
+
+
+def build_domain_rule_block(domain: str | None) -> str:
+    """Return the domain QUALITY RULE: variety (default) or pinned to one domain."""
+    if not domain:
+        return DOMAIN_RULE_BLOCK_VARIED
+    return DOMAIN_RULE_BLOCK_PINNED.format(domain=domain)
 
 
 # ============================================================================
@@ -623,6 +662,8 @@ def build_generation_prompt(
     background: dict = None,
     competency_names_list: list = None,
     is_non_code: bool = False,
+    focus_areas: list[str] | None = None,
+    domain: str | None = None,
 ) -> str:
     """Build the complete generation prompt with all conditional sections filled in.
 
@@ -634,6 +675,10 @@ def build_generation_prompt(
         competency_names_list: Optional list of individual competency name strings.
                                Used to generate multi-competency integration rules.
         is_non_code: If True, use the non-code generation prompt and guardrails.
+        focus_areas: Optional list of topic strings (e.g. ["idempotency", "error handling"])
+                     that bias scenario generation toward specific areas.
+        domain: Optional business domain name (e.g. "fintech"). When set, all scenarios
+                are pinned to that domain instead of varying across domains.
     """
     if is_non_code:
         guardrails = PROFICIENCY_GUARDRAILS_NON_CODE.get(proficiency, PROFICIENCY_GUARDRAILS_NON_CODE["BASIC"])
@@ -641,6 +686,8 @@ def build_generation_prompt(
         guardrails = get_proficiency_guardrails(proficiency)
 
     scope_block = build_assessment_scope_block(background)
+    focus_block = build_focus_areas_block(focus_areas)
+    domain_block = build_domain_rule_block(domain)
 
     if existing_scenarios:
         numbered = "\n".join(
@@ -670,6 +717,8 @@ def build_generation_prompt(
             proficiency_guardrails=guardrails,
             competency_names=competency_names,
             assessment_scope_block=scope_block,
+            focus_areas_block=focus_block,
+            domain_rule_block=domain_block,
             deduplication_block=dedup_block,
             eval_feedback_block=feedback_block,
         )
@@ -683,6 +732,8 @@ def build_generation_prompt(
         competency_names=competency_names,
         integration_rule_block=integration_block,
         assessment_scope_block=scope_block,
+        focus_areas_block=focus_block,
+        domain_rule_block=domain_block,
         deduplication_block=dedup_block,
         eval_feedback_block=feedback_block,
     )
