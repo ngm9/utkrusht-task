@@ -522,7 +522,7 @@ SSH into the droplet, then use one of these methods:
 """
 
 PROMPT_REGISTRY = {
-    "Python - FastAPI (BASIC), Redis (BASIC)": [
+    "Python (BASIC), Redis (BASIC)": [
         PROMPT_FASTAPI_REDIS_BASIC_CONTEXT,
         PROMPT_FASTAPI_REDIS_BASIC_INPUT_AND_ASK,
         PROMPT_FASTAPI_REDIS_OPTIMIZATION_INSTRUCTIONS_BASIC,

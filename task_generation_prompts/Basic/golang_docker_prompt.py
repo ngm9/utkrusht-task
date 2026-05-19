@@ -345,7 +345,7 @@ Verification approaches without revealing implementations, using scenario-specif
 10. **All paths** must reference /root/task as the base directory
 """
 PROMPT_REGISTRY = {
-    "Docker (BASIC), Golang (BASIC)": [
+    "Docker (BASIC), Go (BASIC)": [
         PROMPT_GOLANG_DOCKER_BASIC_CONTEXT,
         PROMPT_GOLANG_DOCKER_BASIC_INPUT_AND_ASK,
         PROMPT_GOLANG_DOCKER_BASIC_INSTRUCTIONS,

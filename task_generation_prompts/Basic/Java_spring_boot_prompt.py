@@ -192,14 +192,9 @@ Verification approaches for the task:
 11. **Use Java 11+ and Spring Boot 2.7+ or 3.x** conventions throughout
 """
 PROMPT_REGISTRY = {
-    "Java, Java - Spring Boot": [
-        PROMPT_JAVA_SPRING_BOOT_CONTEXT_BASIC,
-        PROMPT_JAVA_SPRING_BOOT_INPUT_AND_ASK_BASIC,
-        PROMPT_JAVA_SPRING_BOOT_BASIC,
-    ],
     "Java (BASIC), Java - Spring Boot (BASIC)": [
         PROMPT_JAVA_SPRING_BOOT_CONTEXT_BASIC,
         PROMPT_JAVA_SPRING_BOOT_INPUT_AND_ASK_BASIC,
         PROMPT_JAVA_SPRING_BOOT_BASIC,
-    ],
+    ]
 }

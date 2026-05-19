@@ -42,6 +42,25 @@ def clean_llm_json_response(response: str) -> str:
 
 MAX_EVAL_RETRIES = 2
 
+
+class EvalGateError(Exception):
+    """Raised when the eval gate rejects a generated task after all retries.
+
+    Carries the last evaluator verdicts so the caller can surface them. The
+    presence of this exception means the task was NOT persisted to GitHub or
+    Supabase — callers must NOT swallow it as success.
+    """
+
+    def __init__(self, attempts: int, last_eval_info: dict | None) -> None:
+        self.attempts = attempts
+        self.last_eval_info = last_eval_info or {}
+        task_pass = self.last_eval_info.get("task_eval", {}).get("pass")
+        code_pass = self.last_eval_info.get("code_eval", {}).get("pass")
+        super().__init__(
+            f"eval gate rejected after {attempts} attempt(s) "
+            f"(last verdicts: task_eval.pass={task_pass}, code_eval.pass={code_pass})"
+        )
+
 TASK_EVAL_PROMPT = """
 You are an expert technical assessment reviewer. Given the following task JSON, proficiency level, years of experience, and time constraint, answer the following:
 

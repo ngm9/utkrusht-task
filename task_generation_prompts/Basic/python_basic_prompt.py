@@ -97,7 +97,7 @@ Each task MUST be defined in two clear parts so the candidate and assessor know 
 
 **WHAT MUST BE INCLUDED:**
 - The starter code should provide a clear structure (e.g. main script, optional module or package) so that the candidate is not clueless to begin with.
-- The code files generated must be valid and executable (e.g. `python main.py` or `python -m package.module`).
+- The code files generated must be valid and executable (e.g. `python3 main.py` or `python3 -m package.module` — always use `python3`, NEVER bare `python`, because production droplets have no `python` symlink and bare `python` exits 127).
 - Keep the code files minimal and to the point.
 - Python starter code may include a simple project layout (main script, module, or package) but NOT require complex infrastructure.
 - Use a requirements.txt only if the task needs third-party libraries; otherwise plain standard library is fine.

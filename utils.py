@@ -11,19 +11,69 @@ from datetime import datetime
 
 
 import importlib
+import importlib.util
 import pkgutil
+from pathlib import Path as _Path
 import task_generation_prompts.Basic as _basic_pkg
 import task_generation_prompts.Intermediate as _inter_pkg
 import task_generation_prompts.Beginner as _beginner_pkg
 
+# Agent-generated prompts (and any future per-slug nested layout) live in
+# subfolders that lack ``__init__.py``, so ``pkgutil.iter_modules`` skips them.
+# We complement the package-walk with a filesystem-walk over the canonical
+# ``<slug>/<slug>.py`` layout and the ``agent_generated_prompts/`` subtree.
+_PROMPT_ROOT = _Path(__file__).parent / "task_generation_prompts"
+_AGENT_OUTPUT_SUBDIR = "agent_generated_prompts"
+
+
+def _load_module_from_path(label: str, path: _Path):
+    spec = importlib.util.spec_from_file_location(label, path)
+    if spec is None or spec.loader is None:
+        return None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _iter_filesystem_prompts():
+    """Yield ``<slug>/<slug>.py`` files under curated and agent-generated trees.
+
+    Covers two layouts that ``pkgutil.iter_modules`` cannot:
+      - ``<Level>/<slug>/<slug>.py``                (curated, per-slug folder)
+      - ``agent_generated_prompts/<Level>/<slug>/<slug>.py``
+    Archived originals under ``original_temp_prompt/`` are intentionally skipped.
+    """
+    candidates = []
+    for level in ("Basic", "Intermediate", "Beginner", "Advanced", "Expert"):
+        candidates.append(_PROMPT_ROOT / level)
+        candidates.append(_PROMPT_ROOT / _AGENT_OUTPUT_SUBDIR / level)
+    for level_dir in candidates:
+        if not level_dir.exists():
+            continue
+        for slug_dir in level_dir.iterdir():
+            if not slug_dir.is_dir() or slug_dir.name.startswith("__"):
+                continue
+            canonical = slug_dir / f"{slug_dir.name}.py"
+            if canonical.exists():
+                yield canonical
+
 
 def _build_prompt_registry() -> dict:
     registry = {}
+    # 1) Flat-style modules under <Level>/<file>.py via the existing package walk.
     for pkg in [_basic_pkg, _inter_pkg, _beginner_pkg]:
         for _, module_name, _ in pkgutil.iter_modules(pkg.__path__):
             module = importlib.import_module(f"{pkg.__name__}.{module_name}")
             if hasattr(module, "PROMPT_REGISTRY"):
                 registry.update(module.PROMPT_REGISTRY)
+    # 2) Per-slug nested modules (curated + agent_generated_prompts) via filesystem walk.
+    for path in _iter_filesystem_prompts():
+        try:
+            module = _load_module_from_path(f"_pg_{path.parent.name}", path)
+        except Exception:
+            continue
+        if module is not None and hasattr(module, "PROMPT_REGISTRY"):
+            registry.update(module.PROMPT_REGISTRY)
     return registry
 
 
@@ -376,15 +426,19 @@ def get_task_prompt_by_technology_stack(competency_stack, input_data):
     }
     return [t.format(**fmt_args) for t in templates]
 
-def generate_task_with_code(openai_client, input_data: Dict) -> Dict:
+def generate_task_with_code(openai_client, input_data: Dict, feedback: str = "") -> Dict:
     """Generate task and code files using language_prompts with Responses API and reasoning.
-    
+
     Args:
         openai_client: OpenAI client
         input_data: Dictionary containing:
             - competencies: List of competency data
             - background: Background data
             - scenarios: List of relevant scenarios
+        feedback: Optional. When a previous attempt failed the eval gate or came
+            back hollow, the caller passes the failure reason here. It is appended
+            as a follow-up turn so the LLM CORRECTS its own prior output (it keeps
+            full conversation context) instead of regenerating from scratch.
     Returns:
         Dict: Generated task data with code files
     """
@@ -452,6 +506,32 @@ def generate_task_with_code(openai_client, input_data: Dict) -> Dict:
             logger.info(f" Prompt {i}/{len(task_generation_prompts)} Response: ")
             logger.info(response_text)
             logger.info(f" Tokens - Input: {prompt_input:,} | Output: {prompt_output:,}")
+            logger.info("=" * 70)
+
+        # Feedback-aware retry turn. When the caller supplies feedback from a
+        # failed prior attempt, append it as a follow-up message so the LLM
+        # corrects its OWN previous response (full conversation context intact)
+        # rather than starting blind. The corrected response replaces
+        # response_text for the JSON parsing below.
+        if feedback:
+            logger.info("Applying feedback from previous attempt — requesting a corrected response")
+            messages.append({"role": "user", "content": feedback})
+            response = openai_client.chat.completions.create(
+                model=model,
+                messages=messages,
+                max_tokens=16000,
+            )
+            response_text = response.choices[0].message.content if response.choices else None
+            if not response_text:
+                logger.error("No response content on feedback-correction turn")
+                raise RuntimeError("Empty response from LLM on feedback turn")
+            messages.append({"role": "assistant", "content": response_text})
+            usage = response.usage
+            total_input_tokens += usage.prompt_tokens if usage else 0
+            total_output_tokens += usage.completion_tokens if usage else 0
+            logger.info("=" * 70)
+            logger.info(" Feedback-correction Response: ")
+            logger.info(response_text)
             logger.info("=" * 70)
 
         # Print cost summary

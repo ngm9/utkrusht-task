@@ -212,7 +212,7 @@ NEVER generate empty content - always provide substantial business context that 
   - Folder structure decisions that would dictate the architectural approach
 """
 PROMPT_REGISTRY = {
-    "ReactJs (INTERMEDIATE)": [
+    "React (INTERMEDIATE)": [
         PROMPT_REACT_INTERMEDIATE_CONTEXT,
         PROMPT_REACT_INTERMEDIATE_INPUT_AND_ASK,
         PROMPT_REACT_INTERMEDIATE_INSTRUCTIONS,

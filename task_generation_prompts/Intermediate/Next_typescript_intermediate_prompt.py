@@ -192,7 +192,7 @@ Please provide a brief summary of your understanding before proceeding with the 
 
 
 PROMPT_REGISTRY = {
-    "NextJs (INTERMEDIATE), TypeScript (INTERMEDIATE)": [
+    "Next.js (INTERMEDIATE), Typescript (INTERMEDIATE)": [
         PROMPT_NEXTJS_TYPESCRIPT_CONTEXT,
         PROMPT_NEXTJS_TYPESCRIPT_INPUT_AND_ASK,
         PROMPT_NEXTJS_TYPESCRIPT_INSTRUCTIONS,
