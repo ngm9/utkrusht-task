@@ -264,9 +264,13 @@ def main() -> int:
         return 1
 
     # --- Stage 4: task creation -------------------------------------------
+    # `--env` MUST be threaded here — multiagent.py stores the task in the
+    # Supabase environment it is told; without this flag it silently defaults
+    # to `dev`, so a `--env prod` run would create the task but store it in dev.
     rec = _run_stage(combo_dir, "04_tasks", [
         py, "multiagent.py", "generate_tasks",
         "-c", str(comp_json), "-b", str(bg_json), "-s", str(SCENARIOS_FILE),
+        "--env", args.env,
     ])
     stages.append(rec)
     task_outcome = _summarise_task_stage(Path(rec["stdout"]))

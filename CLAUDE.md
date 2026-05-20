@@ -122,6 +122,7 @@ The main orchestrator. Three Click CLI commands: `generate-tasks`, `deploy-task`
 | `non_tech_flow/` | Separate pipeline for non-technical AI/ML assessment challenges |
 | `task_generation_prompts/` | Technology-specific prompt templates organized by level (Beginner/Basic/Intermediate) |
 | `task_input_files/` | Input JSON files per technology (competencies, backgrounds, scenarios) |
+| `task_builder/` | Conversational web front-end (FastAPI) that interviews for pipeline inputs and runs the pipeline with live progress |
 
 ### External Services
 
@@ -146,3 +147,12 @@ Required in `.env` — see `TASK_MANAGEMENT_GUIDE.md` for full list. Key ones:
 - Task generation prompts are Python files exporting prompt strings, organized by `{level}/{tech_stack}_prompt.py`.
 - Two Supabase environments (dev/prod) controlled by `--env` flags throughout.
 - LLM evaluations have a retry loop (`MAX_EVAL_RETRIES` in `evals.py`) — tasks that fail eval are regenerated.
+
+## illuminate: required pre-write step
+
+Before writing or modifying any source file in this repository, invoke the
+`illuminate_audit` MCP tool with your plan, the files you intend to modify,
+and your rationale. Surface the response to the user before proceeding.
+
+If `status` is `block`, do not proceed without explicit user approval.
+If `status` is `warn`, surface the warnings to the user before writing.

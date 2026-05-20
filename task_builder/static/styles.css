@@ -1,0 +1,98 @@
+:root {
+  --bg:#ffffff;
+  --panel:#f4f4f5;
+  --border:#e4e4e7;
+  --text:#0a0a0a;
+  --muted:#71717a;
+  --bot:#f4f4f5;
+  --user:#0a0a0a;
+}
+* { box-sizing: border-box; }
+html,body { height:100%; margin:0; }
+body {
+  font:14px/1.55 "Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  display:flex; flex-direction:column;
+  overflow:hidden;
+}
+header {
+  padding:14px 22px; border-bottom:1px solid var(--border);
+  display:flex; align-items:center; gap:10px;
+}
+.logo { width:26px; height:26px; border-radius:7px; background:var(--text); }
+header h1 { font-size:15px; margin:0; font-weight:600; letter-spacing:-0.01em; }
+main { flex:1; min-height:0; overflow-y:auto; padding:26px 0 130px;
+  display:flex; flex-direction:column; align-items:center; }
+.chat { width:min(720px,92vw); display:flex; flex-direction:column; gap:12px; }
+.row { display:flex; gap:10px; align-items:flex-end; }
+.row.user { justify-content:flex-end; }
+.avatar { width:28px; height:28px; border-radius:50%; display:grid;
+  place-items:center; font-size:12px; font-weight:700; flex-shrink:0; }
+.avatar.bot { background:var(--panel); color:var(--text);
+  border:1px solid var(--border); }
+.avatar.user { background:var(--user); color:#fff; }
+.bubble { max-width:78%; padding:11px 14px; border-radius:14px;
+  white-space:pre-wrap; word-wrap:break-word; }
+.bot .bubble { background:var(--bot); border:1px solid var(--border);
+  border-bottom-left-radius:4px; }
+.user .bubble { background:var(--user); color:#fff;
+  border-bottom-right-radius:4px; }
+.bubble a { color:inherit; text-decoration:underline; word-break:break-all; }
+
+/* Pipeline / tool-call status lines — Roboto, monochrome */
+.stage { font-family:"Roboto",-apple-system,BlinkMacSystemFont,sans-serif;
+  font-size:13px; color:var(--muted); letter-spacing:0.01em; }
+.stage.ok { color:#3f3f46; }
+.stage.failed { color:var(--text); font-weight:600; }
+
+.summary { background:var(--bg); border:1px solid var(--border);
+  border-radius:14px; padding:14px 16px; }
+.summary h4 { margin:0 0 10px; font-size:13px; font-weight:600; }
+.kv { display:grid; grid-template-columns:130px 1fr; gap:6px 12px;
+  font-size:13px; }
+.kv .k { color:var(--muted); }
+.cta { margin-top:12px; background:var(--text); color:#fff; border:0;
+  padding:9px 14px; border-radius:10px; font-weight:600; cursor:pointer;
+  font-family:inherit; }
+.cta[disabled] { opacity:.45; cursor:default; }
+
+/* Summary-card action row: environment picker + generate button */
+.actions { margin-top:12px; display:flex; align-items:center; gap:12px; }
+.actions .cta { margin-top:0; }
+.env-pick { display:flex; align-items:center; gap:6px;
+  font-size:13px; color:var(--muted); }
+.env-pick select { font:inherit; font-size:13px; color:var(--text);
+  background:var(--bg); border:1px solid var(--border); border-radius:8px;
+  padding:6px 8px; cursor:pointer; }
+.env-pick select[disabled] { opacity:.45; cursor:default; }
+
+/* Collapsible per-stage live-log panels */
+.bot .bubble.stage-log { max-width:100%; padding:0; background:transparent;
+  border:0; }
+.stage-log details { border:1px solid var(--border); border-radius:12px;
+  background:var(--panel); overflow:hidden; }
+.stage-log summary { cursor:pointer; padding:9px 13px; list-style:none;
+  font-family:"Roboto",-apple-system,BlinkMacSystemFont,sans-serif;
+  font-size:13px; color:#3f3f46; letter-spacing:0.01em; user-select:none; }
+.stage-log summary::-webkit-details-marker { display:none; }
+.stage-log summary::before { content:"\25B8"; display:inline-block;
+  width:1.1em; color:var(--muted); }
+.stage-log details[open] summary::before { content:"\25BE"; }
+.stage-log pre.log { margin:0; padding:11px 13px; max-height:240px;
+  overflow:auto; background:var(--bg); border-top:1px solid var(--border);
+  font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  color:#3f3f46; white-space:pre-wrap; word-break:break-word; }
+.stage-log pre.log:empty { display:none; }
+
+.dock { position:fixed; left:0; right:0; bottom:0; padding:14px 22px 18px;
+  background:linear-gradient(180deg,transparent,var(--bg) 38%); }
+.dock-inner { width:min(720px,92vw); margin:0 auto; display:flex; gap:8px;
+  background:var(--bg); border:1px solid var(--border); border-radius:14px;
+  padding:8px 8px 8px 14px; align-items:center; }
+.dock input { flex:1; background:transparent; border:0; outline:0;
+  color:var(--text); font:inherit; }
+.dock input::placeholder { color:var(--muted); }
+.dock button { background:var(--text); color:#fff; border:0;
+  padding:9px 16px; border-radius:10px; font-weight:600; cursor:pointer;
+  font-family:inherit; }

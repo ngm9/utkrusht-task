@@ -424,10 +424,14 @@ INTEGRATION_RULE_BLOCK_EMPTY = ""
 # FOCUS AREAS BLOCK — user-chosen areas to bias scenarios toward (Layer B)
 # ============================================================================
 
-FOCUS_AREAS_BLOCK = """ASSESSMENT FOCUS — bias scenarios toward these areas:
+FOCUS_AREAS_BLOCK = """ASSESSMENT FOCUS — prioritise these areas when deciding what each scenario tests:
 {focus_areas_text}
 
-At least one scenario MUST primarily exercise each focus area listed above. Stay within the competency scope, but prioritise these areas when choosing what each scenario tests."""
+Bias the scenarios toward these areas. Each individual scenario MUST stay
+correctly scoped for the proficiency level and time limit — never combine
+multiple focus areas into one scenario just to "cover" them all. When there
+are more focus areas than scenarios, cover only as many as fit; an
+appropriately-sized scenario always beats a comprehensive one."""
 
 FOCUS_AREAS_BLOCK_EMPTY = ""
 

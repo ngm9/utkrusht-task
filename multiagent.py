@@ -362,8 +362,13 @@ def upload_files_to_github(repo: str, code_data: Dict) -> None:
         logger.error(f"Error uploading LLM-generated files: {str(e)}")
         raise
 
-def create_task(competency_file: Path, background_file: Path, scenarios_file: Path = None) -> Dict:
-    """Generate an intelligent assessment task."""
+def create_task(competency_file: Path, background_file: Path, scenarios_file: Path = None,
+                env: str = "dev") -> Dict:
+    """Generate an intelligent assessment task.
+
+    Args:
+        env: Supabase environment to store the task in — "dev" or "prod".
+    """
     try:
         # Set default scenarios file if not provided
         if scenarios_file is None:
@@ -578,7 +583,7 @@ def create_task(competency_file: Path, background_file: Path, scenarios_file: Pa
             "task_type": ["BUILD"],
         }
         
-        supabase = init_supabase()
+        supabase = init_supabase(env)
         result = supabase.table("tasks").insert(task_data_for_db).execute()
         
         if not result.data or len(result.data) == 0:
@@ -904,7 +909,9 @@ def reset_task(task_id: str, droplet_ip: str, script_path: str, env: str = "dev"
 @click.option('--scenarios-file', '-s',
               type=click.Path(exists=True, path_type=Path),
               help='Path to task_scenarios.json file')
-def generate_tasks(competency_file: Path, background_file: Path, scenarios_file: Path):
+@click.option('--env', type=click.Choice(['dev', 'prod']), default='dev',
+              help='Supabase environment to store the generated task in (default: dev).')
+def generate_tasks(competency_file: Path, background_file: Path, scenarios_file: Path, env: str):
     """
     Generate intelligent assessment tasks OR deploy existing tasks to droplets.
     
@@ -914,7 +921,8 @@ def generate_tasks(competency_file: Path, background_file: Path, scenarios_file:
     """
     # Run task creation workflow
     print(" INTELLIGENT TASK GENERATION AGENT")
-    
+    print(f" Storage environment: {env}")
+
     # Check how many competencies we have
     try:
         competencies = read_json_file_robust(competency_file)
@@ -950,7 +958,7 @@ def generate_tasks(competency_file: Path, background_file: Path, scenarios_file:
         # Validate environment first
         validate_environment()
         
-        result = create_task(competency_file, background_file, scenarios_file)
+        result = create_task(competency_file, background_file, scenarios_file, env)
 
         task_type = result.get("task_type", "unknown")
         # task_type is a Postgres text[] (e.g. ['BUILD']) — normalize before
