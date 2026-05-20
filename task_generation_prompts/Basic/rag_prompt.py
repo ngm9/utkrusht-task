@@ -512,7 +512,7 @@ Use action words: "Consider", "Think about", "Review", "Explore"
 10. **All paths** must reference /root/task as the base directory
 """
 PROMPT_REGISTRY = {
-    "Retrieval_Augmented_Generation (BASIC)": [
+    "RAG (BASIC)": [
         PROMPT_RAG_CONTEXT_BASIC,
         PROMPT_RAG_INPUT_AND_ASK_BASIC,
         PROMPT_RAG_BASIC,

@@ -283,9 +283,9 @@ Provide practical guidance without revealing specific implementations:
 """
 
 PROMPT_REGISTRY = {
-    "Kafka (INTERMEDIATE), Python - FastAPI (INTERMEDIATE)": [
+    "Kafka (INTERMEDIATE), Python (INTERMEDIATE), Python - FastAPI (INTERMEDIATE)": [
         PROMPT_FASTAPI_KAFKA_CONTEXT_INTERMEDIATE,
         PROMPT_FASTAPI_KAFKA_INPUT_AND_ASK_INTERMEDIATE,
         PROMPT_FASTAPI_KAFKA_INTERMEDIATE,
-    ],
+    ]
 }

@@ -418,7 +418,7 @@ Write practical, beginner-friendly tips in clear language so basic-level candida
 10. **All paths** must reference /root/task as the base directory
 """
 PROMPT_REGISTRY = {
-    "Golang (BASIC), Redis (BASIC)": [
+    "Go (BASIC), Redis (BASIC)": [
         PROMPT_GOLANG_REDIS_BASIC_CONTEXT,
         PROMPT_GOLANG_REDIS_BASIC_INPUT_AND_ASK,
         PROMPT_GOLANG_REDIS_BASIC_INSTRUCTIONS,

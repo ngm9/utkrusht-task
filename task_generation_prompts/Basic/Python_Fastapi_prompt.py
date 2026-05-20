@@ -195,7 +195,7 @@ NEVER generate empty content - always provide substantial business context that 
 
 
 PROMPT_REGISTRY = {
-    "Python - FastAPI (BASIC)": [
+    "Python (BASIC), Python - FastAPI (BASIC)": [
         PROMPT_PYTHON_FASTAPI_CONTEXT,
         PROMPT_PYTHON_FASTAPI_INPUT_AND_ASK,
         PROMPT_PYTHON_FASTAPI_INSTRUCTIONS,

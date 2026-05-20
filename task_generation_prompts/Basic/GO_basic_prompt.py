@@ -271,7 +271,7 @@ Make sure you do not include the following in the README.md file:
 10. **Use Go 1.18+** conventions throughout
 """
 PROMPT_REGISTRY = {
-    "Golang": [
+    "Go (BASIC)": [
         PROMPT_GOLANG_BASIC_CONTEXT,
         PROMPT_GO_BASIC_INSTRUCTIONS,
         PROMPT_GOLANG_BASIC_INPUT_AND_ASK,

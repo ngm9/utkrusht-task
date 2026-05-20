@@ -279,7 +279,7 @@ Practical guidance without revealing implementations:
 """
 
 PROMPT_REGISTRY = {
-    "ReactJs": [
+    "React (BEGINNER)": [
         PROMPT_REACT_BEGINNER_CONTEXT,
         PROMPT_REACT_BEGINNER_INPUT_AND_ASK,
         PROMPT_REACT_BEGINNER,
