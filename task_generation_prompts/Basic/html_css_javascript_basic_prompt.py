@@ -19,21 +19,32 @@ INPUT COMPETENCIES:
 INPUT ROLE CONTEXT:
 {role_context}
 
-INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
+INPUT REAL-WORLD SCENARIOS (short summary — full task specification is in QUESTION PROMPT below):
 {real_world_task_scenarios}
 
+INPUT QUESTION PROMPT (THIS IS THE AUTHORITATIVE TASK SPECIFICATION — READ THIS IN FULL BEFORE DOING ANYTHING ELSE):
+{question_prompt}
+
+## THE QUESTION PROMPT IS THE MOST IMPORTANT INPUT
+
+The QUESTION PROMPT above is the single most important input you have received. It defines exactly what the final task must look like: the business scenario, the design reference (including the image URL that MUST be embedded inline in the generated README), the functional requirements (timed appearance, close behaviour, CTA redirect), the evaluation criteria, the required repository file list, and the README section order. Before you write a single file of the task, you MUST read the entire QUESTION PROMPT carefully and treat it as the source of truth. The task you generate is essentially a faithful packaging of the QUESTION PROMPT into a deployable repository — not a re-imagining of it.
+
 CRITICAL TASK GENERATION REQUIREMENTS:
-- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
-- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
-- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
-- Ensure the candidate can realistically complete the task in the allocated time
-- Select a different real-world scenario each time to ensure variety in task generation
-- The task must reflect authentic challenges that would be encountered in the role described in the role context
+- The QUESTION PROMPT above may contain a complete, embedded task specification (explicit scenario, functional requirements, evaluation criteria, design-reference image URL, required file list, README section order).
+- When the QUESTION PROMPT contains such a complete specification (it will be obvious — it will explicitly list a numbered list of functional requirements, a design reference URL, evaluation criteria, and a required file list), you MUST use it VERBATIM:
+  - Use the same scenario (business context, brand names, charity, agency).
+  - Use the same functional requirements (timings, links, behaviours), in the same order, with the same values (e.g. exact 5-second delay, exact `https://designerds.com.au` redirect, `target="_blank"`).
+  - Embed the same design-reference image URL inline in the README exactly as instructed in the QUESTION PROMPT.
+  - Use the same evaluation criteria.
+  - Produce ONLY the files listed in the QUESTION PROMPT's "Required Repository Structure" — no Docker, no build tooling, no extra files.
+- The candidate must be asked to complete EVERY listed functional requirement — no opt-out wording, no "any N of M" phrasing in the README, Objectives, or anywhere else.
+- When the QUESTION PROMPT does NOT contain an embedded specification, fall back to drawing inspiration from the real-world scenarios and the role context to design the task from scratch (still HTML/CSS/JS BASIC).
 
 Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
-1. What will the task be about? (Describe the business domain, technical context, and problem the candidate will be solving)
-2. What will the task look like? (Describe the type of HTML/CSS/JavaScript implementation or fix required, the expected deliverables, and how it aligns with BASIC proficiency)
+1. Does the QUESTION PROMPT above contain an embedded, authoritative task specification (yes/no)?
+2. If yes, summarise: the business scenario, the design-reference image URL, every functional requirement (timings, links, behaviours), and the required repository file list.
+3. Confirm the README will embed the design image inline using the exact markdown specified in the QUESTION PROMPT.
 
 Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
@@ -42,6 +53,20 @@ PROMPT_HTML_CSS_JS_BASIC_INSTRUCTIONS = """
 ## GOAL
 As a technical architect super experienced in HTML, CSS, and JavaScript, including semantic markup, responsive design, modern CSS layout techniques, DOM manipulation, and frontend development best practices, you are given a list of real world scenarios and proficiency levels for frontend web development.
 Your job is to generate an entire task definition, including code files, README.md, expected outcomes etc. that can be effectively used to assess the candidate's ability to effectively think, design, build, implement, debug or in general solve a problem end to end.
+
+## READ THE QUESTION PROMPT IN FULL BEFORE GENERATING
+
+The QUESTION PROMPT supplied in the previous turn is the most important input you have. When it contains an embedded specification — explicit scenario, functional requirements (timings, links, behaviours), a design-reference image URL with explicit README embed instructions, evaluation criteria, and a required file list — you MUST treat it as the source of truth. Before you write any of the output JSON, you MUST have read and internalised the entire QUESTION PROMPT. The scenario in the README, the design-reference inline image, the Objectives, the starter code in `index.html` / `styles.css` / `script.js`, and the verification steps are all dictated by the QUESTION PROMPT. Do NOT begin generating files until you have a clear mental model of every functional requirement and the design reference. The candidate must be asked to complete **every functional requirement** listed — no opt-out wording, no "answer any N of M" phrasing anywhere in the generated task. If the QUESTION PROMPT specifies a fixed file list (e.g. only `index.html`, `styles.css`, `script.js`, `README.md`, `.gitignore`), do NOT add extra files like `docker-compose.yml`, `package.json`, or `app.js`.
+
+## STARTER CODE: USE THE BLOCKS IN THE QUESTION PROMPT BYTE-FOR-BYTE
+
+If the QUESTION PROMPT contains a section titled "STARTER CODE — USE VERBATIM" (or any equivalent literal-code block headed with a target filename), the code inside those blocks IS the final starter content for the named repository files. You MUST:
+
+- Copy each block byte-for-byte into the corresponding `code_files` entry. Do NOT reformat, do NOT re-indent, do NOT add trailing newlines, do NOT add a license header, do NOT add `// TODO`, do NOT add `<!-- placeholder -->` or `/* implement here */` comments.
+- If a starter block says "leave this file EMPTY" (or specifies zero bytes), the corresponding `code_files` entry MUST be an empty string. No comments, no stubs, no scaffolding.
+- The starter is intentionally incomplete and may intentionally contain GOTCHAS (wrong hrefs, undefined inline `onclick` handlers, missing visual styling). These are part of the test. Preserve every gotcha exactly. Do NOT "fix" them.
+- Override the generic "Starter Code Instructions" section further down — when the QUESTION PROMPT provides explicit starter blocks, those blocks are the starter code, full stop. Do NOT regenerate starter code from scratch and do NOT merge LLM-invented scaffolding into it.
+- Do NOT add any reference to the external pen, sandbox, or URL the starter originally came from. The starter is now self-contained inside the repository.
 
 ## INSTRUCTIONS
 
@@ -121,24 +146,24 @@ Based on the real-world scenarios provided in following conversations, create an
 
 ## REQUIRED OUTPUT JSON STRUCTURE
 
-{{{{
+{{
   "name": "task-name-in-kebab-case",
   "title": "Human-readable task title in '<action verb> <subject>' format, 50-80 characters. Describes what the candidate will do in plain English. Examples: 'Build Responsive Appointment Card Layout with Toggle Notes', 'Fix Filter Logic and Restyle Search Results Page', 'Refactor Checkout Form with Semantic HTML and Validation'. The title should clearly convey the action (implement, fix, build, refactor, optimize, debug) and the subject (what system/feature/component). This is used for display purposes — 'name' is the kebab-case GitHub repo name, 'title' is the readable display name.",
   "question": "Short description of the scenario and specific ask from the candidate — what needs to be fixed or implemented across HTML, CSS, and JavaScript",
-  "code_files": {{{{
+  "code_files": {{
     "README.md": "Candidate-facing README following structure below",
     ".gitignore": "Web project exclusions",
     "index.html": "Main HTML file with proper structure, linked CSS and JS",
     "styles.css": "CSS file with starter styles (or styles needing fixes)",
     "app.js": "JavaScript file with starter logic (or logic needing fixes)",
     "additional_file": "Other source files as needed (e.g., data.js, components/)"
-  }}}},
+  }},
   "outcomes": "Bullet-point list in simple language. Must include expected results after completion and one bullet explicitly stating: 'Write production-level clean code with best practices including proper naming conventions, error handling, and code organization.'",
   "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific implementation or fix goal, and (3) the expected outcome emphasizing correctness, structure, and maintainability.",
   "pre_requisites": "Bullet-point list of tools, libraries, environment setup, and knowledge required. Include modern browser (Chrome/Firefox), code editor, Git, and fundamentals of HTML5 (semantic elements, forms, accessibility attributes), CSS3 (Flexbox, Grid, media queries, variables), and JavaScript ES6+ (DOM manipulation, event handling, async/await, array methods).",
   "answer": "High-level solution approach describing main components and flow across HTML, CSS, and JS.",
   "hints": "Single line suggesting focus area. Example: 'Focus on connecting semantic HTML structure with responsive CSS layout and proper DOM event delegation in JavaScript'",
-  "definitions": {{{{
+  "definitions": {{
     "Semantic HTML": "Using HTML elements that convey meaning about the content they contain, such as <nav>, <article>, <section>, rather than generic <div> tags",
     "Flexbox": "A CSS layout model for distributing space and aligning items in a container along a single axis (row or column)",
     "CSS Grid": "A two-dimensional CSS layout system for creating complex grid-based page layouts with rows and columns",
@@ -146,8 +171,8 @@ Based on the real-world scenarios provided in following conversations, create an
     "BEM": "Block Element Modifier — a CSS naming convention that structures class names as .block__element--modifier for maintainability",
     "aria attribute": "Accessible Rich Internet Applications attributes that provide extra semantics for assistive technologies like screen readers",
     "CSS Custom Properties": "Variables defined with -- prefix in CSS (e.g., --primary-color) that can be reused throughout stylesheets using var()"
-  }}}}
-}}}}
+  }}
+}}
 
 ## Code file requirements:
 - More than 1 files can be generated but make sure they are included in the JSON structure correctly.
@@ -170,6 +195,10 @@ Create a gitignore file that covers common web development exclusions including 
 ## README.md STRUCTURE (HTML, CSS & JavaScript)
 
 **CRITICAL**: The README must be concise and open-ended. Each section should have only the essential points needed to understand the task. Do NOT overload with too many bullets — quality over quantity. The candidate should figure out the implementation approach on their own.
+
+**IMPORTANT — DESIGN REFERENCE EMBED:** If the QUESTION PROMPT specifies a design-reference image URL with explicit markdown to embed it inline (e.g. `![Design Reference](<URL>)`), the README MUST include a **Design Reference** section immediately after Task Overview that uses that exact markdown, verbatim, plus a fallback "Full-resolution" link if one was provided. Do NOT substitute a different URL, do NOT switch to a `<img>` tag, do NOT skip the image. The candidate sees this design only via the embedded image in the README.
+
+**IMPORTANT — README SECTION ORDER:** If the QUESTION PROMPT specifies a section order (e.g. Task Overview, Design Reference, Objectives, Helpful Tips, How to Verify), follow it exactly. Otherwise default to: Task Overview, Objectives, Helpful Tips, How to Verify. Do NOT add a "Boilerplate" section unless the QUESTION PROMPT explicitly asks for one — the QUESTION PROMPT may explicitly forbid it.
 
 ### Task Overview (MANDATORY - 3-4 substantial sentences)
 
@@ -213,20 +242,27 @@ Verification approaches for the task:
 
 ## CRITICAL REMINDERS
 
-1. **Output must be valid JSON only** — no markdown, no explanations, no code fences
-2. **name** must be short, descriptive, kebab-case (e.g., "appointment-card-layout", "checkout-form-refactor")
-3. **code_files** must include README.md, .gitignore, index.html, styles.css, and app.js at minimum
-4. **README.md** must follow the structure above with Task Overview, Helpful Tips, Objectives, How to Verify
-5. **Starter code** must be runnable but must NOT contain the solution
-6. **outcomes** must include one bullet on production-level clean code with best practices, naming conventions, error handling
-7. **short_overview**, **pre_requisites** must be bullet-point lists in simple language
-8. **hints** must be a single line; **definitions** must include relevant HTML/CSS/JS terms
-9. **Task must be completable within the allocated time** for BASIC proficiency (0-1 years)
-10. **NO comments in code** that reveal the solution or give hints
-11. **Use modern web standards (HTML5, CSS3, ES6+)** throughout
-12. **Task MUST require work across all three technologies** — not just JS with trivial HTML/CSS or vice versa
-13. **Pure browser-based** — no Node.js, no npm, no build tools, no frameworks
-14. **"title"** must be in `<action verb> <subject>` format and different from `"name"` — name is kebab-case for GitHub repo, title is human-readable for display
+1. **Read the QUESTION PROMPT in full BEFORE generating.** It is the primary, authoritative input — the task is essentially a deployable packaging of that prompt.
+2. **Use the QUESTION PROMPT verbatim** when it contains an embedded spec. Same scenario, same functional requirements (timings, links, behaviours), same evaluation criteria, same file list.
+3. **Embed the design-reference image inline in the README using the exact markdown specified** in the QUESTION PROMPT. Do not substitute, omit, or rewrite the embed.
+4. **The candidate must complete every listed functional requirement.** Do NOT include any "answer any N of M" / opt-out phrasing.
+5. **Match the file list specified in the QUESTION PROMPT exactly.** If it says only `index.html`, `styles.css`, `script.js`, `README.md`, `.gitignore`, do NOT add `app.js`, `docker-compose.yml`, `package.json`, etc.
+5a. **Use the STARTER CODE blocks from the QUESTION PROMPT byte-for-byte.** Do NOT reformat, do NOT add comments (no `// TODO`, no `<!-- ... -->`, no `/* ... */`), do NOT "fix" any gotcha in the starter (wrong hrefs, undefined inline handlers, missing styling are intentional). If a block says EMPTY, the file is empty.
+5b. **Never reference the source pen/sandbox/CodePen URL** anywhere in the generated repository (not in README, not in code comments, not in `.gitignore`).
+6. **Output must be valid JSON only** — no markdown, no explanations, no code fences
+7. **name** must be short, descriptive, kebab-case (e.g., "appointment-card-layout", "checkout-form-refactor")
+8. **code_files** must contain the files specified by the QUESTION PROMPT (when an embedded spec is present); otherwise must include README.md, .gitignore, index.html, styles.css, and app.js at minimum
+9. **README.md** must follow the section order specified in the QUESTION PROMPT (when present), or default to Task Overview, Objectives, Helpful Tips, How to Verify
+10. **Starter code** must be runnable but must NOT contain the solution
+11. **outcomes** must include one bullet on production-level clean code with best practices, naming conventions, error handling
+12. **short_overview**, **pre_requisites** must be bullet-point lists in simple language
+13. **hints** must be a single line; **definitions** must include relevant HTML/CSS/JS terms
+14. **Task must be completable within the allocated time** for BASIC proficiency (0-1 years)
+15. **NO comments in code** that reveal the solution or give hints
+16. **Use modern web standards (HTML5, CSS3, ES6+)** throughout
+17. **Task MUST require work across all three technologies** — not just JS with trivial HTML/CSS or vice versa
+18. **Pure browser-based** — no Node.js, no npm, no build tools, no frameworks
+19. **"title"** must be in `<action verb> <subject>` format and different from `"name"` — name is kebab-case for GitHub repo, title is human-readable for display
 """
 
 PROMPT_REGISTRY = {

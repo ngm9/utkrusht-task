@@ -1,0 +1,13 @@
+As a Prompt Engineer, you will work closely with product, engineering, and operations teams to design, iterate on, and ship the prompts that power production AI features. You will spend most of your time inside the model — reading real traces, finding where prompts break, rewriting them, and proving the rewrite is better.
+
+We are looking for someone who has shipped at least a few prompts to real users, can read a CSV of failures and connect each failure back to a specific instruction in the prompt, and is comfortable holding two prompt variants side-by-side and arguing which one ships.
+
+
+
+What You Will Do
+Read production traces and diagnose why a prompt is producing the wrong output
+Rewrite production prompts — improving role/task framing, output format constraints, examples, and edge-case handling
+Compare prompt variants from A/B tests and recommend which one ships, with evidence
+Maintain prompt style guides, output schemas, and version history for shipped prompts
+Partner with engineering on output validation, judge prompts, and lightweight eval loops
+Translate model failures into concrete prompt iterations, not vague "make it better" notes
