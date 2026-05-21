@@ -47,10 +47,12 @@ mismatch, structural damage, or solution leak. validator.py adds
 deterministic checks. The loop merges both feedback streams and re-generates
 until pass or max_iterations.
 
-Infrastructure category (PURE_CODE / DB_ONLY / SCRIPT_AND_DB / APP_AND_DB /
-FRONTEND / LLM_FRAMEWORK / VECTOR_DB / MESSAGING / MICROSERVICES / NON_CODE)
-is inferred from the competency mix in classifier.py and determines the
-Docker/file layout the generated prompt asks for.
+Infrastructure shape is captured by a ``TaskRuntime`` record (runtime,
+frameworks, datastores, messaging, needs_browser, kind) emitted by
+``classifier.py``. The classifier is an LLM call wrapped by a Supabase-backed
+cache (no rule layer); see ``runtime.py``, ``llm_classifier.py``, and
+``runtime_cache.py``. Downstream code reads structured fields directly to
+decide Docker/file layout and which E2B template to use.
 
 ------------------------------------------------------------------------------
 Usage
@@ -59,9 +61,18 @@ Usage as CLI:
     python -m prompt_generator --name "Python, SQL" --proficiency BASIC
 
 Usage as module:
-    from prompt_generator.classifier import classify_task_category, Competency
+    from prompt_generator import classify_task_runtime, TaskRuntime, Competency
     from prompt_generator.retriever import retrieve_references
     from prompt_generator.input_files import build_detailed_skill_signal
 
 See docs/research/prompt-generator-optimized.md for design.
 """
+from prompt_generator.classifier import classify_task_runtime, to_competencies
+from prompt_generator.runtime import Competency, TaskRuntime
+
+__all__ = [
+    "Competency",
+    "TaskRuntime",
+    "classify_task_runtime",
+    "to_competencies",
+]

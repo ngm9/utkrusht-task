@@ -12,6 +12,7 @@ DSPy compilation (MIPROv2) can be added later once we have a training set.
 
 from __future__ import annotations
 
+import json
 import logging
 import os
 from dataclasses import dataclass, field
@@ -23,11 +24,8 @@ from dotenv import load_dotenv
 
 logger = logging.getLogger("prompt_generator")
 
-from prompt_generator.classifier import (
-    Competency,
-    TaskCategory,
-    classify_task_category,
-)
+from prompt_generator.classifier import classify_task_runtime
+from prompt_generator.runtime import Competency, TaskRuntime
 from prompt_generator.db_queries import (
     TaskExample,
     fetch_competency_scope,
@@ -151,18 +149,22 @@ class GeneratePromptSignature(dspy.Signature):
     JSON example causes downstream `KeyError: '\\n  "title"'` and no task is
     ever generated.
 
-    HARD CONSTRAINT — infrastructure category:
-    The `task_category` field determines the file structure. Match it exactly:
-      - PURE_CODE: no Docker, just source + requirements.txt or package.json
-      - DB_ONLY: Docker + PostgreSQL + init_database.sql, NO app code
-      - SCRIPT_AND_DB: Docker + DB + a script in the language (no web framework)
-      - APP_AND_DB: Docker + DB + web framework (FastAPI/Flask/Express/Spring)
-      - FRONTEND: package.json, no Docker, browser-side only
-      - LLM_FRAMEWORK: Python + LLM library (Langchain, Llamaindex)
-      - VECTOR_DB: Python + vector store (Milvus/Chroma/Pinecone)
-      - MESSAGING: backend + Kafka/queue infrastructure (broker container)
-      - MICROSERVICES: multi-service Docker setup
-      - NON_CODE: data files only (CSV/JSON), no executable code
+    HARD CONSTRAINT — derive structure from the TaskRuntime fields, NOT a single label:
+      • `runtime`, named `frameworks`, and their common libraries are PRE-INSTALLED by
+        the E2B template. Do NOT include `apt-get install`, `pip install`, or
+        `npm install` for the runtime or its common libs in run.sh.
+      • `datastores` non-empty → emit a `docker-compose.yml` that brings up those
+        service containers (postgres, redis, mongo, mysql, …). `run.sh` does
+        `docker compose up -d`; `kill.sh` does `docker compose down`.
+      • `messaging` non-empty → same Compose pattern (kafka, rabbitmq, …).
+      • `needs_browser` true → the template ships Chromium; do NOT install it.
+      • `kind="mobile"` → no Dockerfile, no compose; run the runtime's native
+        test command (e.g. `flutter test`, `npx react-native test`).
+      • `kind="db_only"` → just an `init_database.sql` + Compose; no app code.
+      • `kind="non_code"` → data files only (CSV / JSON); no `run.sh`.
+      • `kind="frontend"` → `package.json`, no Docker, browser-side only.
+      • `kind="testing"` with `needs_browser` → Playwright/Selenium test suite,
+        chromium provided by the template, the task ships the spec files.
 
     HARD CONSTRAINT — generated-task output JSON schema (CANONICAL KEYS):
     The INSTRUCTIONS prompt you produce tells a downstream LLM to emit a JSON
@@ -206,7 +208,18 @@ class GeneratePromptSignature(dspy.Signature):
         desc="Comma-separated competency names with proficiency (e.g. 'Python (BASIC), SQL (BASIC)')"
     )
     proficiency: str = dspy.InputField(desc="Target proficiency level (BASIC/BEGINNER/INTERMEDIATE)")
-    task_category: str = dspy.InputField(desc="Infrastructure category (e.g. script_and_db, app_and_db)")
+    runtime: str = dspy.InputField(
+        desc="Language runtime — one of python|node|java|php|go|rust|flutter|ruby|scala|none"
+    )
+    frameworks: str = dspy.InputField(
+        desc="JSON list of framework strings, e.g. '[\"fastapi\"]' or '[]'"
+    )
+    datastores: str = dspy.InputField(
+        desc="JSON list of datastore names brought up via docker-compose, e.g. '[\"postgres\"]' or '[]'"
+    )
+    kind: str = dspy.InputField(
+        desc="High-level shape: app|script|mobile|frontend|testing|db_only|llm|vector_db|non_code"
+    )
     competency_scopes: str = dspy.InputField(
         desc="AUTHORITATIVE scope text from Supabase competencies table — defines what is "
              "in/out of scope. The generated prompt MUST stay within these bounds."
@@ -247,9 +260,10 @@ class VerifyPromptSignature(dspy.Signature):
       1. SCOPE VIOLATION: Required candidate skills exceed competency_scopes.
          Example: BASIC scope says "limited async understanding" but the prompt
          requires async/await throughout — REJECT.
-      2. CATEGORY MISMATCH: code_files don't match task_category.
-         Example: script_and_db with a Flask/FastAPI app — REJECT.
-         Example: app_and_db without web framework files — REJECT.
+      2. STRUCTURE MISMATCH: code_files don't match the TaskRuntime fields.
+         Example: kind="script" with a Flask/FastAPI app file present — REJECT.
+         Example: datastores=["postgres"] but no docker-compose.yml — REJECT.
+         Example: kind="mobile" with a Dockerfile present — REJECT.
       3. STRUCTURAL DAMAGE: missing PROMPT_REGISTRY, missing format vars
          ({organization_background}, {role_context}, {competencies},
          {real_world_task_scenarios}), or wrong registry key format.
@@ -269,7 +283,18 @@ class VerifyPromptSignature(dspy.Signature):
 
     new_prompt_file: str = dspy.InputField(desc="The candidate prompt file source")
     competencies: str = dspy.InputField(desc="Target competencies + proficiency")
-    task_category: str = dspy.InputField(desc="Expected infrastructure category")
+    runtime: str = dspy.InputField(
+        desc="Expected language runtime — python|node|java|php|go|rust|flutter|ruby|scala|none"
+    )
+    frameworks: str = dspy.InputField(
+        desc="JSON list of expected framework strings, e.g. '[\"fastapi\"]'"
+    )
+    datastores: str = dspy.InputField(
+        desc="JSON list of expected datastore names, e.g. '[\"postgres\"]'"
+    )
+    kind: str = dspy.InputField(
+        desc="Expected high-level shape: app|script|mobile|frontend|testing|db_only|llm|vector_db|non_code"
+    )
     reference_prompts: str = dspy.InputField(desc="Source of similar reference prompts (for style calibration)")
     similar_tasks: str = dspy.InputField(desc="Summaries of tasks the prompt should produce")
     competency_scopes: str = dspy.InputField(
@@ -358,13 +383,15 @@ class PromptGeneratorAgent(dspy.Module):
         logger.info("=" * 72)
 
         # ─── STEP 1: classifier ───────────────────────────────────────
-        logger.info("STEP 1 / classifier.py — deciding task_category")
-        category = classify_task_category(competencies)
-        logger.info("  → task_category = %s", category.value)
+        logger.info("STEP 1 / classifier.py — deciding TaskRuntime")
+        runtime = classify_task_runtime(competencies)
+        logger.info("  → runtime=%s kind=%s frameworks=%s datastores=%s",
+                    runtime.runtime, runtime.kind,
+                    runtime.frameworks, runtime.datastores)
 
         # ─── STEP 2: retriever (5-level fallback) ─────────────────────
         logger.info("STEP 2 / retriever.py — running 5-level fallback ladder")
-        retrieval = retrieve_references(competencies, proficiency)
+        retrieval = retrieve_references(competencies, proficiency, runtime=runtime)
         logger.info("  → bootstrap_mode = %s", retrieval.bootstrap_mode)
         logger.info("  → fallback_level = %d", retrieval.fallback_level)
         logger.info("  → references found: %d", len(retrieval.references))
@@ -414,7 +441,12 @@ class PromptGeneratorAgent(dspy.Module):
         logger.info("STEP 5 — context payload sizes for the LLM call")
         logger.info("  competencies              %6d chars  %r", len(comp_str), comp_str)
         logger.info("  proficiency               %6d chars  %r", len(proficiency), proficiency)
-        logger.info("  task_category             %6d chars  %r", len(category.value), category.value)
+        frameworks_json = json.dumps(runtime.frameworks)
+        datastores_json = json.dumps(runtime.datastores)
+        logger.info("  runtime                   %6d chars  %r", len(runtime.runtime), runtime.runtime)
+        logger.info("  kind                      %6d chars  %r", len(runtime.kind), runtime.kind)
+        logger.info("  frameworks                %6d chars  %r", len(frameworks_json), runtime.frameworks)
+        logger.info("  datastores                %6d chars  %r", len(datastores_json), runtime.datastores)
         logger.info("  competency_scopes         %6d chars", len(scopes_str))
         logger.info("  reference_prompts         %6d chars", len(refs_text))
         logger.info("  similar_tasks             %6d chars", len(tasks_text))
@@ -440,7 +472,10 @@ class PromptGeneratorAgent(dspy.Module):
             gen_out = self.generate(
                 competencies=comp_str,
                 proficiency=proficiency,
-                task_category=category.value,
+                runtime=runtime.runtime,
+                frameworks=frameworks_json,
+                datastores=datastores_json,
+                kind=runtime.kind,
                 competency_scopes=scopes_str,
                 reference_prompts=refs_text,
                 similar_tasks=tasks_text,
@@ -461,7 +496,10 @@ class PromptGeneratorAgent(dspy.Module):
             verify_out = self.verify(
                 new_prompt_file=new_prompt,
                 competencies=comp_str,
-                task_category=category.value,
+                runtime=runtime.runtime,
+                frameworks=frameworks_json,
+                datastores=datastores_json,
+                kind=runtime.kind,
                 reference_prompts=refs_text,
                 similar_tasks=tasks_text,
                 competency_scopes=scopes_str,

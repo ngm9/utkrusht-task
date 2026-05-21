@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from prompt_generator.classifier import Competency, TaskCategory, classify_task_category
+from prompt_generator.runtime import Competency, TaskRuntime
 from prompt_generator.slugs import (
     COMPETENCY_ALIASES,
     competency_tokens,
@@ -81,7 +81,7 @@ class RetrievalResult:
     """Result of retrieving reference prompt files for a new prompt synthesis."""
     competencies: list[Competency]
     proficiency: str
-    category: TaskCategory
+    runtime: TaskRuntime | None = None
     references: list[Path] = field(default_factory=list)
     bootstrap_mode: bool = False
     fallback_level: int = 1
@@ -223,37 +223,48 @@ def _find_tech_family_files(comp: Competency, proficiency: str) -> list[Path]:
     return out
 
 
-def _find_category_examples(category: TaskCategory, proficiency: str, limit: int = 2) -> list[Path]:
-    """Find any prompt files at the same level that match the same category."""
+def _find_runtime_examples(runtime: TaskRuntime, proficiency: str, limit: int = 2) -> list[Path]:
+    """Find any prompt files at the same level whose filename matches this runtime shape.
+
+    Heuristic file-content check would be more accurate but slow — use filename hints
+    based on the structured TaskRuntime fields (runtime + datastores + kind).
+    """
     candidates = _list_prompt_files(proficiency)
-    out = []
+    out: list[Path] = []
+    has_db = bool(runtime.datastores)
+    has_msg = bool(runtime.messaging)
+    db_tokens = tuple(runtime.datastores) + ("postgres", "mongodb", "mysql") if has_db else ()
     for path in candidates:
-        # Heuristic — file content category check would be more accurate but slow.
-        # Use filename hints instead.
         fname = path.name.lower()
-        if category == TaskCategory.APP_AND_DB and any(
-            tok in fname for tok in ("postgres", "mongodb", "mysql")
-        ):
-            out.append(path)
-        elif category == TaskCategory.SCRIPT_AND_DB and "sql" in fname and "python" in fname:
-            out.append(path)
-        elif category == TaskCategory.LLM_FRAMEWORK and any(
+        matched = False
+        # app/script + DB → filename mentions the datastore
+        if has_db and any(tok in fname for tok in db_tokens):
+            matched = True
+        # script-only (python+SQL style) when explicit datastore not bracketed
+        elif runtime.kind == "script" and "sql" in fname and "python" in fname:
+            matched = True
+        # LLM framework
+        elif runtime.kind == "llm" and any(
             tok in fname for tok in ("langchain", "llamaindex", "rag")
         ):
-            out.append(path)
-        elif category == TaskCategory.VECTOR_DB and "vector" in fname:
-            out.append(path)
-        elif category == TaskCategory.MESSAGING and any(
-            tok in fname for tok in ("kafka", "rabbit")
-        ):
-            out.append(path)
-        elif category == TaskCategory.FRONTEND and any(
+            matched = True
+        elif runtime.kind == "vector_db" and "vector" in fname:
+            matched = True
+        elif has_msg and any(tok in fname for tok in ("kafka", "rabbit")):
+            matched = True
+        elif runtime.kind == "frontend" and any(
             tok in fname for tok in ("react", "vue", "next", "javascript", "typescript")
         ):
-            out.append(path)
-        elif category == TaskCategory.CONTAINERIZED_APP and any(
-            tok in fname for tok in ("docker", "kubernetes", "k8s")
+            matched = True
+        elif runtime.kind == "mobile" and any(
+            tok in fname for tok in ("flutter", "react_native", "dart")
         ):
+            matched = True
+        elif runtime.kind == "testing" and runtime.needs_browser and any(
+            tok in fname for tok in ("playwright", "selenium", "cypress")
+        ):
+            matched = True
+        if matched:
             out.append(path)
         if len(out) >= limit:
             break
@@ -269,6 +280,7 @@ def retrieve_references(
     proficiency: str,
     max_refs: int = 5,
     exclude_paths: Optional[set[Path]] = None,
+    runtime: TaskRuntime | None = None,
 ) -> RetrievalResult:
     """Retrieve reference prompt files via the 6-level fallback ladder.
 
@@ -290,12 +302,11 @@ def retrieve_references(
             its own references (causes metric-score leakage during compilation).
     """
     proficiency = proficiency.upper()
-    category = classify_task_category(competencies)
     excluded: set[Path] = set(exclude_paths or ())
     result = RetrievalResult(
         competencies=competencies,
         proficiency=proficiency,
-        category=category,
+        runtime=runtime,
     )
 
     def _accept(path: Path) -> bool:
@@ -307,11 +318,14 @@ def retrieve_references(
         result.references.append(exact)
         result.notes.append(f"Level 1 (exact match): {exact.name}")
         result.fallback_level = 1
-        # If we have an exact match, also pull category examples for style.
-        for p in _find_category_examples(category, proficiency, limit=max_refs - 1):
-            if _accept(p):
-                result.references.append(p)
-                result.notes.append(f"Level 1+ (category example): {p.name}")
+        # If we have an exact match AND a TaskRuntime was supplied, also pull
+        # runtime-shape examples for style. Skip when no runtime is provided
+        # (e.g. preflight) — Level 5 fires only with a classified runtime.
+        if runtime is not None:
+            for p in _find_runtime_examples(runtime, proficiency, limit=max_refs - 1):
+                if _accept(p):
+                    result.references.append(p)
+                    result.notes.append(f"Level 1+ (runtime example): {p.name}")
         if len(result.references) >= max_refs:
             return _trim_and_return(result, max_refs)
     elif exact:
@@ -360,12 +374,16 @@ def retrieve_references(
                     result.notes.append(f"Level 4 (per-competency at {level}): {path.name}")
                     result.fallback_level = max(result.fallback_level, 4)
 
-    # LEVEL 5 — generic same-category prompts at this level
-    if not result.has_references() or len(result.references) < max_refs:
-        for path in _find_category_examples(category, proficiency, limit=max_refs):
+    # LEVEL 5 — generic same-shape prompts at this level.
+    # Only fires when the caller passed a classified TaskRuntime (Level 5 needs
+    # the structured fields for filename matching). Without it, skip to Level 6.
+    if runtime is not None and (not result.has_references() or len(result.references) < max_refs):
+        for path in _find_runtime_examples(runtime, proficiency, limit=max_refs):
             if _accept(path):
                 result.references.append(path)
-                result.notes.append(f"Level 5 (category example {category.value}): {path.name}")
+                result.notes.append(
+                    f"Level 5 (runtime example {runtime.runtime}/{runtime.kind}): {path.name}"
+                )
                 result.fallback_level = max(result.fallback_level, 5)
 
     # LEVEL 6 — last-resort general reference. Only fires when the ladder found

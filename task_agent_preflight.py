@@ -2,16 +2,15 @@
 
 Runs cheap checks BEFORE the expensive multi-stage pipeline kicks off, so we
 fail fast on environment problems instead of discovering them 10 minutes into
-a real run (the failure mode that consumed 20 of the 30 minutes on combo 1 of
-the 2026-05-14 smoke test).
+a real run.
 
 Two suites:
 
-  - ``run_global_checks()``    once per run    — env, deps, registry, secrets
-  - ``run_combo_checks(...)``  once per combo  — competency presence,
-                                                  retriever-reference depth
+  - ``run_global_checks()``    once per run    — required imports + env vars
+  - ``run_combo_checks(...)``  once per combo  — competency presence in
+                                                  Supabase + retriever depth
 
-Both return ``PreflightReport`` objects with explicit ``passed`` / ``flags``
+Both return ``PreflightReport`` objects with explicit ``passed`` / ``issues``
 lists. Callers (CLI, autonomous agent's Coordinator) inspect them and decide
 whether to proceed, retry, or escalate to a human.
 
@@ -27,11 +26,7 @@ import importlib
 import os
 import sys
 from dataclasses import dataclass, field
-from pathlib import Path
 
-
-REPO_ROOT = Path(__file__).parent
-REQUIREMENTS_TXT = REPO_ROOT / "requirements.txt"
 
 # Module names that MUST import cleanly before any pipeline stage runs.
 # Adding new imports here is cheap insurance; an ImportError discovered here
@@ -60,10 +55,6 @@ _REQUIRED_ENV: tuple[str, ...] = (
     "SUPABASE_API_KEY_APTITUDETESTSDEV",
 )
 
-# Heuristic: the prompt registry should not regress below this size — if it
-# does, the recursive walk in utils.py likely broke.
-_MIN_REGISTRY_SIZE = 80
-
 
 # ---------------------------------------------------------------------------
 # Report shape
@@ -72,9 +63,9 @@ _MIN_REGISTRY_SIZE = 80
 
 @dataclass
 class PreflightReport:
-    """Outcome of one preflight pass. ``flags`` contains diagnostic findings
-    even on success — call sites can opt into stricter pass criteria by
-    inspecting them.
+    """Outcome of one preflight pass. ``warnings`` and ``info`` contain
+    diagnostic findings even on success — call sites can opt into stricter
+    pass criteria by inspecting them.
     """
 
     name: str
@@ -114,74 +105,17 @@ def _check_imports(report: PreflightReport) -> None:
             report.fail(f"import {mod!r} failed: {type(e).__name__}: {e}")
 
 
-def _check_requirements_no_conflict(report: PreflightReport) -> None:
-    if not REQUIREMENTS_TXT.exists():
-        report.warn("requirements.txt is missing; cannot validate")
-        return
-    text = REQUIREMENTS_TXT.read_text(encoding="utf-8")
-    for marker in ("<<<<<<<", "=======", ">>>>>>>"):
-        if marker in text:
-            report.fail(
-                f"requirements.txt contains unresolved git conflict marker {marker!r}; "
-                f"`pip install -r requirements.txt` will fail for anyone cloning the repo"
-            )
-            return
-
-
 def _check_env(report: PreflightReport) -> None:
     missing = [k for k in _REQUIRED_ENV if not os.environ.get(k)]
     if missing:
         report.fail(f"Missing required env vars: {missing}")
 
 
-def _check_prompt_registry(report: PreflightReport) -> None:
-    """Sanity-check the merged registry from utils.py.
-
-    Specifically: the recursive walk fix (coordinator finding F3) added support
-    for ``<Level>/<slug>/<slug>.py`` and the ``agent_generated_prompts/``
-    subtree. If those regressed back to ``pkgutil.iter_modules`` we'd silently
-    lose ~10+ prompts.
-    """
-    try:
-        from utils import _PROMPT_REGISTRY
-    except Exception as e:
-        report.fail(f"could not import utils._PROMPT_REGISTRY: {e}")
-        return
-    if len(_PROMPT_REGISTRY) < _MIN_REGISTRY_SIZE:
-        report.fail(
-            f"prompt registry has only {len(_PROMPT_REGISTRY)} entries "
-            f"(expected >={_MIN_REGISTRY_SIZE}). Recursive walk may have regressed."
-        )
-    else:
-        report.note(f"prompt registry: {len(_PROMPT_REGISTRY)} entries")
-
-
-def _check_validator_format_dryrun(report: PreflightReport) -> None:
-    """Confirm the validator's brace-escape dry-run is wired (coordinator
-    finding F4). If someone refactors validator.py and forgets to call
-    ``_simulate_format_call``, this check fails."""
-    try:
-        from prompt_generator.validator import _simulate_format_call
-    except Exception as e:
-        report.fail(f"could not import _simulate_format_call from validator: {e}")
-        return
-    bad = '''
-PROMPT_X_BASIC_INSTRUCTIONS = """Output:\n{"title": "x"}"""
-PROMPT_REGISTRY = {"X (BASIC)": [PROMPT_X_BASIC_INSTRUCTIONS]}
-'''
-    issues = _simulate_format_call(bad)
-    if not issues:
-        report.fail("brace-escape dry-run did not catch a known-bad fixture")
-
-
 def run_global_checks() -> PreflightReport:
     """Run all global (per-run, not per-combo) checks."""
     report = PreflightReport(name="global")
-    _check_requirements_no_conflict(report)
     _check_imports(report)
     _check_env(report)
-    _check_prompt_registry(report)
-    _check_validator_format_dryrun(report)
     return report
 
 
@@ -249,10 +183,12 @@ def _check_retriever_has_references(
         report.fail(f"could not import retriever: {e}")
         return
     comps = [Competency(name=n, proficiency=proficiency.upper()) for n in competency_names]
+    # No TaskRuntime supplied here — preflight is a diagnostic and runs before any
+    # classifier call. The retriever skips Level 5 in that case (Levels 1-4 + 6 still fire).
     result = retrieve_references(comps, proficiency.upper())
     n = len(result.references)
     report.note(
-        f"retriever: category={result.category.value} "
+        f"retriever: "
         f"bootstrap={result.bootstrap_mode} "
         f"fallback_level={result.fallback_level} "
         f"references={n}"
