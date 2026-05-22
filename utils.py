@@ -480,6 +480,9 @@ def generate_task_with_code(openai_client, input_data: Dict, feedback: str = "")
         total_output_tokens = 0
 
         # Send prompts one by one using Chat Completions API (universally supported)
+        # max_tokens raised 16k -> 32k (F11). At 16k an INTERMEDIATE task with a
+        # multi-file repo + full README could be truncated mid-JSON, causing the
+        # downstream parser to fail silently. 32k gives the model room to finish.
         response = None
         response_text = None
         for i, prompt in enumerate(task_generation_prompts, 1):
@@ -487,12 +490,25 @@ def generate_task_with_code(openai_client, input_data: Dict, feedback: str = "")
             response = openai_client.chat.completions.create(
                 model=model,
                 messages=messages,
-                max_tokens=16000,
+                max_tokens=32000,
             )
             response_text = response.choices[0].message.content if response.choices else None
             if not response_text:
                 logger.error(f"No response content from prompt {i}/{len(task_generation_prompts)}")
                 raise RuntimeError(f"Empty response from LLM on prompt {i}")
+            # F11: detect token-budget truncation explicitly. A finish_reason of
+            # "length" means the model hit max_tokens mid-output — the JSON is
+            # partial and any downstream parse will fail. Surface this as a
+            # typed exception so the retry loop in multiagent.create_task can
+            # feed back "you got cut off; keep the next response shorter".
+            finish_reason = response.choices[0].finish_reason if response.choices else None
+            if finish_reason == "length":
+                from evals import LLMOutputTruncated
+                logger.error(
+                    f"LLM response truncated by max_tokens on prompt {i}/{len(task_generation_prompts)} "
+                    f"(finish_reason='length', length={len(response_text)})"
+                )
+                raise LLMOutputTruncated(response_text, attempt=i)
             messages.append({"role": "assistant", "content": response_text})
 
             # Track token usage
@@ -519,12 +535,20 @@ def generate_task_with_code(openai_client, input_data: Dict, feedback: str = "")
             response = openai_client.chat.completions.create(
                 model=model,
                 messages=messages,
-                max_tokens=16000,
+                max_tokens=32000,
             )
             response_text = response.choices[0].message.content if response.choices else None
             if not response_text:
                 logger.error("No response content on feedback-correction turn")
                 raise RuntimeError("Empty response from LLM on feedback turn")
+            finish_reason = response.choices[0].finish_reason if response.choices else None
+            if finish_reason == "length":
+                from evals import LLMOutputTruncated
+                logger.error(
+                    f"LLM response truncated by max_tokens on feedback-correction turn "
+                    f"(finish_reason='length', length={len(response_text)})"
+                )
+                raise LLMOutputTruncated(response_text, attempt=-1)  # -1 = feedback turn
             messages.append({"role": "assistant", "content": response_text})
             usage = response.usage
             total_input_tokens += usage.prompt_tokens if usage else 0

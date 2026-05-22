@@ -1,11 +1,14 @@
 """Tests for ``task_agent_preflight.py``.
 
-The preflight module's job is to fail fast on the classes of issue the smoke
-test caught (F1/F2/F3/F4). We don't have a network or real Supabase here, so
-these tests focus on the parts that can run offline.
+The preflight module fails fast on environment problems before the expensive
+pipeline runs. After the trim (env + imports globally, Supabase + retriever
+per-combo), these tests cover the report shape, the CLI combo parser, and a
+smoke run of the global checks. Network-dependent checks aren't exercised here.
 """
 
 from __future__ import annotations
+
+import pytest
 
 from task_agent_preflight import (
     PreflightReport,
@@ -63,7 +66,6 @@ def test_parse_combo_with_special_chars_in_name() -> None:
 
 
 def test_parse_combo_rejects_missing_level() -> None:
-    import pytest
     with pytest.raises(ValueError):
         _parse_combo_arg("Rust")
 
@@ -74,54 +76,11 @@ def test_parse_combo_rejects_missing_level() -> None:
 
 
 def test_global_preflight_runs_without_crashing() -> None:
-    """Smoke — global preflight must always be runnable.
+    """Smoke — global preflight (imports + env vars) must always be runnable.
 
-    May ``fail`` or ``warn`` depending on the test environment, but it must
-    not raise. The test environment has no real OpenAI key (conftest sets a
-    placeholder) so registry + import + brace-dryrun should still pass.
+    It may ``fail`` or ``warn`` depending on the environment (missing secrets
+    in CI), but it must never raise, and must return a named PreflightReport.
     """
     report = run_global_checks()
-    # The registry, imports, and brace-dryrun checks should all pass.
-    # Env-var check may fail in CI without secrets — that's by design.
-    info = "\n".join(report.info + report.warnings + report.issues)
-    assert "prompt registry" in info, info
-
-
-def test_global_preflight_catches_registry_regression(monkeypatch) -> None:
-    """If utils.py regresses to a tiny registry, preflight must fail loudly."""
-    import task_agent_preflight as preflight
-
-    # Patch the import target inside the function namespace.
-    fake = {"only one entry": []}
-    monkeypatch.setattr("utils._PROMPT_REGISTRY", fake)
-    monkeypatch.setattr(preflight, "_MIN_REGISTRY_SIZE", 50)
-    report = PreflightReport(name="t")
-    preflight._check_prompt_registry(report)
-    assert not report.passed
-    assert any("regress" in i.lower() or "expected" in i.lower() for i in report.issues)
-
-
-def test_global_preflight_catches_requirements_conflict(tmp_path, monkeypatch) -> None:
-    """If requirements.txt has merge markers, preflight must fail."""
-    import task_agent_preflight as preflight
-
-    bad = tmp_path / "requirements.txt"
-    bad.write_text("openai\n<<<<<<< feat\nfoo\n=======\nbar\n>>>>>>> main\n", encoding="utf-8")
-    monkeypatch.setattr(preflight, "REQUIREMENTS_TXT", bad)
-    report = PreflightReport(name="t")
-    preflight._check_requirements_no_conflict(report)
-    assert not report.passed
-    assert any("conflict" in i.lower() for i in report.issues)
-
-
-def test_global_preflight_catches_missing_brace_validator(monkeypatch) -> None:
-    """If someone removes _simulate_format_call from validator.py, preflight catches it."""
-    import task_agent_preflight as preflight
-    import prompt_generator.validator as v
-
-    # Replace with a no-op so the known-bad fixture passes through silently.
-    monkeypatch.setattr(v, "_simulate_format_call", lambda src: [])
-    report = PreflightReport(name="t")
-    preflight._check_validator_format_dryrun(report)
-    assert not report.passed
-    assert any("dry-run" in i.lower() or "known-bad" in i.lower() for i in report.issues)
+    assert isinstance(report, PreflightReport)
+    assert report.name == "global"

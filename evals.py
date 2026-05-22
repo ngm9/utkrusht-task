@@ -61,6 +61,118 @@ class EvalGateError(Exception):
             f"(last verdicts: task_eval.pass={task_pass}, code_eval.pass={code_pass})"
         )
 
+
+class LLMOutputTruncated(Exception):
+    """Raised when the generation LLM hit its max_tokens cap mid-output.
+
+    Distinct from a generic parse error because the cause + fix are specific:
+    the JSON is partial because we ran out of completion-token budget, not
+    because the LLM produced malformed output. Caller (multiagent.create_task)
+    catches this in its retry loop and feeds back "your last reply was cut off
+    — keep the response shorter and close all braces".
+    """
+
+    def __init__(self, partial_text: str, attempt: int) -> None:
+        self.partial_text = partial_text
+        self.attempt = attempt
+        super().__init__(
+            f"LLM output truncated at attempt {attempt} "
+            f"(partial response length: {len(partial_text)} chars)"
+        )
+
+
+# ----------------------------------------------------------------------
+# Persona prompts — keyed by TaskRuntime.kind
+# ----------------------------------------------------------------------
+#
+# The eval critic gets a domain-specific "reviewer persona" prepended to its
+# generic checklist. A senior DBA notices a missing NOT NULL on a junction-
+# table FK that a generic reviewer skims past; a senior MLE catches a chunking
+# strategy that conflicts with the retrieval question; an SDET notices test
+# isolation problems that look fine to a backend reviewer.
+#
+# Same prompt model (gpt-5-nano), same JSON schema, same call shape — the only
+# delta is the persona block prepended before the generic TASK_EVAL_PROMPT /
+# CODE_EVAL_PROMPT body.
+
+PERSONA_PROMPTS: dict[str, str] = {
+    "app": (
+        "You are a senior backend engineer with 10+ years of experience shipping "
+        "production services. Focus your review on: correctness of the request "
+        "lifecycle, input validation, error handling at I/O boundaries, status-code "
+        "semantics, and whether the candidate is asked to do realistic backend work "
+        "(not toy CRUD)."
+    ),
+    "script": (
+        "You are a senior backend / data engineer who writes one-off scripts and "
+        "batch jobs in production. Focus your review on: data-flow correctness, "
+        "transactional boundaries when DBs are involved, retries on transient "
+        "failures, and idempotency. Reject toy examples that don't reflect real "
+        "operational work."
+    ),
+    "mobile": (
+        "You are a senior mobile engineer (Flutter, React Native, native iOS/"
+        "Android). Focus your review on: UI lifecycle (rebuild costs, controller "
+        "disposal), state management (Riverpod/Provider/Redux), offline-first "
+        "behaviour and cache TTL, and concurrency around network calls. Reject "
+        "tasks that ignore the offline/poor-connectivity reality of mobile."
+    ),
+    "frontend": (
+        "You are a senior UX engineer. Focus your review on: accessibility "
+        "(semantic HTML, ARIA, keyboard navigation), responsive layout behaviour, "
+        "focus management, and whether the candidate is asked to write user-facing "
+        "code rather than just style boilerplate."
+    ),
+    "testing": (
+        "You are a senior SDET. Focus your review on: test isolation (no shared "
+        "state between tests), assertion quality (testing visible behaviour vs "
+        "implementation details), fixture hygiene, deterministic timing (no fixed "
+        "sleeps), and whether the test would actually catch the bug being asked "
+        "about."
+    ),
+    "db_only": (
+        "You are a senior database administrator. Focus your review on: schema "
+        "normalisation (3NF unless denormalisation is deliberate), NOT NULL "
+        "discipline on FK columns, index coverage for the predicates the queries "
+        "actually use, query-plan implications, and whether the task rewards good "
+        "schema design over rote SQL writing."
+    ),
+    "llm": (
+        "You are a senior ML engineer specialising in retrieval-augmented systems "
+        "and LLM application design. Focus your review on: retrieval setup "
+        "(chunking strategy, embedding model fit, top-k), prompt design and "
+        "prompt-injection surface, eval methodology, and whether the task tests "
+        "judgment about LLM behaviour rather than just glue-code wiring."
+    ),
+    "vector_db": (
+        "You are a senior ML engineer focused on vector indexes. Focus your "
+        "review on: embedding-model fit for the data, dimensionality choices, "
+        "distance metric appropriateness (cosine / L2 / inner-product), metadata "
+        "filtering correctness, and recall@k vs latency tradeoffs."
+    ),
+    "non_code": (
+        "You are a senior product manager and evaluation engineer. Focus your "
+        "review on: rubric clarity (what does a good answer look like?), anchor "
+        "quality (specific metrics and thresholds, not vague adjectives), "
+        "observable behaviours rather than feelings, and whether the task rewards "
+        "judgment under realistic product constraints (cost, time, data "
+        "availability)."
+    ),
+}
+
+
+def _persona_prefix(kind: str | None) -> str:
+    """Return the persona block to prepend, or '' when no kind is supplied or
+    when the kind doesn't have a dedicated persona (in which case the eval
+    runs with just the generic checklist — the prior behaviour).
+    """
+    if not kind:
+        return ""
+    persona = PERSONA_PROMPTS.get(kind)
+    if not persona:
+        return ""
+    return persona.strip() + "\n\n"
+
 TASK_EVAL_PROMPT = """
 You are an expert technical assessment reviewer. Given the following task JSON, proficiency level, years of experience, and time constraint, answer the following:
 
@@ -113,13 +225,19 @@ CODE FILES:
 {code_files}
 """
 
-def llm_task_eval(task_json, proficiency, yoe, time_constraint, openai_client, model):
+def llm_task_eval(task_json, proficiency, yoe, time_constraint, openai_client, model,
+                  kind: str | None = None):
     """
     Evaluate task using the Responses API with gpt-5-nano for efficient evaluation.
     Note: model parameter is ignored, using EVAL_MODEL constant for evals.
+
+    When ``kind`` is supplied (one of the TaskRuntime.kind values from
+    prompt_generator.runtime), the matching persona prompt is prepended to the
+    generic checklist. When None or unrecognised, the eval falls back to the
+    plain prompt (prior behaviour).
     """
     task_json_str = json.dumps(task_json, indent=2)
-    prompt = TASK_EVAL_PROMPT.format(
+    prompt = _persona_prefix(kind) + TASK_EVAL_PROMPT.format(
         task_json=task_json_str,
         proficiency=proficiency,
         yoe=yoe,
@@ -175,10 +293,14 @@ def llm_task_eval(task_json, proficiency, yoe, time_constraint, openai_client, m
             "validated_criteria": []
         }
 
-def llm_code_eval(code_data, task_description, openai_client, model):
+def llm_code_eval(code_data, task_description, openai_client, model,
+                  kind: str | None = None):
     """
     Evaluate code files using the Responses API with gpt-5-nano for efficient evaluation.
     Note: model parameter is ignored, using EVAL_MODEL constant for evals.
+
+    When ``kind`` is supplied, the matching persona prompt is prepended to the
+    generic checklist (see ``llm_task_eval`` for details).
     """
     # Handle both possible structures: direct files dict or nested under 'files' key
     if isinstance(code_data, dict):
@@ -189,8 +311,11 @@ def llm_code_eval(code_data, task_description, openai_client, model):
             files_content = code_data
     else:
         files_content = {}
-    
-    prompt = CODE_EVAL_PROMPT.format(code_files=json.dumps(files_content, indent=2), task_description=task_description)
+
+    prompt = _persona_prefix(kind) + CODE_EVAL_PROMPT.format(
+        code_files=json.dumps(files_content, indent=2),
+        task_description=task_description,
+    )
     
     # Build messages for Responses API
     messages = [{"role": "user", "content": prompt}]
