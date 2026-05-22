@@ -25,8 +25,14 @@ import click
 from typing import Dict, List, Optional
 from supabase import Client, create_client
 import traceback
-from evals import MAX_EVAL_RETRIES, EvalGateError, llm_task_eval, llm_code_eval
+from evals import (
+    MAX_EVAL_RETRIES, EvalGateError, LLMOutputTruncated,
+    llm_task_eval, llm_code_eval,
+)
+from e2b_flow.sandbox_eval import run_sandbox_eval, sandbox_eval_enabled
 from logger_config import logger
+from prompt_generator.classifier import classify_task_runtime
+from prompt_generator.runtime import Competency
 from schemas import ANSWER_CODE_SCHEMA
 from utils import (parse_markdown_to_json,has_shared_infra_files,format_pre_requisites,format_outcomes,save_files_locally,load_relevant_scenarios,generate_task_with_code,read_json_file_robust,create_gist_from_template,)
 from droplet_utils import get_droplet_info, get_available_droplet_ips, get_ssh_key, upload_files_to_droplet, execute_script_on_droplet
@@ -128,26 +134,35 @@ def _build_retry_feedback(hollow_reasons: list[str], eval_info: Optional[Dict]) 
     return "\n\n".join(parts)
 
 
-def run_evaluations(task_data: Dict) -> Dict:
-    """Run LLM-based evaluations on the task and code."""
+def run_evaluations(task_data: Dict, kind: Optional[str] = None) -> Dict:
+    """Run LLM-based evaluations on the task and code.
+
+    When ``kind`` is supplied (one of the TaskRuntime.kind values from
+    prompt_generator.runtime), both eval critics receive a domain-specific
+    persona prompt prepended to their generic checklist — a senior DBA reviews
+    db_only tasks, a senior MLE reviews llm tasks, etc. Falls back to the plain
+    prompt when kind is None.
+    """
     # Get highest proficiency level
     prof_levels = [criteria["proficiency"].upper() for criteria in task_data.get("criterias", [])]
     yoe = task_data.get("background", {}).get("yoe", "")
     time_constraint = 25 if "ADVANCED" in prof_levels else 20 if "INTERMEDIATE" in prof_levels else 15
-    
-    # Task evaluation
-    task_eval_result = llm_task_eval(task_data, 
+
+    # Task evaluation (persona-routed when `kind` is supplied)
+    task_eval_result = llm_task_eval(task_data,
                                    prof_levels[-1] if prof_levels else "BASIC",
                                    yoe,
                                    time_constraint,
                                    openai_client,
-                                   model)
-                                   
-    # Code evaluation
+                                   model,
+                                   kind=kind)
+
+    # Code evaluation (persona-routed when `kind` is supplied)
     code_eval_result = llm_code_eval(task_data.get("code_files", {}),
                                    task_data.get("description", ""),
                                    openai_client,
-                                   model)
+                                   model,
+                                   kind=kind)
 
                       
     # Add evaluation info to task data. `issues` and `feedback` are preserved
@@ -417,6 +432,29 @@ def create_task(competency_file: Path, background_file: Path, scenarios_file: Pa
             "competency_id": comp.get("competency_id") or comp.get("id"),
         } for comp in competencies]
 
+        # Classify the competency-set once, before the retry loop. Result is
+        # reused: (a) `task_runtime.kind` routes eval-critic personas;
+        # (b) the full TaskRuntime is persisted onto the new tasks row so
+        # downstream consumers (analytics, persona dashboards, future E2B
+        # build/test gate) can read it without re-deriving from competencies.
+        # One LLM call (~$0.001) per task — cheap vs the eval/generation cost.
+        runtime_comps = [
+            Competency(name=c.get("name"), proficiency=(c.get("proficiency") or "BASIC"))
+            for c in competencies if c.get("name")
+        ]
+        task_runtime = None
+        if runtime_comps:
+            try:
+                task_runtime = classify_task_runtime(runtime_comps)
+                logger.info(
+                    f"task_runtime classified: runtime={task_runtime.runtime} "
+                    f"kind={task_runtime.kind} frameworks={task_runtime.frameworks} "
+                    f"datastores={task_runtime.datastores}"
+                )
+            except Exception as exc:  # noqa: BLE001 — never let classifier crash the pipeline
+                logger.warning(f"task_runtime classification failed ({exc}); falling back to no-persona eval")
+        eval_kind = task_runtime.kind if task_runtime else None
+
         max_attempts = MAX_EVAL_RETRIES + 1   # initial + retries
         task_data = None
         eval_info = None
@@ -424,7 +462,29 @@ def create_task(competency_file: Path, background_file: Path, scenarios_file: Pa
         feedback = ""   # carries the prior attempt's failure detail forward
         for attempt in range(1, max_attempts + 1):
             logger.info(f"Task generation attempt {attempt}/{max_attempts}")
-            candidate = generate_task_with_code(openai_client, input_data, feedback=feedback)
+            try:
+                candidate = generate_task_with_code(openai_client, input_data, feedback=feedback)
+            except LLMOutputTruncated as exc:
+                # F11: model hit max_tokens mid-output. Feed back a tight
+                # corrective message and retry — the next attempt should keep
+                # the response shorter and close all braces.
+                logger.warning(
+                    f"Attempt {attempt}: LLM output truncated (partial length={len(exc.partial_text)}); "
+                    f"retrying with shorter-response feedback"
+                )
+                last_failure = {
+                    "task_eval": {"pass": False, "issues": ["LLM output truncated by max_tokens"]},
+                    "code_eval": {"pass": False, "issues": ["no code generated — response cut off"]},
+                }
+                feedback = (
+                    "PREVIOUS ATTEMPT WAS CUT OFF mid-JSON because the response "
+                    "exceeded the token budget. Produce the SAME corrected task JSON "
+                    "but keep the response shorter: trim verbose comments, condense "
+                    "the README, prefer concise code over exhaustive examples. The "
+                    "output MUST end with a valid closing brace for the top-level "
+                    "JSON object."
+                )
+                continue
             candidate.setdefault("code_files", {})
             candidate["criterias"] = criterias
 
@@ -442,14 +502,39 @@ def create_task(competency_file: Path, background_file: Path, scenarios_file: Pa
                 continue
 
             logger.info("Running task evaluations")
-            candidate_eval = run_evaluations(candidate)
+            candidate_eval = run_evaluations(candidate, kind=eval_kind)
             last_failure = candidate_eval
             t_pass = candidate_eval["task_eval"]["pass"]
             c_pass = candidate_eval["code_eval"]["pass"]
             if t_pass and c_pass:
+                # Deterministic E2B build/test gate (F12) — opt-in via the
+                # SANDBOX_EVAL_ENABLED env flag. Runs only after the LLM evals
+                # pass; boots a sandbox, writes the generated code in, and
+                # verifies the test suite compiles + runs. A gate failure
+                # feeds the compiler errors back and forces another attempt.
+                if sandbox_eval_enabled():
+                    logger.info("Running E2B sandbox build/test gate")
+                    sb_result = run_sandbox_eval(
+                        candidate.get("code_files", {}), task_runtime)
+                    candidate_eval["sandbox_eval"] = sb_result.as_dict()
+                    if sb_result.skipped:
+                        logger.info(f"  sandbox gate skipped: {sb_result.detail}")
+                    elif not sb_result.passed:
+                        logger.warning(
+                            f"Attempt {attempt}: sandbox gate FAILED "
+                            f"({sb_result.verdict}) — {sb_result.detail}"
+                        )
+                        last_failure = candidate_eval
+                        feedback = _build_retry_feedback(
+                            [f"E2B sandbox build/test gate failed "
+                             f"({sb_result.verdict}): {sb_result.detail} "
+                             f"{sb_result.stdout_tail}".strip()],
+                            candidate_eval,
+                        )
+                        continue
                 task_data = candidate
                 eval_info = candidate_eval
-                logger.info(f"Attempt {attempt}: both evals passed - proceeding to storage")
+                logger.info(f"Attempt {attempt}: evals passed - proceeding to storage")
                 break
 
             logger.warning(
@@ -573,6 +658,9 @@ def create_task(competency_file: Path, background_file: Path, scenarios_file: Pa
             "is_shared_infra_required": is_shared_infra_required,
             "readme_content": parse_markdown_to_json(code_data.get("README.md", "")),
             "eval_info": eval_info,
+            # Structured infrastructure spec from the classifier. Stored so
+            # downstream consumers read it directly instead of re-classifying.
+            "task_runtime": task_runtime.model_dump() if task_runtime else None,
             "solutions": solutions_for_db,
             # `task_type` is a text[] consumed by the backend's
             # /end_task_session handler — if it's empty/missing the handler
