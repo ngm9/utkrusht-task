@@ -13,7 +13,7 @@ classifier:
 2. **Phase 1 — persona-routed eval critics.** Prepend a domain-specific
    reviewer persona to the eval-critic prompt, routed by `TaskRuntime.kind`.
 
-**Spec:** `docs/research/task-eval-optimizer/task-eval-optimizer.md` (§1 persona
+**Spec:** `docs/eval-system/task-eval-optimizer.md` (§1 persona
 critics) and `.task_agent_runs/FOLLOWUPS.md` (F11).
 
 ---

@@ -3,7 +3,13 @@
 # =========================
 
 # ----- Project-specific -----
-infra_assets/
+# 2026-05-25 layout migration: outputs that were under infra_assets/ moved to
+# data/generated/task_artifacts/. Local task artifacts and PR-review artifact
+# trees remain untracked; agent-generated prompts and committed scenarios stay
+# tracked (they're effectively the prompt + scenario corpus until B4 moves
+# them to Postgres).
+data/generated/task_artifacts/
+data/generated/pr_review_tasks/
 temp_deploy_*/
 export/
 non_tech_flow/test_assets/
@@ -42,6 +48,17 @@ Thumbs.db
 
 # ----- Claude Code -----
 .claude/
+.claude.json
+
+# ----- Local agent / tooling caches -----
+.illuminate/
+.reflect/
+.fastembed_cache/
+.task_agent_runs/
+prompt_generator/compiled/
+
+# ----- Secrets / tokens -----
+.google_token.json
 
 # ----- Logs -----
 *.log

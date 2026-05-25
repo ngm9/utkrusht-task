@@ -58,15 +58,98 @@ def test_extract_task_result_parses_id_and_url(tmp_path):
     stdout = tmp_path / "s.out"
     stdout.write_text(" Task ID: abc-123\n Task Name: x\n"
                       " GitHub Repository: https://github.com/org/repo\n")
-    task_id, url = _extract_task_result(stdout)
-    assert task_id == "abc-123"
-    assert url == "https://github.com/org/repo"
+    result = _extract_task_result(stdout)
+    assert result["task_id"] == "abc-123"
+    assert result["task_url"] == "https://github.com/org/repo"
+    assert result["task_name"] == "x"
 
 
 def test_extract_task_result_missing_file_returns_none(tmp_path):
     from task_builder.runner import _extract_task_result
-    task_id, url = _extract_task_result(tmp_path / "nope.out")
-    assert task_id is None and url is None
+    result = _extract_task_result(tmp_path / "nope.out")
+    assert result["task_id"] is None
+    assert result["task_url"] is None
+    assert result["task_name"] is None
+    assert result["task_type"] is None
+    assert result["competencies"] is None
+
+
+def test_extract_task_result_parses_full_success_block(tmp_path):
+    from task_builder.runner import _extract_task_result
+    stdout = tmp_path / "s.out"
+    stdout.write_text(
+        " Task Creation Successful!\n"
+        " Task Type: BUILD\n"
+        " Task ID: 11111111-2222-3333-4444-555555555555\n"
+        " Task Name: Idempotent payment webhook\n"
+        " Competencies Covered: Java, Spring Boot\n"
+        " GitHub Repository: https://github.com/org/task-repo\n"
+        " TASK CREATION COMPLETED SUCCESSFULLY!\n"
+    )
+    result = _extract_task_result(stdout)
+    assert result["task_id"] == "11111111-2222-3333-4444-555555555555"
+    assert result["task_name"] == "Idempotent payment webhook"
+    assert result["task_type"] == "BUILD"
+    assert result["competencies"] == "Java, Spring Boot"
+    assert result["task_url"] == "https://github.com/org/task-repo"
+
+
+def test_extract_task_result_missing_lines_yield_none(tmp_path):
+    from task_builder.runner import _extract_task_result
+    stdout = tmp_path / "s.out"
+    stdout.write_text(" Task ID: only-an-id\n")
+    result = _extract_task_result(stdout)
+    assert result["task_id"] == "only-an-id"
+    assert result["task_name"] is None
+    assert result["task_type"] is None
+    assert result["competencies"] is None
+    assert result["task_url"] is None
+
+
+def test_extract_task_result_competencies_covered_not_summary_line(tmp_path):
+    """Reads 'Competencies Covered:' and ignores the later bare
+    'Competencies:' summary line."""
+    from task_builder.runner import _extract_task_result
+    stdout = tmp_path / "s.out"
+    stdout.write_text(
+        " Competencies Covered: Real Value\n"
+        " Competencies: Different Summary Value\n"
+    )
+    result = _extract_task_result(stdout)
+    assert result["competencies"] == "Real Value"
+
+
+def test_done_event_carries_task_fields_and_env(tmp_path):
+    """The completed 'done' event surfaces the extracted task fields + env."""
+    events: list[StageEvent] = []
+    stage4_stdout = tmp_path / "04.out"
+    stage4_stdout.write_text(
+        " Task ID: tid-9\n Task Name: Demo\n Task Type: BUILD\n"
+        " Competencies Covered: Go\n"
+        " GitHub Repository: https://github.com/org/r\n"
+    )
+
+    def fake_stage(d, label, c):
+        rec = _stage_ok(label)
+        if label == "04_tasks":
+            rec["stdout"] = str(stage4_stdout)
+        return rec
+
+    with patch("task_builder.runner._run_stage", side_effect=fake_stage), \
+         patch("task_builder.runner._locate_input_files",
+               return_value=(tmp_path / "c.json", tmp_path / "b.json")), \
+         patch("task_builder.runner._summarise_task_stage", return_value="TASK CREATED"):
+        run_pipeline_for_brief(_brief(), run_id="r-fields", emit=events.append,
+                               env="prod", runs_root=tmp_path)
+
+    done = events[-1]
+    assert done.stage == "done" and done.status == "completed"
+    assert done.task_id == "tid-9"
+    assert done.task_name == "Demo"
+    assert done.task_type == "BUILD"
+    assert done.competencies == "Go"
+    assert done.task_url == "https://github.com/org/r"
+    assert done.env == "prod"
 
 
 def test_runner_reports_failure_on_unknown_stage4_outcome(tmp_path):

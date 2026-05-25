@@ -3,10 +3,12 @@ CLI entry point for the prompt_generator package.
 
 Generated files are written to::
 
-    task_generation_prompts/agent_generated_prompts/<Level>/<slug>/<slug>.py
+    data/generated/agent_prompts/<Level>/<slug>/<slug>.py
 
 This keeps agent output separate from the curated, hand-reviewed prompts in
 ``task_generation_prompts/<Level>/`` that the retriever uses as references.
+(The agent-generated subtree moved out of ``task_generation_prompts/`` on
+2026-05-25 to match the data/curated vs. data/generated split.)
 
 Usage:
     python -m prompt_generator --name "Python, SQL" --proficiency BASIC
@@ -35,9 +37,11 @@ PROMPT_ROOT = Path(__file__).parent.parent / "task_generation_prompts"
 
 # Agent-generated prompts live in their own subtree so they stay separate from
 # curated, hand-reviewed prompts. The retriever reads curated prompts from
-# `<level>/*.py` (non-recursive), so this nested layout keeps agent output from
-# being picked up as a reference for future generations.
-AGENT_OUTPUT_SUBDIR = "agent_generated_prompts"
+# `<level>/*.py` (non-recursive), so the nested data/generated/agent_prompts/
+# layout keeps agent output from being picked up as a reference for future
+# generations. (Was ``task_generation_prompts/agent_generated_prompts/`` until
+# the 2026-05-25 layout migration moved it under ``data/generated/``.)
+AGENT_OUTPUT_ROOT = Path(__file__).parent.parent / "data" / "generated" / "agent_prompts"
 
 logger = logging.getLogger("prompt_generator")
 
@@ -59,7 +63,7 @@ def _slugify_filename(competency_names: list[str]) -> str:
 def _expected_path(competency_names: list[str], proficiency: str) -> Path:
     folder = LEVEL_FOLDERS[proficiency.upper()]
     slug = f"{_slugify_filename(competency_names)}_{proficiency.lower()}_prompt"
-    return PROMPT_ROOT / AGENT_OUTPUT_SUBDIR / folder / slug / f"{slug}.py"
+    return AGENT_OUTPUT_ROOT / folder / slug / f"{slug}.py"
 
 
 @click.command()

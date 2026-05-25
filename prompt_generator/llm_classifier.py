@@ -39,11 +39,20 @@ JSON object with EXACTLY these fields:
 CRITICAL: respond with ONLY the JSON object. No prose, no markdown fences, no
 explanation. Any value not in the listed Literals is invalid."""
 
-_RETRY_NUDGE = (
-    "Your previous reply was not valid JSON matching the schema. "
-    "Reply again with ONLY the JSON object — no prose, no markdown, "
-    "and every field as specified."
+_RETRY_NUDGE_PREFIX = (
+    "Your previous reply did not match the schema. "
+    "Reply again with ONLY the JSON object — no prose, no markdown."
 )
+
+
+def _format_parse_error(exc: Exception) -> str:
+    """Render a parse/validation exception as model-actionable feedback."""
+    if isinstance(exc, ValidationError):
+        return "; ".join(
+            f"{'.'.join(str(p) for p in err['loc']) or '<root>'}: {err['msg']}"
+            for err in exc.errors()
+        )
+    return str(exc)
 
 
 @dataclass(frozen=True)
@@ -114,13 +123,14 @@ def classify_with_llm(
     raw = resp.choices[0].message.content or ""
     try:
         return _parse(raw)
-    except (ValueError, ValidationError, json.JSONDecodeError):
-        pass
+    except (ValueError, ValidationError, json.JSONDecodeError) as first_err:
+        error_detail = _format_parse_error(first_err)
 
-    # Retry once with a nudge
+    # Retry once with the specific error fed back to the model
+    nudge_msg = f"{_RETRY_NUDGE_PREFIX} Specific errors: {error_detail}"
     nudge = messages + [
         {"role": "assistant", "content": raw or "(empty response)"},
-        {"role": "user", "content": _RETRY_NUDGE},
+        {"role": "user", "content": nudge_msg},
     ]
     resp = client.chat.completions.create(model=_MODEL, messages=nudge)
     raw = resp.choices[0].message.content or ""

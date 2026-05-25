@@ -32,8 +32,8 @@ from prompt_generator.slugs import competency_tokens, name_tokens, slugify
 logger = logging.getLogger("prompt_generator")
 
 REPO_ROOT = Path(__file__).parent.parent
-INPUT_FILES_ROOT = REPO_ROOT / "task_input_files"
-SCENARIOS_ROOT = INPUT_FILES_ROOT / "task_scenarios"
+INPUT_FILES_ROOT = REPO_ROOT / "data" / "generated" / "input_files"
+SCENARIOS_ROOT = REPO_ROOT / "data" / "generated" / "scenarios"
 
 # Cap configuration — keep ``detailed_skill_signal`` under ~2K tokens.
 MAX_QUESTIONS_BULLETS = 30

@@ -92,4 +92,10 @@ def test_as_dict_shape():
     assert r.as_dict() == {
         "passed": False, "skipped": False,
         "verdict": "collection_error", "detail": "boom",
+        "stdout_tail": "",
     }
+
+
+def test_as_dict_includes_stdout_tail():
+    r = SandboxEvalResult(verdict="ok", detail="ran", stdout_tail="=== 3 passed ===")
+    assert r.as_dict()["stdout_tail"] == "=== 3 passed ==="

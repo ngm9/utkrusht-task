@@ -24,8 +24,8 @@ from dotenv import load_dotenv
 
 logger = logging.getLogger("prompt_generator")
 
-from prompt_generator.classifier import classify_task_runtime
 from prompt_generator.runtime import Competency, TaskRuntime
+from task_generation.runtime_resolver import resolve_plan
 from prompt_generator.db_queries import (
     TaskExample,
     fetch_competency_scope,
@@ -382,9 +382,17 @@ class PromptGeneratorAgent(dspy.Module):
                     [c.name for c in competencies], proficiency, env)
         logger.info("=" * 72)
 
-        # ─── STEP 1: classifier ───────────────────────────────────────
-        logger.info("STEP 1 / classifier.py — deciding TaskRuntime")
-        runtime = classify_task_runtime(competencies)
+        # ─── STEP 1: resolver (combo cache + classifier) ──────────────
+        # Routes through resolve_plan so we hit the competency_combo_classification
+        # cache instead of re-classifying on every prompt-generator run.
+        logger.info("STEP 1 / runtime_resolver.py — resolving TaskRuntime via combo cache")
+        plan = resolve_plan(competencies)
+        if plan.task_runtime is None:
+            raise RuntimeError(
+                f"resolve_plan returned empty plan for combo={plan.combo_key!r} — "
+                "classifier failed and no cached row exists; cannot generate a prompt"
+            )
+        runtime = plan.task_runtime
         logger.info("  → runtime=%s kind=%s frameworks=%s datastores=%s",
                     runtime.runtime, runtime.kind,
                     runtime.frameworks, runtime.datastores)

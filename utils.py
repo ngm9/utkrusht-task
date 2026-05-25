@@ -21,9 +21,13 @@ import task_generation_prompts.Beginner as _beginner_pkg
 # Agent-generated prompts (and any future per-slug nested layout) live in
 # subfolders that lack ``__init__.py``, so ``pkgutil.iter_modules`` skips them.
 # We complement the package-walk with a filesystem-walk over the canonical
-# ``<slug>/<slug>.py`` layout and the ``agent_generated_prompts/`` subtree.
+# ``<slug>/<slug>.py`` layout and the agent-generated prompt tree.
+#
+# Curated prompts live in the ``task_generation_prompts/`` Python package
+# (hand-written modules). Auto-generated prompts moved to
+# ``data/generated/agent_prompts/`` during the 2026-05-25 layout migration.
 _PROMPT_ROOT = _Path(__file__).parent / "task_generation_prompts"
-_AGENT_OUTPUT_SUBDIR = "agent_generated_prompts"
+_AGENT_PROMPTS_ROOT = _Path(__file__).parent / "data" / "generated" / "agent_prompts"
 
 
 def _load_module_from_path(label: str, path: _Path):
@@ -39,14 +43,14 @@ def _iter_filesystem_prompts():
     """Yield ``<slug>/<slug>.py`` files under curated and agent-generated trees.
 
     Covers two layouts that ``pkgutil.iter_modules`` cannot:
-      - ``<Level>/<slug>/<slug>.py``                (curated, per-slug folder)
-      - ``agent_generated_prompts/<Level>/<slug>/<slug>.py``
+      - ``task_generation_prompts/<Level>/<slug>/<slug>.py``  (curated)
+      - ``data/generated/agent_prompts/<Level>/<slug>/<slug>.py``
     Archived originals under ``original_temp_prompt/`` are intentionally skipped.
     """
     candidates = []
     for level in ("Basic", "Intermediate", "Beginner", "Advanced", "Expert"):
         candidates.append(_PROMPT_ROOT / level)
-        candidates.append(_PROMPT_ROOT / _AGENT_OUTPUT_SUBDIR / level)
+        candidates.append(_AGENT_PROMPTS_ROOT / level)
     for level_dir in candidates:
         if not level_dir.exists():
             continue
@@ -344,8 +348,9 @@ def unwrap_file_contents(files_dict):
 def save_files_locally(task_id: str, task_data: Dict) -> Path:
     """Save generated files locally before uploading to GitHub and droplet."""
     try:
-        base_dir = Path(__file__).parent / "infra_assets"
-        local_task_dir = base_dir / "tasks" / task_id
+        # Was ``infra_assets/tasks/`` pre-2026-05-25; the layout migration
+        # moved generated artifacts under ``data/generated/``.
+        local_task_dir = Path(__file__).parent / "data" / "generated" / "task_artifacts" / task_id
         local_task_dir.mkdir(parents=True, exist_ok=True)
 
         logger.info(f"Saving files locally to: {local_task_dir}")

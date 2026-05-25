@@ -42,7 +42,7 @@ from generate_input_files.generator import (
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 
-_BASE_DIR = Path("task_input_files")
+_BASE_DIR = Path("data") / "generated" / "input_files"
 
 # Best-effort keyword → Supabase competency name mapping.
 # Keys are lowercase substrings to search for in the markdown content.

@@ -1,19 +1,19 @@
 """
 Core scenario generation logic — classification, LLM calls, validation, and pipeline orchestration.
 
-  python -m scenario_generator --competency-file task_input_files/input_java/competency_java_basic.json --count 6
+  python -m scenario_generator --competency-file data/generated/input_files/input_java/competency_java_basic.json --count 6
 
-  python -m scenario_generator --competency-file task_input_files/input_java/competency_java_basic.json --count 6
+  python -m scenario_generator --competency-file data/generated/input_files/input_java/competency_java_basic.json --count 6
   --append
 
-  python -m scenario_generator --competency-file task_input_files/input_java/competency_java_basic.json
-  --background-file task_input_files/input_java/background_java_basic.json --count 6
+  python -m scenario_generator --competency-file data/generated/input_files/input_java/competency_java_basic.json
+  --background-file data/generated/input_files/input_java/background_java_basic.json --count 6
 
-  python -m scenario_generator --competency-file task_input_files/input_java/competency_java_basic.json --count 6
+  python -m scenario_generator --competency-file data/generated/input_files/input_java/competency_java_basic.json --count 6
   --dry-run
 
-  python -m scenario_generator --competency-file task_input_files/input_java/competency_java_basic.json --count 6
-  --output task_input_files/task_scenarios/my_scenarios.json
+  python -m scenario_generator --competency-file data/generated/input_files/input_java/competency_java_basic.json --count 6
+  --output data/generated/scenarios/my_scenarios.json
 """
 
 import json
@@ -164,7 +164,7 @@ def build_scenario_key(competencies: List[Dict]) -> str:
 
 def get_target_scenario_file(competencies: List[Dict], is_non_code: bool = False) -> Path:
     """Determine the correct scenario file based on competency type and proficiency."""
-    base = Path(__file__).parent.parent / "task_input_files" / "task_scenarios"
+    base = Path(__file__).parent.parent / "data" / "generated" / "scenarios"
     proficiency = competencies[0].get("proficiency", "BASIC").upper() if competencies else "BASIC"
 
     if is_non_code:
@@ -590,10 +590,11 @@ def generate_scenarios_for_competencies(
     logger.info(f"Competencies: {competency_names}, Proficiency: {proficiency}")
 
     # Load existing scenarios for deduplication
+    scenarios_root = Path(__file__).parent.parent / "data" / "generated" / "scenarios"
     default_files = [
-        Path(__file__).parent.parent / "task_input_files" / "task_scenarios" / "task_scenarios.json",
-        Path(__file__).parent.parent / "task_input_files" / "task_scenarios" / "task_scenarios_intermediate.json",
-        Path(__file__).parent.parent / "task_input_files" / "task_scenarios" / "task_scenarios_no_code.json",
+        scenarios_root / "task_scenarios.json",
+        scenarios_root / "task_scenarios_intermediate.json",
+        scenarios_root / "task_scenarios_no_code.json",
     ]
     scenario_files = existing_scenarios_files or default_files
     all_existing = load_all_existing_scenarios(scenario_files)

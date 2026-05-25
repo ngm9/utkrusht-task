@@ -97,6 +97,46 @@ def test_classifier_empty_competencies_raises():
         classify_with_llm([], client=MagicMock())
 
 
+def test_retry_message_carries_specific_validation_error():
+    """The retry user message must echo the first attempt's validation error
+    (e.g. an invalid `kind`), not a generic nudge — otherwise the model often
+    repeats the same mistake."""
+    bad_payload = json.dumps({
+        "runtime": "python", "frameworks": ["fastapi"], "datastores": [],
+        "messaging": [], "needs_browser": False,
+        "kind": "application",  # not in the Literal set
+        "confidence": 0.9,
+    })
+    good_payload = json.dumps({
+        "runtime": "python", "frameworks": ["fastapi"], "datastores": [],
+        "messaging": [], "needs_browser": False,
+        "kind": "app", "confidence": 0.9,
+    })
+
+    msg_bad = MagicMock(); msg_bad.content = bad_payload
+    choice_bad = MagicMock(); choice_bad.message = msg_bad
+    resp_bad = MagicMock(); resp_bad.choices = [choice_bad]
+
+    msg_ok = MagicMock(); msg_ok.content = good_payload
+    choice_ok = MagicMock(); choice_ok.message = msg_ok
+    resp_ok = MagicMock(); resp_ok.choices = [choice_ok]
+
+    client = MagicMock()
+    client.chat.completions.create.side_effect = [resp_bad, resp_ok]
+    comps = [Competency(name="Python", proficiency="INTERMEDIATE")]
+
+    result = classify_with_llm(comps, client=client)
+    assert result.runtime.kind == "app"
+    assert client.chat.completions.create.call_count == 2
+
+    retry_messages = client.chat.completions.create.call_args_list[1].kwargs["messages"]
+    retry_user_msg = retry_messages[-1]["content"]
+    assert "kind" in retry_user_msg, (
+        "retry message should name the offending field ('kind')"
+    )
+    assert "Specific errors" in retry_user_msg
+
+
 def test_system_prompt_lists_required_fields():
     """Sanity: the prompt mentions every TaskRuntime field by name."""
     for field in ("runtime", "frameworks", "datastores", "messaging",

@@ -1,0 +1,553 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Task Builder — Design Spec</title>
+<style>
+  :root {
+    --accent: #7c5cff;
+    --accent-2: #4ea3ff;
+    --ink: #1c2230;
+    --muted: #5b6477;
+    --line: #e4e7ee;
+    --bg: #f6f7f9;
+    --card: #ffffff;
+    --code-bg: #f3f1fb;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font: 16px/1.7 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, sans-serif;
+  }
+  .wrap {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 56px 28px 120px;
+  }
+  article {
+    background: var(--card);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 44px 52px;
+    box-shadow: 0 12px 40px rgba(28,34,48,0.06);
+  }
+  h1 {
+    font-size: 30px; line-height: 1.25; margin: 0 0 6px;
+    letter-spacing: -0.4px;
+  }
+  h2 {
+    font-size: 21px; margin: 40px 0 12px;
+    padding-bottom: 7px; border-bottom: 2px solid var(--line);
+    letter-spacing: -0.2px;
+  }
+  h3 { font-size: 16.5px; margin: 26px 0 8px; color: #2c3447; }
+  p { margin: 12px 0; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  strong { color: #11151c; }
+  hr { border: 0; border-top: 1px solid var(--line); margin: 28px 0; }
+  ul, ol { padding-left: 24px; }
+  li { margin: 5px 0; }
+  code {
+    background: var(--code-bg);
+    color: #5b3fd6;
+    padding: 2px 6px;
+    border-radius: 5px;
+    font: 13.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  pre {
+    background: #1d222c;
+    color: #e6e8ee;
+    padding: 16px 18px;
+    border-radius: 10px;
+    overflow-x: auto;
+    font-size: 13px; line-height: 1.6;
+  }
+  pre code { background: transparent; color: inherit; padding: 0; }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 16px 0;
+    font-size: 14.5px;
+  }
+  th, td {
+    border: 1px solid var(--line);
+    padding: 8px 12px;
+    text-align: left;
+    vertical-align: top;
+  }
+  th { background: #f0eefb; color: #2c3447; font-weight: 600; }
+  tr:nth-child(even) td { background: #fafafc; }
+  /* Table of contents */
+  .toc {
+    background: linear-gradient(180deg, #faf9ff, #f4f2fd);
+    border: 1px solid #e6e2f7;
+    border-radius: 12px;
+    padding: 14px 20px;
+    margin: 24px 0 8px;
+  }
+  .toc > ul { margin: 0; padding-left: 18px; }
+  .toc ul ul { display: none; }
+  .toc li { margin: 3px 0; font-size: 14px; }
+  .toctitle {
+    font-weight: 600; font-size: 12px; letter-spacing: 0.6px;
+    text-transform: uppercase; color: var(--muted);
+    display: block; margin-bottom: 6px;
+  }
+  .badge {
+    display: inline-block; margin-top: 10px;
+    background: rgba(124,92,255,0.12); color: #5b3fd6;
+    border: 1px solid #d9d0fb; border-radius: 999px;
+    padding: 4px 12px; font-size: 12.5px; font-weight: 600;
+  }
+  h2:hover .headerlink, h3:hover .headerlink { opacity: 0.5; }
+  .headerlink { opacity: 0; margin-left: 8px; font-size: 0.8em; text-decoration: none; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <article>
+      <span class="badge">Design Spec · approved 2026-05-18</span>
+      <h1 id="task-builder-conversational-web-front-end-for-the-task-generation-pipeline">Task Builder — Conversational Web Front-End for the Task-Generation Pipeline</h1>
+<p><strong>Status:</strong> Design approved 2026-05-18 · pending implementation plan
+<strong>Relates to:</strong> the static mockup <code>chat_flow_mockup.html</code>; <code>run_pipeline.py</code> (linear orchestrator);
+the autonomous-task-agent design (<code>docs/research/autonomous-task-agent/</code>).</p>
+<hr />
+<div class="toc">
+<ul>
+<li><a href="#task-builder-conversational-web-front-end-for-the-task-generation-pipeline">Task Builder — Conversational Web Front-End for the Task-Generation Pipeline</a><ul>
+<li><a href="#1-problem-goal">1. Problem &amp; goal</a></li>
+<li><a href="#2-decisions-locked-in-brainstorming-2026-05-18">2. Decisions locked in brainstorming (2026-05-18)</a></li>
+<li><a href="#3-gap-analysis-mockup-vs-current-pipeline">3. Gap analysis — mockup vs. current pipeline</a></li>
+<li><a href="#4-scope">4. Scope</a><ul>
+<li><a href="#in-scope-v1">In scope (v1)</a></li>
+<li><a href="#out-of-scope-v1-yagni">Out of scope (v1) — YAGNI</a></li>
+</ul>
+</li>
+<li><a href="#5-architecture">5. Architecture</a></li>
+<li><a href="#6-data-model-taskbrief-and-sessionstate">6. Data model — TaskBrief and SessionState</a></li>
+<li><a href="#7-data-flow">7. Data flow</a></li>
+<li><a href="#8-conversation-engine-approach-b-structured-output-slot-filling">8. Conversation engine (Approach B — structured-output slot-filling)</a></li>
+<li><a href="#9-pipeline-runner-streaming">9. Pipeline runner &amp; streaming</a></li>
+<li><a href="#10-layer-b-scenario_generator-changes-the-fix-the-task-generator-part">10. Layer B — scenario_generator changes (the "fix the task generator" part)</a></li>
+<li><a href="#11-http-api">11. HTTP API</a></li>
+<li><a href="#12-front-end">12. Front-end</a></li>
+<li><a href="#13-error-handling">13. Error handling</a></li>
+<li><a href="#14-testing">14. Testing</a></li>
+<li><a href="#15-dependencies">15. Dependencies</a></li>
+<li><a href="#16-file-by-file-change-list">16. File-by-file change list</a></li>
+<li><a href="#17-future-v11">17. Future (v1.1+)</a></li>
+</ul>
+</li>
+</ul>
+</div>
+<h2 id="1-problem-goal">1. Problem &amp; goal</h2>
+<p>The task-generation pipeline is four CLI stages:</p>
+<pre><code>generate_input_files → scenario_generator → prompt_generator → multiagent.py generate_tasks
+</code></pre>
+<p>Today it is driven by hand, or by <code>run_pipeline.py</code> (a linear chainer). Operating it
+requires knowing exact competency names, the proficiency enum, and how to pass JSON
+file paths between stages. That is fine for an engineer; it is a wall for anyone else.</p>
+<p><strong>Goal:</strong> a conversational web app that interviews the user for the pipeline inputs in
+plain language, validates every answer against real data (Supabase competencies, the
+proficiency enum), shows a confirmable brief, then runs the pipeline with live
+per-stage progress streamed back into the chat.</p>
+<p>A static mockup (<code>chat_flow_mockup.html</code>) established the desired UX. This spec turns
+that mockup into a real, integrated system.</p>
+<hr />
+<h2 id="2-decisions-locked-in-brainstorming-2026-05-18">2. Decisions locked in brainstorming (2026-05-18)</h2>
+<table>
+<thead>
+<tr>
+<th>Fork</th>
+<th>Decision</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Interview surface</td>
+<td><strong>Web app</strong> (not a terminal wizard)</td>
+</tr>
+<tr>
+<td>Interaction model</td>
+<td><strong>Fully conversational bot</strong> — LLM asks the questions in natural language</td>
+</tr>
+<tr>
+<td>Deployment scope</td>
+<td><strong>Local internal tool</strong> — <code>localhost</code>, single user, no auth</td>
+</tr>
+<tr>
+<td>Focus-areas / domain plumbing</td>
+<td><strong>Real parameters</strong> threaded into <code>scenario_generator</code></td>
+</tr>
+<tr>
+<td>Run progress</td>
+<td><strong>Live per-stage streaming</strong> into the chat</td>
+</tr>
+<tr>
+<td>Conversation engine</td>
+<td><strong>Approach B — structured-output slot-filling</strong> (one LLM call/turn returning strict JSON)</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="3-gap-analysis-mockup-vs-current-pipeline">3. Gap analysis — mockup vs. current pipeline</h2>
+<table>
+<thead>
+<tr>
+<th>Mockup question</th>
+<th>Real pipeline input</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Q1 · Tech stack</td>
+<td><code>generate_input_files --competency-name</code></td>
+<td>exists</td>
+</tr>
+<tr>
+<td>Q2 · Proficiency</td>
+<td><code>generate_input_files --proficiency</code></td>
+<td>exists</td>
+</tr>
+<tr>
+<td>Q3 · Role description</td>
+<td><code>generate_input_files --role</code> → <code>role_context</code></td>
+<td>exists</td>
+</tr>
+<tr>
+<td>Q4 · What to assess (focus areas)</td>
+<td><em>nothing</em></td>
+<td><strong>no parameter — Layer B adds it</strong></td>
+</tr>
+<tr>
+<td>Q5 · Company domain</td>
+<td><em>nothing</em></td>
+<td><strong>no parameter — Layer B adds it</strong></td>
+</tr>
+<tr>
+<td>Q6 · Confirm &amp; generate</td>
+<td><code>run_pipeline.py</code> chains the four stages</td>
+<td>exists (linear)</td>
+</tr>
+</tbody>
+</table>
+<p>Two specifics that justify Layer B:</p>
+<ul>
+<li><strong>Q4 (focus areas)</strong> has no input today. <code>scenario_generator</code> derives <em>what gets
+  assessed</em> from <code>questions_prompt</code>, and that string is LLM-generated from the
+  competency <code>long_scope</code> in <code>generate_input_files/generator.py</code>. The user never picks
+  the focus — the LLM infers it.</li>
+<li><strong>Q5 (domain)</strong> is the <em>opposite</em> of current behaviour. The scenario prompt at
+  <code>scenario_generator/prompts.py:308</code> hard-codes <em>"Each scenario MUST use a DIFFERENT
+  business domain"</em> — it deliberately spreads scenarios across industries. The mockup
+  wants the user to <strong>pin one domain</strong>. Supporting Q5 means a parameter that overrides
+  that variety rule.</li>
+</ul>
+<hr />
+<h2 id="4-scope">4. Scope</h2>
+<h3 id="in-scope-v1">In scope (v1)</h3>
+<ul>
+<li>A new <code>task_builder/</code> package: FastAPI server + static front-end.</li>
+<li>A fully conversational slot-filling bot collecting a six-field <code>TaskBrief</code>.</li>
+<li>Server-owned, validated brief state; competency validation against Supabase.</li>
+<li>A background pipeline runner reusing the existing four CLI stages, with per-stage
+  events streamed over SSE.</li>
+<li><strong>Layer B</strong> — real <code>focus_areas</code> and <code>domain</code> parameters in <code>scenario_generator</code>.</li>
+<li>pytest coverage consistent with the existing suite.</li>
+</ul>
+<h3 id="out-of-scope-v1-yagni">Out of scope (v1) — YAGNI</h3>
+<ul>
+<li>No auth, no multi-user — it is a local tool.</li>
+<li>No persistence across server restarts — in-memory sessions.</li>
+<li><strong>No post-generation refinement.</strong> The bot collects the brief conversationally;
+  once "Generate" is pressed there is no "make scenario 3 about retries" re-run.
+  Editing means changing an answer <em>before</em> generating.</li>
+<li>No Docker / deployment.</li>
+<li>The mockup's selectable chips — v1 is text-driven; chips may return later as
+  bot-offered quick-picks (v1.1).</li>
+</ul>
+<hr />
+<h2 id="5-architecture">5. Architecture</h2>
+<p>A new top-level package <code>task_builder/</code>, alongside the existing CLI modules. It
+<em>drives</em> them; it does not replace them.</p>
+<pre><code>task_builder/
+  __init__.py
+  __main__.py      python -m task_builder  →  launches uvicorn on localhost:8000
+  server.py        FastAPI app + routes
+  slots.py         TaskBrief schema + SessionState (authoritative server state)
+  conversation.py  structured-output LLM engine (Approach B)
+  validation.py    validates slot values against Supabase / enums
+  runner.py        background pipeline runner; emits per-stage StageEvents
+  prompts.py       the bot's system prompt
+  static/
+    index.html     live version of the mockup
+    app.js         chat rendering, SSE consumption
+    styles.css
+</code></pre>
+<p><strong>FastAPI</strong> is the backend: async-native (required for SSE), Pydantic gives the slot
+schema for free, idiomatic Python. <code>python -m task_builder</code> starts the server —
+matching how every other module in this repo is launched.</p>
+<p>The four pipeline modules (<code>generate_input_files</code>, <code>scenario_generator</code>,
+<code>prompt_generator</code>, <code>multiagent</code>) are <strong>unchanged in their core logic</strong>; <code>runner.py</code>
+invokes them exactly as <code>run_pipeline.py</code> does today. The only existing-code change is
+Layer B (Section 10).</p>
+<hr />
+<h2 id="6-data-model-taskbrief-and-sessionstate">6. Data model — <code>TaskBrief</code> and <code>SessionState</code></h2>
+<pre><code class="language-python">class TaskBrief(BaseModel):
+    competencies: list[str]      # Q1 — each must exist in Supabase `competencies`
+    proficiency: str | None      # Q2 — BEGINNER | BASIC | INTERMEDIATE | ADVANCED
+    role: str | None             # Q3 — free text → generate_input_files --role
+    focus_areas: list[str]       # Q4 — NEW (Layer B)
+    domain: str | None           # Q5 — NEW (Layer B)
+    scenario_count: int = 6      # default
+
+class SessionState:
+    session_id: str
+    brief: TaskBrief             # authoritative, server-owned
+    history: list[Message]       # full conversation transcript
+    corrective_calls_this_turn: int
+</code></pre>
+<p>Required slots: <code>competencies</code>, <code>proficiency</code>, <code>role</code>, <code>focus_areas</code>, <code>domain</code>.
+<code>scenario_count</code> defaults to 6. The LLM <em>proposes</em> updates to the brief; the <strong>server
+decides what is true</strong>.</p>
+<hr />
+<h2 id="7-data-flow">7. Data flow</h2>
+<pre><code>Browser ──POST /api/chat {session_id, message}──▶ server.py
+                                                    │
+   conversation.py: 1 LLM call → {reply, slots_update, ready_to_generate}
+                                                    │
+   validation.py: validate slots_update
+     · competency → Supabase lookup (name + proficiency)
+     · invalid?   → 1 corrective LLM call so the bot re-asks in the SAME response
+                                                    │
+   server merges only the VALID fields into SessionState.brief
+                                                    │
+Browser ◀──{reply, brief, missing_slots, ready}─────┘
+   renders bot bubble; when ready → summary card + &quot;Generate task&quot; button
+
+Browser ──POST /api/generate {session_id}──▶ server spawns runner.py (background)
+   runner: preflight → input_files → scenarios → prompt → tasks
+   after each stage → StageEvent pushed to an asyncio.Queue for that run
+                                                    │
+Browser ◀──GET /api/runs/{run_id}/events  (SSE)─────┘
+   each StageEvent → a bot bubble; terminal event = GitHub link OR failure + stage
+</code></pre>
+<p><strong>Server owns state.</strong> The LLM's <code>ready_to_generate</code> is only a suggestion. The <code>ready</code>
+flag returned to the browser is:</p>
+<pre><code>ready = LLM_says_ready  AND  server_validation_says(all required slots present &amp; valid)
+</code></pre>
+<p>That single rule is what keeps a "fully conversational" bot from running the pipeline
+on a half-filled or invalid brief.</p>
+<p><strong>Corrective-call trick.</strong> Approach B's one weakness: the LLM speaks before the server
+validates. Mitigation — when <code>slots_update</code> contains a competency, the server runs the
+Supabase lookup <em>before</em> returning; on failure it makes <strong>one</strong> further LLM call
+feeding back e.g. <code>competency 'Sprng Boot' not found — closest: Spring Boot, Spring</code>,
+so the corrected question reaches the user in the same HTTP turn. Capped at one
+corrective call per turn to bound cost and latency.</p>
+<hr />
+<h2 id="8-conversation-engine-approach-b-structured-output-slot-filling">8. Conversation engine (Approach B — structured-output slot-filling)</h2>
+<p><code>conversation.py</code> — exactly one LLM call per user message:</p>
+<ul>
+<li><strong>Input:</strong> <code>[system_prompt, *history, user_message]</code></li>
+<li><strong>Output (strict JSON):</strong>
+  <code>json
+  { "reply": "string shown to the user",
+    "slots_update": { "&lt;partial TaskBrief fields&gt;" },
+    "ready_to_generate": false }</code></li>
+<li><strong>Model:</strong> reuse the existing Portkey gateway. Use <strong>Claude Sonnet 4.6</strong> (same as
+  <code>multiagent.py</code> task generation) for reliable JSON adherence.</li>
+<li><strong>System prompt (<code>prompts.py</code>)</strong> defines: the goal (assemble a complete
+  <code>TaskBrief</code>), the six slots and their valid forms, the strict JSON output contract,
+  the rule <em>"never claim generation has started — only set <code>ready_to_generate</code> true
+  once every required slot is filled"</em>, and to ask about missing slots one topic at a
+  time.</li>
+<li><strong>Robustness:</strong> a non-JSON response → one retry with a "return valid JSON only"
+  nudge → then a graceful <em>"I had trouble — could you rephrase?"</em> message.</li>
+</ul>
+<hr />
+<h2 id="9-pipeline-runner-streaming">9. Pipeline runner &amp; streaming</h2>
+<p><code>runner.py</code> runs the pipeline as a background job and emits events.</p>
+<ul>
+<li>On <code>POST /api/generate</code>, the server spawns a background task. The four stages are
+  blocking subprocesses, so the runner uses a worker thread; events cross back to the
+  async world via an <code>asyncio.Queue</code> keyed by <code>run_id</code>.</li>
+<li>The runner <strong>reuses the stage logic of <code>run_pipeline.py</code></strong>. <code>run_pipeline.py</code> is
+  refactored so its per-stage logic is importable functions (today <code>main()</code> does
+  everything inline); its CLI <code>main()</code> becomes a thin wrapper. The terminal path and
+  the web path then share one runner — no duplicated stage code.</li>
+<li>After each stage the runner emits a <code>StageEvent</code>:
+  <code>json
+  { "stage": "02_scenarios",
+    "status": "running | ok | failed",
+    "duration_s": 90.4,
+    "detail": "6 scenarios generated",
+    "outcome": null }</code></li>
+<li>For stage 4 it reuses <code>_summarise_task_stage</code> to classify CREATED / REJECTED / ERROR
+  and, on success, extracts the GitHub template link and task id.</li>
+<li>A terminal event closes the stream:
+  <code>json
+  { "event": "done", "status": "completed | failed",
+    "task_url": "...", "task_id": "...", "summary": "..." }</code></li>
+<li><code>GET /api/runs/{run_id}/events</code> is an SSE endpoint draining that run's queue.</li>
+</ul>
+<hr />
+<h2 id="10-layer-b-scenario_generator-changes-the-fix-the-task-generator-part">10. Layer B — <code>scenario_generator</code> changes (the "fix the task generator" part)</h2>
+<p>The <strong>only existing code that changes</strong>. Three files, all backward compatible — both
+new flags optional; omitted = today's behaviour exactly.</p>
+<ol>
+<li><strong><code>scenario_generator/__main__.py</code></strong> — two new CLI options:
+   - <code>--focus-areas</code> — comma-separated or repeated; what to assess.
+   - <code>--domain</code> — a single business domain to pin all scenarios to.</li>
+<li><strong><code>scenario_generator/generator.py</code></strong> — thread <code>focus_areas</code> and <code>domain</code> through
+   <code>generate_scenarios_for_competencies</code> → <code>build_generation_prompt</code>.</li>
+<li><strong><code>scenario_generator/prompts.py</code></strong> — two conditional blocks, using the existing
+   conditional-block pattern (integration / dedup / feedback blocks already work this
+   way):
+   - <code>FOCUS_AREAS_BLOCK</code> — <em>"Bias scenarios toward these areas: …"</em> when set; empty
+     string when not.
+   - <strong>Domain pinning</strong> — when <code>--domain</code> is set, swap the hard-coded <em>"Each scenario
+     MUST use a DIFFERENT business domain"</em> rule (<code>prompts.py:308</code>) for <em>"All
+     scenarios take place in the {domain} domain."</em></li>
+</ol>
+<p><code>run_pipeline.py</code> (and therefore <code>runner.py</code>) pass the new flags through when present.</p>
+<p><strong>The task generator (<code>multiagent.py</code>) needs no new parameter</strong> — focus and domain
+ride into the task through the <em>scenarios</em>, which <code>generate_tasks</code> already consumes.
+The thing that needed fixing was <code>scenario_generator</code>; the task generator gets richer
+scenarios for free.</p>
+<hr />
+<h2 id="11-http-api">11. HTTP API</h2>
+<table>
+<thead>
+<tr>
+<th>Method &amp; path</th>
+<th>Body</th>
+<th>Returns</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /</code></td>
+<td>—</td>
+<td>serves <code>static/index.html</code></td>
+</tr>
+<tr>
+<td><code>GET /static/*</code></td>
+<td>—</td>
+<td>static assets</td>
+</tr>
+<tr>
+<td><code>POST /api/session</code></td>
+<td>—</td>
+<td><code>{ session_id, reply }</code> (bot greeting + first question)</td>
+</tr>
+<tr>
+<td><code>POST /api/chat</code></td>
+<td><code>{ session_id, message }</code></td>
+<td><code>{ reply, brief, missing_slots, ready }</code></td>
+</tr>
+<tr>
+<td><code>POST /api/generate</code></td>
+<td><code>{ session_id }</code></td>
+<td><code>{ run_id }</code> (400 if <code>ready</code> is false)</td>
+</tr>
+<tr>
+<td><code>GET /api/runs/{run_id}/events</code></td>
+<td>—</td>
+<td>SSE stream of <code>StageEvent</code> + terminal <code>done</code></td>
+</tr>
+<tr>
+<td><code>GET /api/health</code></td>
+<td>—</td>
+<td><code>{ status: "ok" }</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="12-front-end">12. Front-end</h2>
+<p><code>static/</code> — the existing mockup made live:</p>
+<ul>
+<li>Strip the hard-coded scripted conversation from the mockup HTML.</li>
+<li><code>app.js</code>: on load <code>POST /api/session</code> → render the greeting; the free-text dock is
+  the primary input (it is a conversational bot). Each <code>POST /api/chat</code> appends the
+  user bubble and the bot <code>reply</code>.</li>
+<li>When the response has <code>ready: true</code>, render the summary card from <code>brief</code> plus a
+  "Generate task" button.</li>
+<li>On "Generate" → <code>POST /api/generate</code>, then open an <code>EventSource</code> on
+  <code>/api/runs/{run_id}/events</code>; append each <code>StageEvent</code> as a bot bubble; the terminal
+  event renders the GitHub link or the failure reason.</li>
+<li>Keep the right-rail "Behind the chat" mapping, corrected for current reality
+  (<code>generate_tasks</code> underscore form; the <code>prompt_generator</code> stage; nested
+  <code>agent_generated_prompts/</code> folders).</li>
+</ul>
+<hr />
+<h2 id="13-error-handling">13. Error handling</h2>
+<ul>
+<li>LLM returns non-JSON → one retry with a nudge → graceful fallback message.</li>
+<li>Competency not found → close-match suggestions in the reply (Supabase returns all
+  names; fuzzy-match locally).</li>
+<li>Proficiency changed after competencies were set → re-validate competencies, since a
+  DB row is keyed on name + proficiency.</li>
+<li>A pipeline stage fails → <code>StageEvent</code> <code>status=failed</code> + reason; bot posts
+  <em>"Stage N failed — &lt;reason&gt;. Logs: &lt;path&gt;."</em>; the run ends.</li>
+<li>Eval-gate rejection (stage 4 exit 0 but task rejected) → reuse <code>_summarise_task_stage</code>;
+  surface <em>"task rejected after 3 attempts"</em>.</li>
+<li>Preflight runs as stage 0 (as <code>run_pipeline.py</code> already does) → missing env vars and
+  registry problems surface before any generation work starts.</li>
+<li>Server restart → in-memory sessions are lost; acceptable for a local tool.</li>
+</ul>
+<hr />
+<h2 id="14-testing">14. Testing</h2>
+<p>pytest, consistent with the existing suite + <code>conftest.py</code>:</p>
+<ul>
+<li><code>test_task_builder_slots.py</code> — schema, required-field detection, merge logic.</li>
+<li><code>test_task_builder_validation.py</code> — mock Supabase: competency found / not-found /
+  close-match; proficiency enum.</li>
+<li><code>test_task_builder_conversation.py</code> — mock the LLM JSON output; merge logic and the
+  corrective-call path.</li>
+<li><code>test_task_builder_runner.py</code> — mock the four stages; assert event emission ordering
+  and failure handling.</li>
+<li>Layer B — <code>scenario_generator</code> prompt contains the focus block when <code>focus_areas</code>
+  is set; domain pinning swaps the variety rule when <code>domain</code> is set.</li>
+</ul>
+<hr />
+<h2 id="15-dependencies">15. Dependencies</h2>
+<p>Added to <code>requirements.txt</code>: <code>fastapi</code>, <code>uvicorn[standard]</code>, <code>sse-starlette</code>.
+<code>httpx</code> for tests (FastAPI's <code>TestClient</code>).</p>
+<hr />
+<h2 id="16-file-by-file-change-list">16. File-by-file change list</h2>
+<p><strong>New files</strong></p>
+<ul>
+<li><code>task_builder/__init__.py</code>, <code>__main__.py</code>, <code>server.py</code>, <code>slots.py</code>,
+  <code>conversation.py</code>, <code>validation.py</code>, <code>runner.py</code>, <code>prompts.py</code></li>
+<li><code>task_builder/static/index.html</code>, <code>app.js</code>, <code>styles.css</code></li>
+<li><code>tests/test_task_builder_slots.py</code>, <code>test_task_builder_validation.py</code>,
+  <code>test_task_builder_conversation.py</code>, <code>test_task_builder_runner.py</code></li>
+<li><code>tests/test_scenario_focus_domain.py</code> (Layer B)</li>
+</ul>
+<p><strong>Modified files</strong></p>
+<ul>
+<li><code>run_pipeline.py</code> — extract per-stage logic into importable functions; <code>main()</code>
+  becomes a thin CLI wrapper.</li>
+<li><code>scenario_generator/__main__.py</code> — <code>--focus-areas</code>, <code>--domain</code> options.</li>
+<li><code>scenario_generator/generator.py</code> — thread the two new parameters.</li>
+<li><code>scenario_generator/prompts.py</code> — <code>FOCUS_AREAS_BLOCK</code> + domain pinning.</li>
+<li><code>requirements.txt</code> — new dependencies.</li>
+</ul>
+<hr />
+<h2 id="17-future-v11">17. Future (v1.1+)</h2>
+<ul>
+<li>Selectable chips as bot-offered quick-picks.</li>
+<li>Post-generation refinement ("make scenario 3 about retries") — re-entering
+  individual pipeline stages; overlaps with the autonomous-task-agent design.</li>
+<li>Session persistence (SQLite or a local JSON store).</li>
+<li>Shared internal deployment (auth, multi-user, a real session store).</li>
+</ul>
+    </article>
+  </div>
+</body>
+</html>

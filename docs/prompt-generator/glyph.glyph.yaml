@@ -1,0 +1,54 @@
+visuals:
+  pipeline-flow:
+    type: diagram
+    flow:
+      - ["Supabase competencies", "generate_input_files", "scope + long_scope"]
+      - ["generate_input_files", "task_input_files cache", "role_context + questions_prompt"]
+      - ["task_input_files cache", "scenario_generator", "scope + role"]
+      - ["scenario_generator", "task_scenarios json", "real-world scenarios"]
+      - ["task_input_files cache", "prompt_generator", "detailed_skill_signal"]
+      - ["task_scenarios json", "prompt_generator", "3 example scenarios"]
+      - ["Supabase competencies", "prompt_generator", "scope + similar tasks"]
+      - ["task_generation_prompts library", "prompt_generator", "reference py files"]
+      - ["prompt_generator", "new prompt file", "validated output"]
+      - ["new prompt file", "multiagent runtime", "template + format vars"]
+      - ["multiagent runtime", "LLM via Portkey", "task description + code"]
+      - ["LLM via Portkey", "GitHub plus Supabase tasks", "after evals"]
+
+  signals-grid:
+    type: grid
+    cols: 3
+    cards:
+      - title: "competencies + proficiency"
+        badge: "CLI"
+        body: "Direct user input. The (name, level) pairs the agent must build a template for. Drives slug, registry key, and filename."
+      - title: "task_category"
+        badge: "classifier.py"
+        body: "Pure-Python rules map competencies to a TaskCategory enum (SCRIPT_AND_DB, APP_AND_DB, LLM_FRAMEWORK, ...). Hard constraint on file layout."
+      - title: "competency_scopes"
+        badge: "Supabase"
+        body: "Authoritative ~200-400 word paragraph per competency. Defines what the candidate can do at this level — source of truth for what the prompt may require. Falls back to long_scope (truncated 800w) when scope is null."
+      - title: "reference_prompts"
+        badge: "filesystem"
+        body: "3-5 existing prompt .py files via retriever.py's 5-level fallback ladder. Structural template only — section ordering, JSON shape, README format. Never copied verbatim."
+      - title: "similar_tasks"
+        badge: "Supabase"
+        body: "Enabled + eval-passed tasks for the same/related competencies. Calibrates complexity, file count, and question style. Combination match first, per-competency fallback when sparse."
+      - title: "detailed_skill_signal"
+        badge: "input files"
+        body: "Bundle of three: questions_prompt (50-100 sub-skill bullets), role_context (3-4 sentences on day-to-day + YoE), and up to 3 existing scenarios for the combo. Truncated to ~2K tokens. Empty for brand-new combos."
+      - title: "feedback_from_previous_attempt"
+        badge: "loop"
+        body: "Verifier output from the prior iteration, merged with deterministic validator issues. Empty on first attempt. Drives self-correction across up to 5 iterations."
+
+  agent-loop:
+    type: diagram
+    flow:
+      - ["context bundle", "Generate CoT", "7 input signals"]
+      - ["Generate CoT", "candidate prompt", "LLM emits Python source"]
+      - ["candidate prompt", "Verify CoT", "4 hard-fail checks"]
+      - ["Verify CoT", "Validator", "if verifier passes"]
+      - ["Verify CoT", "merge feedback", "if verifier rejects"]
+      - ["Validator", "merge feedback", "if AST or regex fails"]
+      - ["Validator", "write file", "if clean — exit loop"]
+      - ["merge feedback", "Generate CoT", "next iteration max 5"]

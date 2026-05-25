@@ -35,6 +35,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import json
+import os
 import subprocess
 import sys
 import time
@@ -42,8 +43,8 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).parent.resolve()
 RUNS_DIR = REPO_ROOT / ".task_agent_runs"
-INPUT_FILES_ROOT = REPO_ROOT / "task_input_files"
-SCENARIOS_FILE = INPUT_FILES_ROOT / "task_scenarios" / "task_scenarios.json"
+INPUT_FILES_ROOT = REPO_ROOT / "data" / "generated" / "input_files"
+SCENARIOS_FILE = REPO_ROOT / "data" / "generated" / "scenarios" / "task_scenarios.json"
 
 
 # ----------------------------------------------------------------------
@@ -81,9 +82,15 @@ def _run_stage(combo_dir: Path, label: str, cmd: list[str]) -> dict:
 
     print(f"  ▶ {label}: {' '.join(cmd)}", flush=True)
     start = time.time()
+    # The E2B build/test gate is opt-out for pipeline runs: default it ON so
+    # the task-creation stage exercises it (the gate itself no-ops for the
+    # other stages). An explicit SANDBOX_EVAL_ENABLED in the environment wins.
+    stage_env = {**os.environ}
+    stage_env.setdefault("SANDBOX_EVAL_ENABLED", "true")
     with stdout_path.open("w", encoding="utf-8") as out, \
          stderr_path.open("w", encoding="utf-8") as err:
-        proc = subprocess.run(cmd, stdout=out, stderr=err, cwd=REPO_ROOT)
+        proc = subprocess.run(cmd, stdout=out, stderr=err, cwd=REPO_ROOT,
+                              env=stage_env)
     duration = round(time.time() - start, 1)
 
     record = {
@@ -213,11 +220,14 @@ def main() -> int:
 
     # --- Stage 1: input files ---------------------------------------------
     t0 = time.time()
-    rec = _run_stage(combo_dir, "01_input_files", [
+    input_cmd = [
         py, "-m", "generate_input_files",
         "--competency-name", ", ".join(names),
         "--proficiency", level, "--env", args.env,
-    ])
+    ]
+    if args.domain:
+        input_cmd += ["--domain", args.domain]
+    rec = _run_stage(combo_dir, "01_input_files", input_cmd)
     stages.append(rec)
     if rec["exit_code"] != 0:
         print("\n  generate_input_files FAILED — aborting.")

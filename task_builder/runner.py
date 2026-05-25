@@ -34,24 +34,50 @@ class StageEvent:
     outcome: str | None = None
     task_id: str | None = None
     task_url: str | None = None
+    task_name: str | None = None
+    task_type: str | None = None
+    competencies: str | None = None
+    env: str | None = None
 
 
 EmitFn = Callable[[StageEvent], None]
 
 
-def _extract_task_result(stdout_path: Path) -> tuple[str | None, str | None]:
-    """Pull (task_id, github_url) from the stage-4 stdout. Returns (None, None)
-    if the file is missing or the lines are absent."""
+# stage-4 stdout label -> result-dict key. "Competencies Covered:" is matched
+# as the full phrase so it does not also catch the later bare "Competencies:"
+# summary line.
+# Order matters: a more-specific label must precede any label that is a prefix
+# of it, because the extractor loop does a substring match and breaks on the
+# first hit.
+_RESULT_LABELS: tuple[tuple[str, str], ...] = (
+    ("Task ID:", "task_id"),
+    ("Task Name:", "task_name"),
+    ("Competencies Covered:", "competencies"),
+    ("Task Type:", "task_type"),
+    ("GitHub Repository:", "task_url"),
+)
+
+
+def _extract_task_result(stdout_path: Path) -> dict[str, str | None]:
+    """Pull the task's identifying fields from the stage-4 stdout.
+
+    Returns a dict with keys task_id, task_url, task_name, task_type,
+    competencies — each None when its line is absent (a failed run, a missing
+    file, or an older multiagent.py).
+    """
+    fields: dict[str, str | None] = {
+        "task_id": None, "task_url": None, "task_name": None,
+        "task_type": None, "competencies": None,
+    }
     if not stdout_path.exists():
-        return None, None
+        return fields
     text = stdout_path.read_text(encoding="utf-8", errors="replace")
-    task_id = task_url = None
     for line in text.splitlines():
-        if "Task ID:" in line:
-            task_id = line.split("Task ID:", 1)[1].strip() or None
-        elif "GitHub Repository:" in line:
-            task_url = line.split("GitHub Repository:", 1)[1].strip() or None
-    return task_id, task_url
+        for label, key in _RESULT_LABELS:
+            if label in line:
+                fields[key] = line.split(label, 1)[1].strip() or None
+                break
+    return fields
 
 
 def run_pipeline_for_brief(brief: TaskBrief, *, run_id: str, emit: EmitFn,
@@ -100,11 +126,14 @@ def run_pipeline_for_brief(brief: TaskBrief, *, run_id: str, emit: EmitFn,
             return emit(StageEvent("done", "failed", detail="preflight failed"))
 
         t0 = time.time()
-        rec = _stage("01_input_files", [
+        input_cmd = [
             py, "-m", "generate_input_files",
             "--competency-name", ", ".join(names),
             "--proficiency", level, "--role", brief.role or "", "--env", env,
-        ])
+        ]
+        if brief.domain:
+            input_cmd += ["--domain", brief.domain]
+        rec = _stage("01_input_files", input_cmd)
         if rec["exit_code"] != 0:
             return emit(StageEvent("done", "failed", detail="input files failed"))
 
@@ -139,8 +168,11 @@ def run_pipeline_for_brief(brief: TaskBrief, *, run_id: str, emit: EmitFn,
         if rec["exit_code"] != 0 or "REJECTED" in outcome or "ERROR" in outcome or "UNKNOWN" in outcome:
             return emit(StageEvent("done", "failed", detail=outcome, outcome=outcome))
 
-        task_id, task_url = _extract_task_result(Path(rec["stdout"]))
+        result = _extract_task_result(Path(rec["stdout"]))
         emit(StageEvent("done", "completed", detail=outcome, outcome=outcome,
-                        task_id=task_id, task_url=task_url))
+                        task_id=result["task_id"], task_url=result["task_url"],
+                        task_name=result["task_name"],
+                        task_type=result["task_type"],
+                        competencies=result["competencies"], env=env))
     except Exception as exc:  # noqa: BLE001 — surface any stage crash to the UI
         emit(StageEvent("done", "failed", detail=f"runner error: {exc}"))

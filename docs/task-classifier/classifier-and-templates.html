@@ -1,0 +1,624 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Task Classifier &amp; E2B Template Strategy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #ffffff;
+      --panel: #f7f7f8;
+      --border: #e4e4e7;
+      --text: #0a0a0a;
+      --muted: #71717a;
+      --accent: #18181b;
+      --ok: #16a34a;
+      --warn: #d97706;
+      --bad: #dc2626;
+      --code-bg: #fafafa;
+      --table-row: #fcfcfc;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+    body {
+      font: 15px/1.65 "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      letter-spacing: -0.005em;
+    }
+    main { max-width: 820px; margin: 0 auto; padding: 64px 28px 120px; }
+    h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 6px; }
+    h2 {
+      font-size: 22px; font-weight: 600; letter-spacing: -0.015em;
+      margin: 56px 0 14px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 10px;
+    }
+    h3 { font-size: 17px; font-weight: 600; margin: 32px 0 10px; }
+    h4 { font-size: 15px; font-weight: 600; margin: 22px 0 8px; color: var(--accent); }
+    p { margin: 0 0 14px; }
+    .meta { color: var(--muted); font-size: 13px; margin: 0 0 32px; padding: 12px 0 0; }
+    .meta a { color: var(--muted); }
+    .status {
+      display: inline-block;
+      background: var(--panel); border: 1px solid var(--border);
+      border-radius: 6px; padding: 2px 9px;
+      font-size: 12px; font-weight: 500; color: var(--muted);
+      margin-right: 6px;
+    }
+    blockquote {
+      margin: 0 0 22px; padding: 12px 16px;
+      background: var(--panel); border-left: 3px solid var(--border);
+      border-radius: 4px; color: var(--muted); font-size: 14px;
+    }
+    blockquote p { margin: 0; }
+    blockquote p + p { margin-top: 8px; }
+    a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
+    a:hover { color: var(--muted); }
+    code {
+      font: 13px/1.5 "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      background: var(--code-bg); border: 1px solid var(--border);
+      border-radius: 4px; padding: 1px 5px;
+    }
+    pre {
+      background: var(--code-bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 14px 16px; overflow-x: auto;
+      margin: 0 0 20px;
+    }
+    pre code { background: none; border: 0; padding: 0; font-size: 12.5px; line-height: 1.55; }
+    ul, ol { margin: 0 0 16px; padding-left: 26px; }
+    li { margin: 4px 0; }
+    li > p { margin: 0; }
+    table { border-collapse: collapse; width: 100%; font-size: 13.5px; margin: 0 0 22px; }
+    th, td {
+      text-align: left; padding: 8px 10px;
+      border-bottom: 1px solid var(--border); vertical-align: top;
+    }
+    th { font-weight: 600; color: var(--accent); background: var(--panel); }
+    tr:nth-child(even) td { background: var(--table-row); }
+    .ok   { color: var(--ok); }
+    .warn { color: var(--warn); }
+    .bad  { color: var(--bad); }
+    .tldr {
+      background: var(--panel); border: 1px solid var(--border);
+      border-left: 3px solid var(--accent); border-radius: 8px;
+      padding: 16px 20px; margin: 0 0 32px; font-size: 14.5px;
+    }
+    .tldr p { margin: 0 0 10px; }
+    .tldr p:last-child { margin: 0; }
+    hr { border: 0; border-top: 1px solid var(--border); margin: 48px 0; }
+    .ascii {
+      font: 12.5px/1.5 "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+      background: var(--code-bg); border: 1px solid var(--border);
+      border-radius: 8px; padding: 14px 16px; overflow-x: auto;
+      white-space: pre; margin: 0 0 22px;
+    }
+  </style>
+</head>
+<body>
+<main>
+
+<h1>Task Classifier &amp; E2B Template Strategy</h1>
+<div class="meta">
+  <span class="status">Partially shipped</span>
+  <span class="status">Design 2026-05-20 · Updated 2026-05-25</span>
+  Sister doc to <a href="./task-eval-optimizer/task-eval-optimizer.md">task-eval-optimizer</a>.
+</div>
+
+<h2>Implementation status (2026-05-25)</h2>
+<table>
+  <thead>
+    <tr><th>Component</th><th>Status</th><th>Where</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>TaskRuntime</code> Pydantic model (replaces <code>TaskCategory</code> enum)</td><td class="ok">Shipped</td><td><code>prompt_generator/runtime.py</code></td></tr>
+    <tr><td>LLM classifier (Sonnet via Portkey, strict JSON, retry-with-validation-error)</td><td class="ok">Shipped</td><td><code>prompt_generator/llm_classifier.py</code></td></tr>
+    <tr><td><code>tasks.task_runtime</code> JSONB column (write-only first attempt)</td><td class="warn">Dropped</td><td>replaced by combo cache</td></tr>
+    <tr><td><code>competency_combo_classification</code> cache table (B1)</td><td class="ok">Shipped</td><td>migration + Python read/write</td></tr>
+    <tr><td><code>template_registry</code> table (B6)</td><td class="ok">Shipped</td><td>migration + <code>python</code> seed row</td></tr>
+    <tr><td><code>resolve_plan(combo_key)</code> — single cache-aware entry point</td><td class="ok">Shipped</td><td><code>task_generation/runtime_resolver.py</code></td></tr>
+    <tr><td><code>prompt_generator/agent.py</code> routes through <code>resolve_plan</code></td><td class="ok">Shipped</td><td>no more double classification</td></tr>
+    <tr><td><code>e2b_flow/sandbox_eval.py</code> shares the template registry</td><td class="ok">Shipped</td><td>via <code>template_name_for_runtime</code></td></tr>
+    <tr><td>Persona-routed eval critics keyed off <code>TaskRuntime.kind</code></td><td class="ok">Shipped</td><td><code>evals.py</code></td></tr>
+    <tr><td>E2B build/test gate (Python only — <code>utkrusht-python</code>)</td><td class="ok">Shipped</td><td><code>e2b_flow/sandbox_eval.py</code></td></tr>
+    <tr><td>Additional E2B templates (node/java/go/flutter/playwright/…)</td><td class="warn">Proposed</td><td>design only</td></tr>
+    <tr><td><code>classifier_version</code> cache-invalidation tooling (backfill script)</td><td class="warn">Proposed</td><td>—</td></tr>
+    <tr><td>Multi-tenancy (<code>organization_id</code> on all tables)</td><td class="ok">Shipped</td><td>hardcoded via <code>UTKRUSHT_ORG_ID</code> env</td></tr>
+    <tr><td>RLS policies + authenticated <code>auth.org_id()</code> (v2 multi-tenant)</td><td class="warn">Proposed</td><td>deferred until customer orgs</td></tr>
+  </tbody>
+</table>
+
+<blockquote>
+<p><strong>What this means for the rest of this doc.</strong> Sections below describe the <em>target</em> design as of 2026-05-20. The "Why this matters" / "Problem 1" / "Problem 2" sections describe the <em>old</em> state before the refactor — kept as historical context. "The solution" and "PR #1 — concrete scope" sections describe what was actually built; "Out of scope" items remain on the roadmap.</p>
+<p>The single shipped change closest to the doc's original framing: classification is now <strong>per-combo</strong> (cached in <code>competency_combo_classification</code>) rather than per-task. ~50 unique combos × ~$0.001 per LLM call = <strong>~$0.05</strong> to populate the cache, then column reads forever. Override path: edit the row directly; the cache reads it.</p>
+</blockquote>
+
+<h2>Shipped architecture — two tables, one resolver</h2>
+<p>What actually went into the dev DB on 2026-05-25 is a <strong>two-table cache</strong> plus a single Python entry point (<code>resolve_plan</code>) that reads through it. The "<code>tasks.task_runtime</code> JSONB column" referenced in the legacy diagrams below (Step 2 / Step 3) was the first attempt — it has been <strong>dropped</strong> in favour of the shape described here.</p>
+
+<h3>Table 1 — <code>template_registry</code> (B6)</h3>
+<p>Applied first; the combo cache has a foreign key to it.</p>
+<table>
+  <thead><tr><th>Column</th><th>Type</th><th>Role</th></tr></thead>
+  <tbody>
+    <tr><td><code>runtime</code></td><td><code>text</code> PK</td><td><code>python</code>, <code>node</code>, <code>java</code>, …</td></tr>
+    <tr><td><code>template_name</code></td><td><code>text</code></td><td>E2B template id, e.g. <code>utkrusht-python</code></td></tr>
+    <tr><td><code>build_cmd</code></td><td><code>text</code></td><td>e.g. <code>pip install --break-system-packages -r requirements.txt</code></td></tr>
+    <tr><td><code>test_cmd</code></td><td><code>text</code></td><td>e.g. <code>python -m pytest -q --tb=short</code></td></tr>
+    <tr><td><code>compile_cmd</code></td><td><code>text</code></td><td>optional</td></tr>
+    <tr><td><code>needs_browser</code></td><td><code>bool</code></td><td>for Playwright lanes</td></tr>
+    <tr><td><code>description</code></td><td><code>text</code></td><td>what's baked into the image</td></tr>
+  </tbody>
+</table>
+<p>One row per runtime. Seeded today with <code>python</code> mirroring the existing in-memory recipe. Adding <code>node</code> / <code>java</code> / <code>go</code> is a one-row INSERT, not a code change.</p>
+
+<h3>Table 2 — <code>competency_combo_classification</code> (B1)</h3>
+<table>
+  <thead><tr><th>Column</th><th>Type</th><th>Role</th></tr></thead>
+  <tbody>
+    <tr><td><code>combo_key</code></td><td><code>text</code> PK</td><td>e.g. <code>"FastAPI (INTERMEDIATE), Python (INTERMEDIATE)"</code></td></tr>
+    <tr><td><code>organization_id</code></td><td><code>uuid</code></td><td>Utkrusht UUID for v1 (multi-tenant-ready from day one)</td></tr>
+    <tr><td><code>runtime</code>, <code>kind</code></td><td><code>text</code></td><td>the classifier's verdict</td></tr>
+    <tr><td><code>frameworks</code>, <code>datastores</code>, <code>messaging</code></td><td><code>text[]</code></td><td>structured <code>TaskRuntime</code> fields</td></tr>
+    <tr><td><code>needs_browser</code></td><td><code>bool</code></td><td></td></tr>
+    <tr><td><code>template_runtime</code></td><td><code>text</code> FK → <code>template_registry(runtime)</code></td><td>which template to boot; <code>NULL</code> when no template exists yet</td></tr>
+    <tr><td><code>classifier_version</code></td><td><code>text</code></td><td>bump when the LLM prompt/model changes; old rows can then be re-classified</td></tr>
+    <tr><td><code>confidence</code></td><td><code>numeric(3,2)</code></td><td>rows <code>&lt; 0.7</code> surface for human review</td></tr>
+  </tbody>
+</table>
+<p>One row per <code>(organization_id, combo_key)</code>. The combo_key is built by <code>make_combo_key()</code> (sorted competency names with proficiency suffix), so the same competency set always hashes to the same key regardless of input order.</p>
+
+<h3>How <code>resolve_plan(competencies)</code> uses them</h3>
+<div class="ascii">combo_key = make_combo_key(competencies)
+                ▼
+  SELECT runtime, kind, frameworks, datastores, messaging, needs_browser
+    FROM competency_combo_classification
+   WHERE combo_key = ? AND organization_id = ?
+                ▼
+   ┌─── HIT  → return ResolvedPlan(
+   │             TaskRuntime(from row),
+   │             template_registry row joined via template_runtime FK
+   │           )                                       (~10 ms, $0)
+   │
+   └─── MISS → classify_with_llm(competencies)         (~2 s, ~$0.001)
+                  • Sonnet via Portkey
+                  • strict Pydantic schema
+                  • retry once with the specific ValidationError fed back
+                ▼
+              UPSERT competency_combo_classification (
+                  combo_key, organization_id,
+                  runtime, kind, frameworks, datastores, messaging, needs_browser,
+                  template_runtime,           -- FK; NULL if no template seeded
+                  classifier_version='v1',
+                  confidence
+              )
+                ▼
+              return ResolvedPlan(new TaskRuntime, template)</div>
+
+<h3>Who reads <code>ResolvedPlan</code></h3>
+<table>
+  <thead><tr><th>Consumer</th><th>Field used</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>multiagent.py:create_task</code></td><td><code>plan.kind</code></td><td>persona-routed eval critics (DBA / MLE / SDET / …)</td></tr>
+    <tr><td><code>multiagent.py:create_task</code></td><td><code>plan.template.name</code></td><td>E2B build/test gate template id</td></tr>
+    <tr><td><code>prompt_generator/agent.py:step1</code></td><td><code>plan.task_runtime</code></td><td>DSPy InputFields + HARD CONSTRAINT block</td></tr>
+    <tr><td><code>e2b_flow/sandbox_eval.py</code></td><td><code>template_name_for_runtime(plan.runtime)</code></td><td>sandbox boot</td></tr>
+  </tbody>
+</table>
+<p>Every consumer goes through <code>resolve_plan</code> — there is no longer a second classification site.</p>
+
+<h3>Failure modes &amp; graceful degradation</h3>
+<table>
+  <thead><tr><th>Failure</th><th>Behaviour</th></tr></thead>
+  <tbody>
+    <tr><td>Supabase unreachable at cache-lookup time</td><td>Warn, fall through to direct LLM call (no caching this call)</td></tr>
+    <tr><td>Supabase upsert fails at cache-write time</td><td>Warn, return the resolved plan anyway; next call re-classifies</td></tr>
+    <tr><td><code>UTKRUSHT_ORG_ID</code> env var missing</td><td>Skip cache entirely, plain LLM path (used in unit tests)</td></tr>
+    <tr><td>LLM classifier raises after retry</td><td>Return empty <code>ResolvedPlan</code> — callers skip persona routing and the gate, never crash</td></tr>
+    <tr><td><code>template_runtime</code> not yet in <code>template_registry</code></td><td>Stored as <code>NULL</code> (FK respected); the gate skips with <code>no_template</code></td></tr>
+    <tr><td>API role missing <code>GRANT</code> on the table</td><td><code>permission denied for table</code> warning, same fall-through as Supabase-down — needs the GRANT migration applied (see below)</td></tr>
+  </tbody>
+</table>
+
+<h3>Bootstrap — three migrations to apply in order</h3>
+<ol>
+  <li><code>migrations/2026-05-25-create-template-registry.sql</code> — creates B6 + seeds the <code>python</code> row.</li>
+  <li><code>migrations/2026-05-25-create-competency-combo-classification.sql</code> — creates B1 with FK to B6 + the two indexes.</li>
+  <li><code>migrations/2026-05-25-grant-cache-tables.sql</code> — grants <code>SELECT/INSERT/UPDATE/DELETE</code> to <code>anon</code>, <code>authenticated</code>, <code>service_role</code> so the PostgREST API (used by <code>supabase-py</code>) can read and write. <strong>Without this the cache silently fails on every call</strong> — tables created in the SQL editor default to <code>postgres</code>-only ownership.</li>
+</ol>
+
+<hr>
+
+<div class="tldr">
+  <p>The rule-based classifier at <code>prompt_generator/classifier.py</code> dumps <strong>54% (183/339)</strong> of dev tasks into <code>PURE_CODE</code>, the "I dunno" default. Three failure modes drive it: a structural bug where <em>framework-without-database</em> falls through every branch; missing tokens for whole languages (Flutter, Dart, Scala, Playwright, React Native, MERN); and collapsing a multi-dimensional infrastructure spec into a single enum value.</p>
+  <p>The proposed refactor: replace the enum with a structured <code>TaskRuntime</code> record everywhere it's read; classify with an LLM call wrapped by a Supabase-backed cache (~50 unique combos in the DB → <strong>~$0.05 to backfill</strong>, then never again — no maintained token lists, no substring-match bugs, new tech is auto-handled); define <strong>~11 pre-built E2B templates</strong>, one per (runtime, framework lane), each used for <strong>both</strong> the future eval gate and candidate-facing deployment so production parity is guaranteed. Service containers stay where they already are — in each task's own <code>docker-compose.yml</code>.</p>
+  <p>The classifier is the input to both persona-routed eval critics and the future E2B build/test gate. Fixing it first unblocks both.</p>
+</div>
+
+<h2>Why this matters</h2>
+<p><code>classify_task_category(competencies)</code> answers one question — <em>"what infrastructure does this task need?"</em> — and that single answer flows into:</p>
+<ul>
+  <li>The <strong>prompt generator's DSPy signature</strong> (<code>agent.py:209</code>, <code>:272</code>): the value is an input field on both the Generate and Verify steps; the docstring (<code>agent.py:155-160</code>) tells the LLM "The <code>task_category</code> field determines the file structure."</li>
+  <li>The <strong>reference retriever</strong> (<code>retriever.py:293</code>): picks reference prompts by category match.</li>
+  <li>The <strong>planned persona eval critics</strong> (task-eval-optimizer §1): one persona per category — DBA for <code>DB_ONLY</code>, MLE for <code>LLM_FRAMEWORK</code>, SRE for <code>CONTAINERIZED_APP</code>, etc.</li>
+  <li>The <strong>planned E2B build/test gate</strong> (<code>FOLLOWUPS.md</code> F12): the sandbox needs to know which template to boot.</li>
+</ul>
+<p>If the classifier mislabels <code>Python + FastAPI</code> as <code>PURE_CODE</code>, every downstream system inherits the lie.</p>
+
+<h2>Problem 1 — the classifier lies on most tasks</h2>
+
+<h3>1.1 — The data</h3>
+<pre><code>pure_code               183     ← the "default" bucket (54%)
+frontend                 46
+app_and_db               37
+non_code                 17
+db_only                  12
+llm_framework            11
+messaging                10
+containerized_app         9
+microservices             6
+vector_db                 5
+script_and_db             3</code></pre>
+
+<h3>1.2 — Three concrete failures</h3>
+
+<h4>A — <code>Python - FastAPI (BASIC)</code> × 9 tasks: structural bug</h4>
+<p>A FastAPI service is unambiguously an app. Current verdict: <span class="bad">PURE_CODE</span>.</p>
+<pre><code>has_db        = False   # no SQL/postgres/mongo/… in the name
+has_framework = True    # matches "fastapi"
+has_backend   = False   # ← BUG. _has_backend_language() requires
+                        #   backend-token AND NOT framework-token.
+                        #   "Python - FastAPI" matches both → returns False.
+has_container = False
+
+# Every branch needs has_db or has_container → all False:
+if has_db and (has_framework or has_web_app_lang):   # False
+if has_db and has_backend:                           # False
+if has_db:                                           # False
+if has_container and (has_backend or has_framework): # False
+# → PURE_CODE</code></pre>
+<p>Same hole eats <code>PHP - Laravel</code> (11 tasks), <code>Java + Spring Boot</code> (3+ tasks), <code>Java + Hibernate</code>.</p>
+
+<h4>B — <code>Flutter (INTERMEDIATE)</code> × 2 tasks: missing tokens</h4>
+<p><code>"flutter"</code> appears in no token list. No frontend, no backend, no anything → <span class="bad">PURE_CODE</span>. Same wall: <code>React Native + Firebase</code> × 8, <code>Scala</code> × 1, <code>Apache Camel</code> × 1.</p>
+
+<h4>C — <code>Golang, Redis</code>: wrong branch</h4>
+<p>Should be <code>APP_AND_DB</code> (Go binaries are servers). Current verdict: <span class="warn">SCRIPT_AND_DB</span>. Why? Go is in <code>_BACKEND_LANG_TOKENS</code> but not in <code>_WEB_APP_LANG_TOKENS</code>, so backend+DB without a framework defaults to "script + DB" — wrong for Go.</p>
+
+<h2>Problem 2 — what an E2B template actually is</h2>
+<p>The intuitive <em>"one template per task type"</em> plan dies under the math (8 runtimes × 5 frameworks × 4 DBs × … ≈ 480+ templates). But the real shape of the problem is different, and the existing code in <code>e2b_flow/templates/python-sql/</code> already shows it.</p>
+
+<h3>2.1 — An E2B template is a pre-built VM snapshot</h3>
+<p>Look at <code>e2b_flow/templates/python-sql/template.py</code>:</p>
+<pre><code>from e2b import AsyncTemplate
+
+template = (
+    AsyncTemplate()
+    .from_image("e2bdev/code-interpreter:latest")
+    .run_cmd("apt-get install -y ... postgresql-client netcat-openbsd ...")
+    .run_cmd("install docker-ce docker-compose-plugin ...")       # DinD
+    .run_cmd("pip install psycopg2-binary sqlalchemy pandas")     # libs baked in
+    .run_cmd("install ttyd ...")                                  # browser terminal
+    .run_cmd("dpkg -i code-server_4.96.4_amd64.deb")             # browser VS Code
+    .run_cmd("install adminer ...")                               # browser DB GUI
+    .copy("start.sh", "/usr/local/bin/start.sh")
+    .set_start_cmd("sudo /usr/local/bin/start.sh", "sleep 20")
+)</code></pre>
+<p>Built once via <code>python build_prod.py</code> → registered with E2B as <code>utkrusht-python-sql</code>. A sandbox boots from this snapshot in ~150ms. <strong>Nothing is installed at boot.</strong> Pip/npm/apt at runtime is exactly the wrong pattern.</p>
+
+<h3>2.2 — Service containers come from the task, not the platform</h3>
+<p>The template provides <strong>DinD</strong> (Docker daemon inside the sandbox). The task ships its own <code>docker-compose.yml</code> that brings up Postgres-server, Redis, Mongo, whatever it needs. The task's <code>run.sh</code> does <code>docker compose up</code>; <code>kill.sh</code> does <code>docker compose down</code>.</p>
+<p><code>DEFAULT_PROBE_PORTS</code> in <code>sandbox_manager.py</code> confirms the split:</p>
+<table>
+  <tr><th>Ports baked into the template</th><th>Ports the task brings via compose</th></tr>
+  <tr>
+    <td>7681 (ttyd), 8443 (code-server), 8080 (Adminer)<br>Plus the candidate's app dev server (8000/3000/5000)</td>
+    <td>5432 (Postgres), 6379 (Redis), 27017 (Mongo)</td>
+  </tr>
+</table>
+
+<h3>2.3 — This collapses the maintenance surface</h3>
+<table>
+  <tr><th>Owner</th><th>Maintains</th><th>Cardinality</th></tr>
+  <tr><td><strong>Platform</strong></td><td>E2B templates (<code>template.py</code> + <code>start.sh</code> per template)</td><td><strong>~11</strong>, one per runtime+lane</td></tr>
+  <tr><td><strong>Each task</strong></td><td>Its own <code>docker-compose.yml</code> + <code>run.sh</code> + <code>kill.sh</code></td><td>brought with the task</td></tr>
+</table>
+<p>We never maintain a "sidecar library." Each task carries its own service containers. So template count is bounded by runtime × framework-lane, <strong>not</strong> by databases × messaging × etc.</p>
+
+<h2>The solution</h2>
+
+<h3>Step 1 — replace the lossy enum with a structured spec</h3>
+<p>A single <code>TaskCategory</code> enum compresses a multi-dimensional infrastructure spec into one flat value. Replace it with a record (no derived enum, no backward compat — nothing is stored yet):</p>
+<pre><code>from dataclasses import dataclass
+from typing import Literal
+
+@dataclass(frozen=True)
+class TaskRuntime:
+    runtime:        Literal["python","node","java","php","go","rust",
+                            "flutter","ruby","scala","none"]
+    frameworks:     tuple[str, ...]   # ("fastapi",), ("spring-boot",), ("laravel",)
+    datastores:     tuple[str, ...]   # ("postgres",), ("mongo","redis")
+    messaging:      tuple[str, ...]   # ("kafka",)
+    needs_browser:  bool              # Playwright/Selenium
+    kind:           Literal["app","script","mobile","frontend","testing",
+                            "db_only","llm","vector_db","non_code"]</code></pre>
+<p>This is the <strong>only</strong> classifier output. <code>TaskCategory</code> is deleted.</p>
+
+<h3>Step 2 — LLM classifier with persistent caching</h3>
+<p>The classifier is a single LLM call wrapped by a cache. No token lists, no substring matching, no hand-tuned rule branches.</p>
+<div class="ascii">                competencies
+                     │
+                     ▼
+        ┌────────────────────────────┐
+        │ Cache lookup               │  Supabase
+        │ keyed by sorted-set hash   │  tasks.task_runtime
+        │ of competency names        │
+        └─────────────┬──────────────┘
+                      │
+              HIT     │     MISS
+                      ▼
+              TaskRuntime
+              (~10 ms, $0)
+
+              MISS path:
+                      ▼
+        ┌────────────────────────────┐
+        │ LLM classifier (Sonnet)    │  ~1.5 s, ~$0.001
+        │ strict JSON schema → TR    │
+        └─────────────┬──────────────┘
+                      ▼
+        ┌────────────────────────────┐
+        │ Write to cache             │  tasks.task_runtime row
+        │ + classifier_source="llm"  │  + confidence score
+        └─────────────┬──────────────┘
+                      ▼
+              TaskRuntime</div>
+<p>The DB has ~50 distinct competency sets across 339 tasks → ~50 LLM calls ever, <strong>~$0.05 to backfill the entire dev DB</strong>. After that, classification is a 10ms column read.</p>
+<p><strong>Why no rules layer.</strong> Earlier drafts proposed rules-first with LLM fallback. The trade-off doesn't work in favour of rules:</p>
+<ul>
+  <li>Token lists go stale every time new tech emerges (Elixir, Mojo, Bun, Phoenix LiveView). The LLM doesn't — its training data is current.</li>
+  <li>Substring matching has false positives — <code>"rust"</code> substring-matches <code>"trusted"</code>, <code>"go"</code> substring-matches <code>"mongo"</code>. Maintaining substring tokens is fighting your tools.</li>
+  <li>The framework-no-DB bug we found was an emergent property of rule complexity. Removing rules removes that category of bug entirely.</li>
+  <li>The rules-vs-LLM latency gap (~5 ms vs ~1.5 s) only matters on the first sight of a combo — at task-generation time, not in any user-facing hot path.</li>
+</ul>
+<p><strong>Determinism via cache, not via constraints on the LLM.</strong> Same input → same output, because it's a column read. The "LLM is non-deterministic" concern doesn't survive caching.</p>
+<p><strong>Safety rails for the LLM:</strong></p>
+<ul>
+  <li>Strict JSON schema enforcement — invalid output is rejected and retried.</li>
+  <li>A <code>confidence</code> field on every classification. Anything <code>&lt; 0.7</code> is queued for human review before downstream code trusts it.</li>
+  <li>Persist <code>classifier_source</code> (<code>"llm"</code> / <code>"manual_override"</code>) so we can audit later and diff drift.</li>
+  <li><strong>Override path.</strong> A row in <code>tasks.task_runtime</code> can be edited directly. The cache reads it. If the LLM hallucinates once, fix the row, done. No code change needed for one-off corrections.</li>
+</ul>
+
+<h3>Step 3 — E2B templates: one snapshot per runtime+lane</h3>
+<p><strong>~11 templates</strong>, each a pre-built E2B v2 microVM snapshot. Each is one <code>template.py</code> + one <code>start.sh</code> (the file layout is incidental — what matters is the contents). Final shape is gated on the SDK verifications listed below.</p>
+<table>
+  <tr><th>Template</th><th>Runtime</th><th>Bakes in (in addition to common boilerplate)</th></tr>
+  <tr><td><code>utkrusht-python-sql</code> <span class="ok">✅</span></td><td>python</td><td>psycopg2-binary, sqlalchemy, pandas, postgresql-client</td></tr>
+  <tr><td><code>utkrusht-python-web</code></td><td>python</td><td>fastapi, flask, django, uvicorn, httpx, sqlalchemy</td></tr>
+  <tr><td><code>utkrusht-python-llm</code></td><td>python</td><td>langchain, llama-index, openai, anthropic, pinecone-client</td></tr>
+  <tr><td><code>utkrusht-node-web</code></td><td>node</td><td>express, react, next, typescript, jest, vitest</td></tr>
+  <tr><td><code>utkrusht-node-mobile</code></td><td>node</td><td>react-native CLI, expo CLI</td></tr>
+  <tr><td><code>utkrusht-java-spring</code></td><td>java</td><td>JDK 17, maven, gradle, spring-boot-starter-*</td></tr>
+  <tr><td><code>utkrusht-php-laravel</code></td><td>php</td><td>php-fpm, composer, laravel installer</td></tr>
+  <tr><td><code>utkrusht-go-base</code></td><td>go</td><td>go toolchain</td></tr>
+  <tr><td><code>utkrusht-rust-base</code></td><td>rust</td><td>cargo + common crates</td></tr>
+  <tr><td><code>utkrusht-flutter</code></td><td>flutter</td><td>dart SDK + flutter</td></tr>
+  <tr><td><code>utkrusht-playwright</code></td><td>node</td><td>chromium preinstalled + playwright pkg</td></tr>
+</table>
+<p><strong>Common boilerplate baked into every template:</strong></p>
+<ul>
+  <li>Docker daemon (DinD) so tasks can <code>docker compose up</code> against their own compose file</li>
+  <li><code>ttyd</code> browser terminal on port 7681</li>
+  <li><code>code-server</code> browser VS Code on port 8443</li>
+  <li>Adminer browser DB GUI on port 8080 (for any task using a SQL DB)</li>
+  <li>Compose v1→v2 shim, <code>netcat-openbsd</code>, <code>git</code>, <code>jq</code></li>
+</ul>
+
+<h3>Step 3a — one template lineage, used for both eval and deployment</h3>
+<p>We do <strong>not</strong> maintain "eval templates" and "deploy templates" as separate sets. Each of the ~11 templates above serves <strong>both</strong> the future E2B build/test gate (task-eval-optimizer Phase 3) and candidate-facing deployment. Reasons:</p>
+<ul>
+  <li><strong>Production parity.</strong> Anything that passes eval must run on the template the candidate actually gets. A split would re-introduce F12-class bugs at the template layer — "eval template was fine, deploy template missing a library." That's the exact failure mode F12 surfaced at the eval layer.</li>
+  <li><strong>Single source of truth.</strong> Adding a Python package means updating one template, not two.</li>
+  <li><strong>The "dead weight" cost is negligible.</strong> Browser tools running during automated eval are background processes on a microVM; they cost nothing observable.</li>
+  <li><strong>Boot time is fine for eval.</strong> Even 5–10 s per eval is acceptable — eval runs at task-generation time, not per candidate request.</li>
+</ul>
+<p>The eval gate boots a sandbox from the same template the candidate would receive, copies the task code in, runs <code>run.sh</code>, captures pass/fail + stderr/stdout, then kills the sandbox. Candidates get the same template, with a longer idle timeout and the browser URLs exposed.</p>
+
+<h3>Step 4 — TaskRuntime → template_id picker</h3>
+<pre><code>def pick_template(rt: TaskRuntime) -> str:
+    if rt.kind == "mobile" and rt.runtime == "flutter": return "utkrusht-flutter"
+    if rt.kind == "mobile" and rt.runtime == "node":    return "utkrusht-node-mobile"
+    if rt.kind == "testing" and rt.needs_browser:       return "utkrusht-playwright"
+    if rt.kind == "llm":                                return "utkrusht-python-llm"
+    if rt.runtime == "python" and "postgres" in rt.datastores:
+                                                        return "utkrusht-python-sql"
+    if rt.runtime == "python" and rt.frameworks:        return "utkrusht-python-web"
+    if rt.runtime == "node":                            return "utkrusht-node-web"
+    if rt.runtime == "java":                            return "utkrusht-java-spring"
+    if rt.runtime == "php":                             return "utkrusht-php-laravel"
+    if rt.runtime == "go":                              return "utkrusht-go-base"
+    if rt.runtime == "rust":                            return "utkrusht-rust-base"
+    raise ValueError(f"no template for {rt}")</code></pre>
+<p>Service containers are NOT a picker concern — they're brought by the task's compose file.</p>
+
+<h2>E2B SDK capabilities — verified</h2>
+<p>The ~11-template list above doesn't need to ride on assumptions. The following was confirmed against the v2 SDK installed from <code>requirements.txt</code> (introspected) and current E2B docs.</p>
+
+<h3>Findings</h3>
+
+<p><strong>1. Template composition / inheritance — YES.</strong> <code>AsyncTemplate().from_template("utkrusht-python-base")</code> chains from a parent template; verified via SDK introspection. Plus E2B ships <strong>layer-level cache sharing</strong> across templates within a team — identical early <code>run_cmd()</code> sequences automatically share build cache even without explicit inheritance. (Source: SDK introspection + <a href="https://e2b.mintlify.app/docs/template/caching">docs/template/caching</a>.)</p>
+
+<p><strong>2. Multi-container natively — NO.</strong> No first-class sidecar primitive. The documented pattern for multi-service tasks is Docker-in-Docker: install Docker + docker-compose into the template, run <code>docker compose up</code> inside the sandbox. This is exactly what <code>python-sql</code> already does. (Source: <a href="https://e2b.mintlify.app/docs/template/examples/docker">docs/template/examples/docker</a>.)</p>
+
+<p><strong>3. Account-level limits — not a constraint.</strong> Pro tier ($150/mo): 100 concurrent sandboxes (expandable to 1100), 24-hour sessions, <strong>20 GiB storage</strong>. 13 templates × ~1.5 GB fits comfortably. Hobby tier (free) includes a $100 usage credit and 10 GiB. Per-sandbox usage is ~$0.10/hour at 2 vCPU. (Source: <a href="https://e2b.dev/pricing">e2b.dev/pricing</a>.)</p>
+
+<p><strong>4. Cold-start latency — ~78–180 ms.</strong> Firecracker microVM snapshot boot. The "5–10 s" earlier drafts worried about is <strong>start-cmd execution</strong> (dockerd + ttyd + code-server initialising), not the snapshot itself. Image size affects start-cmd, not snapshot. (Source: public benchmarks, Jan 2026.)</p>
+
+<p><strong>5. Best-practice base image.</strong> The v2 SDK exposes <strong>language-specific convenience methods</strong>: <code>from_python_image()</code>, <code>from_node_image()</code>, <code>from_bun_image()</code>, <code>from_ubuntu_image()</code>, <code>from_debian_image()</code>, <code>from_base_image()</code> (which uses <code>e2bdev/base:latest</code> — minimal E2B-flavoured base). <code>python-sql</code> currently uses <code>from_image("e2bdev/code-interpreter:latest")</code>, which is heavier (ships Jupyter) — we don't need that. Each template can call exactly one base method. (Source: <a href="https://e2b.dev/docs/template/base-image">docs/template/base-image</a> + SDK introspection.)</p>
+
+<h3>What this changes in the design</h3>
+<ol>
+  <li><strong>Use language-specific base methods, not <code>e2bdev/code-interpreter</code>.</strong> Every <code>utkrusht-*</code> template's <code>template.py</code> starts with <code>from_python_image()</code> / <code>from_node_image()</code> / etc. — leaner than what <code>python-sql</code> does today.</li>
+  <li><strong>Embrace <code>from_template()</code> for composition.</strong> Build <code>utkrusht-python-base</code> once (Python + DinD + ttyd + code-server + adminer + compose-shim). Then leaf templates <code>from_template("utkrusht-python-base")</code> and add only their lane-specific libraries. Maintenance per leaf drops to ~20 LOC.</li>
+  <li><strong>DinD stays.</strong> No design change; the task's own <code>docker-compose.yml</code> brings up its services.</li>
+  <li><strong>Don't pre-optimise image size.</strong> 20 GiB of headroom on Pro covers any reasonable shape.</li>
+  <li><strong>Cold-start is dominated by start-cmd, not snapshot.</strong> If eval-gate latency ever matters, profile <code>start.sh</code>; the VM boot itself is ~150 ms and not the bottleneck.</li>
+</ol>
+
+<h3>Revised template hierarchy (composition-aware)</h3>
+<div class="ascii">utkrusht-python-base   from_python_image()
+                       + DinD, ttyd, code-server, adminer, compose-shim, common deps
+   ├── utkrusht-python-sql       from_template("utkrusht-python-base") + psycopg2, sqlalchemy, postgresql-client
+   ├── utkrusht-python-web       from_template("utkrusht-python-base") + fastapi, flask, django, uvicorn
+   └── utkrusht-python-llm       from_template("utkrusht-python-base") + langchain, llama-index, openai, anthropic
+
+utkrusht-node-base     from_node_image()
+                       + DinD, ttyd, code-server, adminer, compose-shim
+   ├── utkrusht-node-web         from_template("utkrusht-node-base") + express, react, next, typescript, jest
+   ├── utkrusht-node-mobile      from_template("utkrusht-node-base") + react-native, expo
+   └── utkrusht-playwright       from_template("utkrusht-node-base") + chromium-headless, playwright
+
+utkrusht-java-base     from_debian_image() + JDK 17 + maven + gradle + DinD + browser tools
+   └── utkrusht-java-spring      from_template("utkrusht-java-base") + spring-boot starters
+
+# stand-alone (no leaves yet):
+utkrusht-php-laravel   from_debian_image() + php-fpm + composer + laravel + DinD + browser tools
+utkrusht-go-base       from_debian_image() + go toolchain + DinD + browser tools
+utkrusht-rust-base     from_debian_image() + cargo + common crates + DinD + browser tools
+utkrusht-flutter       from_debian_image() + dart SDK + flutter + browser tools  (no DinD — mobile tasks don't need compose)</div>
+<p><strong>Effective maintenance surface:</strong> 7 roots + ~6 leaves = ~13 template files. Each leaf is ~20 LOC.</p>
+
+<h2>What changes in generated task content</h2>
+<p>The prompt generator currently instructs the LLM to produce <code>run.sh</code> and <code>kill.sh</code> that install Docker, install the language runtime, install system packages, then bring up services. That made sense for the droplet target. For the E2B target, <strong>most of that boilerplate is already in the template</strong> and should be stripped.</p>
+<p><code>run.sh</code> and <code>kill.sh</code> themselves <strong>stay</strong> — they remain the contract between task and platform. The change is what goes inside them.</p>
+
+<h4>Before (current — droplet-shaped)</h4>
+<pre><code># run.sh
+apt-get update
+apt-get install -y python3 python3-pip postgresql-client docker.io
+pip install -r requirements.txt
+docker compose up -d
+psql -h localhost -U postgres &lt; seed.sql
+python app/main.py</code></pre>
+
+<h4>After (sandbox-aware — template provides infra)</h4>
+<pre><code># run.sh
+docker compose up -d              # task's own compose for postgres-server
+psql -h localhost -U postgres &lt; seed.sql
+python app/main.py</code></pre>
+<p>Same for <code>kill.sh</code> — drop the uninstall steps; keep <code>docker compose down</code>.</p>
+
+<h4>Where this lands in code</h4>
+<p>The prompt generator's <code>GeneratePromptSignature</code> docstring (<code>prompt_generator/agent.py:155-160</code>) currently reads "The <code>task_category</code> field determines the file structure…". This becomes:</p>
+<pre><code>The TaskRuntime fields determine the generated content:
+  • runtime, frameworks, libraries — already pre-installed by the E2B template.
+    Do NOT include apt-get install, pip install, or npm install for these in run.sh.
+  • datastores — generate a docker-compose.yml that brings up these service
+    containers (Postgres, Redis, Mongo, …). run.sh does `docker compose up`,
+    kill.sh does `docker compose down`.
+  • kind="mobile" — no Dockerfile, no compose; the template ships the SDK.
+    run.sh runs the runtime's native test command (e.g. `flutter test`).
+  • needs_browser — the template (utkrusht-playwright) already ships chromium;
+    do NOT install it in run.sh.</code></pre>
+
+<h2>Worked examples</h2>
+<table>
+  <tr><th>Task</th><th>Current</th><th>TaskRuntime</th><th>Template</th><th>Task's compose</th></tr>
+  <tr><td><code>Python - FastAPI</code></td><td class="bad">PURE_CODE</td><td>runtime=python, frameworks=(fastapi,), kind=app</td><td><code>utkrusht-python-web</code></td><td>(none)</td></tr>
+  <tr><td><code>Python - FastAPI + Postgres</code></td><td class="ok">APP_AND_DB</td><td>runtime=python, frameworks=(fastapi,), datastores=(postgres,), kind=app</td><td><code>utkrusht-python-sql</code></td><td>postgres-server</td></tr>
+  <tr><td><code>Flutter</code></td><td class="bad">PURE_CODE</td><td>runtime=flutter, kind=mobile</td><td><code>utkrusht-flutter</code></td><td>(none)</td></tr>
+  <tr><td><code>Golang, Redis</code></td><td class="warn">SCRIPT_AND_DB</td><td>runtime=go, datastores=(redis,), kind=app</td><td><code>utkrusht-go-base</code></td><td>redis-server</td></tr>
+  <tr><td><code>Playwright</code></td><td class="bad">PURE_CODE</td><td>runtime=node, kind=testing, needs_browser=True</td><td><code>utkrusht-playwright</code></td><td>(none)</td></tr>
+  <tr><td><code>Python + LlamaIndex</code></td><td class="ok">LLM_FRAMEWORK</td><td>runtime=python, frameworks=(llama-index,), kind=llm</td><td><code>utkrusht-python-llm</code></td><td>(none)</td></tr>
+  <tr><td><code>Java + Spring Boot + Postgres</code></td><td class="ok">APP_AND_DB</td><td>runtime=java, frameworks=(spring-boot,), datastores=(postgres,), kind=app</td><td><code>utkrusht-java-spring</code></td><td>postgres-server</td></tr>
+  <tr><td><code>MySQL</code> (alone)</td><td class="ok">DB_ONLY</td><td>runtime=none, datastores=(mysql,), kind=db_only</td><td><code>utkrusht-python-sql</code> (reused; has psql client + Adminer)</td><td>mysql-server</td></tr>
+  <tr><td><code>MERN Stack</code></td><td class="bad">PURE_CODE</td><td>runtime=node, frameworks=(express, react), datastores=(mongo,), kind=app</td><td><code>utkrusht-node-web</code></td><td>mongo-server</td></tr>
+  <tr><td><code>Firebase + React Native</code></td><td class="bad">PURE_CODE</td><td>runtime=node, frameworks=(react-native, firebase), kind=mobile</td><td><code>utkrusht-node-mobile</code></td><td>(none)</td></tr>
+</table>
+<p>Ten wildly different tasks, all assembled from <strong>~11 templates + each task's own compose</strong>.</p>
+
+<h2>Where this fits in the wider plan</h2>
+<div class="ascii">┌────────────────────────────────────────────────────────────┐
+│ PR #1 — classifier refactor + prompt-generator rewrite     │   ~250 LOC
+│ • TaskRuntime struct (replaces TaskCategory entirely)      │   ~$0.05 one-time
+│ • LLM classifier + Supabase-cached results                 │   Supabase migration
+│ • Rewrite agent.py:155-160 HARD CONSTRAINT block           │
+│ • Rewrite agent.py:209 + :272 dspy.InputFields             │
+│ • Rewrite retriever.py:293 to use TaskRuntime              │
+│ • Rewrite trainset.py:380 column schema                    │
+│ • Add tasks.task_runtime JSONB; backfill 339 rows          │
+└────────────────────────────┬───────────────────────────────┘
+                             │
+                             ▼
+┌────────────────────────────────────────────────────────────┐
+│ task-eval-optimizer Phase 1 — persona-routed critics       │   ~120 LOC
+│ Keyed off TaskRuntime.kind                                 │
+└────────────────────────────┬───────────────────────────────┘
+                             │
+                             ▼
+┌────────────────────────────────────────────────────────────┐
+│ E2B SDK capability check + template buildout               │   per-template:
+│ (see "Verify against the E2B SDK" above)                   │   ~80 LOC + start.sh
+│ Then build ~10 templates beyond python-sql                 │
+└────────────────────────────┬───────────────────────────────┘
+                             │
+                             ▼
+┌────────────────────────────────────────────────────────────┐
+│ task-eval-optimizer Phase 3 — E2B build/test gate          │   ~250 LOC
+│ • Template picker reads TaskRuntime                        │
+│ • Per-stack install + test commands                        │
+│ • Adversarial test check (FOLLOWUPS.md F12)                │
+└────────────────────────────────────────────────────────────┘</div>
+
+<h2>PR #1 — concrete scope (~250 LOC)</h2>
+<ol>
+  <li>Introduce <code>TaskRuntime</code> dataclass in <code>prompt_generator/classifier.py</code>. <strong>Delete <code>TaskCategory</code></strong> and the entire rule-based classifier (<code>_DB_TOKENS</code>, <code>_WEB_FRAMEWORK_TOKENS</code>, all the <code>_has_*</code> helpers, <code>_matches_any</code>).</li>
+  <li>Implement the <strong>LLM classifier</strong> — strict JSON schema, returns <code>TaskRuntime</code>. Wrap with a Supabase-backed cache keyed by a sorted-competency-set hash. Persist <code>confidence</code> and <code>classifier_source</code> columns alongside the runtime payload.</li>
+  <li>Add <code>tasks.task_runtime JSONB</code> column. <strong>Backfill all 339 rows</strong> by running the LLM classifier once per unique combo (~50 LLM calls, ~$0.05 total). Surface any <code>confidence &lt; 0.7</code> rows for manual review before the next PR builds on them.</li>
+  <li><strong>Rewrite the four call sites in <code>prompt_generator/</code></strong>:
+    <ul>
+      <li><code>agent.py:155-160</code> HARD CONSTRAINT block — instruct the LLM in terms of <code>runtime</code>/<code>frameworks</code>/<code>datastores</code>/<code>kind</code>, with the explicit "DO NOT install runtime/libs in run.sh" rule.</li>
+      <li><code>agent.py:209</code> and <code>:272</code> <code>dspy.InputField</code>s — replace <code>task_category: str</code> with structured fields.</li>
+      <li><code>retriever.py:293</code> — reference matching now keys off <code>(runtime, kind)</code>.</li>
+      <li><code>trainset.py:380</code> — column schema updates.</li>
+    </ul>
+  </li>
+  <li><strong>Validation</strong>: re-classify all 339 dev tasks; every row gets a <code>TaskRuntime</code>. The old <code>PURE_CODE</code> default bucket should drop to ~zero (the LLM knows the difference between a script and an app). Anything <code>&lt; 0.7</code> confidence goes on the review queue, not into production.</li>
+</ol>
+<p>Estimated <strong>~250 LOC</strong> + Supabase migration + ~$0.05 in classifier calls. The LLM <em>is</em> the classifier — there is no PR #2 just for "the LLM fallback."</p>
+
+<h2>Out of scope</h2>
+<ul>
+  <li>E2B SDK capability verification (the questions in the "Verify against the E2B SDK" section) — a separate spike before template buildout begins.</li>
+  <li>Building the ~10 additional E2B templates (separate epic — design in this doc, build under <code>e2b_flow/templates/</code>).</li>
+  <li>The E2B build/test gate itself (task-eval-optimizer Phase 3).</li>
+  <li>Migrating the deployed droplet flow to E2B — outside the prompt-generator's concern.</li>
+</ul>
+
+<h2>Open questions</h2>
+<ul>
+  <li><strong>Do we need a separate <code>utkrusht-python-web</code>, or can <code>utkrusht-python-sql</code> cover both?</strong> <code>python-sql</code> already has Python + DinD + postgresql-client + Adminer. The only thing missing is FastAPI/Flask/Django pre-installed. Lean <strong>bake in</strong> — saves a template, marginal image-size cost.</li>
+  <li><strong><code>utkrusht-go-base</code> necessity</strong>: Go binaries are statically linked; the template barely needs anything beyond the toolchain. Worth profiling whether building a dedicated template is worth it vs. baking Go into the python-sql-style base.</li>
+  <li><strong>Multi-runtime tasks</strong> like <code>Frontend (React) + Backend (Python FastAPI)</code>: current model picks ONE template. Option a: pick the dominant runtime + pre-install the other's CLI as a helper; option b: a new combo template. Need a real example from the DB before deciding.</li>
+  <li><strong>Should the prompt generator know which template will be picked?</strong> Yes — knowing the template informs the generated <code>run.sh</code>. Probably pass <code>template_id</code> as a derived <code>dspy.InputField</code> alongside the <code>TaskRuntime</code> fields.</li>
+  <li><strong><code>is_shared_infra_required</code> migration</strong>: today 53% of tasks have it set. Maps roughly to "task has a <code>docker-compose.yml</code>." Worth a sanity check during backfill — when <code>is_shared_infra_required=True</code> but the new classifier infers no <code>datastores</code>/<code>messaging</code>, surface as an outlier for manual review.</li>
+</ul>
+
+<h2>References</h2>
+<ul>
+  <li><code>prompt_generator/classifier.py</code> — current implementation</li>
+  <li><code>prompt_generator/agent.py:155-160, 209, 272</code> — the <code>task_category</code> consumers in the DSPy signatures (the rewrite targets)</li>
+  <li><code>e2b_flow/templates/python-sql/template.py</code> — the canonical E2B template pattern (v2 SDK, <code>AsyncTemplate</code>)</li>
+  <li><code>e2b_flow/templates/python-sql/start.sh</code> — the boot-time supervisor (dockerd + ttyd + code-server + adminer)</li>
+  <li><code>e2b_flow/sandbox_manager.py</code> — <code>DEFAULT_PROBE_PORTS</code> confirms the template/task split for ports</li>
+  <li><a href="./prompt-generator/prompt-generator-agent.md">prompt-generator-agent.md</a> — context on the 5 signals fed to the LLM</li>
+  <li><a href="./task-eval-optimizer/task-eval-optimizer.md">task-eval-optimizer.md</a> — downstream Phase 1 (persona critics) and Phase 3 (E2B gate)</li>
+  <li><code>.task_agent_runs/FOLLOWUPS.md</code> — F12 (non-compiling code passed eval) is the strongest argument for the E2B gate, which depends on this work</li>
+  <li>Supabase <code>tasks</code> table (dev environment, 339 rows analysed 2026-05-20)</li>
+</ul>
+
+</main>
+</body>
+</html>

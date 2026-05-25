@@ -133,7 +133,7 @@ def format_cost_summary(usage_by_model: Dict) -> str:
 
 def save_pr_review_locally(task_name: str, base_repo_files: dict, pr_data: dict, eval_info: dict):
     """Save generated PR review task files locally for inspection."""
-    base_dir = Path(__file__).parent.parent / "infra_assets" / "pr_review_tasks" / task_name
+    base_dir = Path(__file__).parent.parent / "data" / "generated" / "pr_review_tasks" / task_name
 
     # Save base repo files
     repo_dir = base_dir / "base_repo"

@@ -36,7 +36,7 @@ from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
 load_dotenv()
 
 # Constants
-BASE_DIR = Path(__file__).parent.parent / "task_input_files"
+BASE_DIR = Path(__file__).parent.parent / "data" / "generated" / "input_files"
 MODEL = "gpt-5.4"
 
 PROFICIENCY_YOE_MAP = {
@@ -210,6 +210,42 @@ Competency scope:
     return response.output_text.strip(), extract_usage(response)
 
 
+def generate_organization(client: openai.OpenAI, domain: str) -> tuple[dict, dict]:
+    """Generate a fictional company background for a business domain.
+
+    Returns (organization_dict, usage_dict). The ``organization_id`` is kept
+    stable (the platform org) because downstream consumers may treat it as an
+    FK — only the company name and narrative background reflect the domain.
+    """
+    prompt = f"""You are writing the company background for a realistic coding-assessment task.
+
+Invent a plausible fictional company that operates squarely in the "{domain}" business domain, and write its background.
+
+Return STRICT JSON only — no markdown, no commentary — with exactly these two keys:
+{{"organization_name": "<short company name>", "organization_background": "<2-3 sentences: what the company does, its product, and rough scale>"}}
+
+The background must read like a real company a candidate could be hired into — concrete product, customers, scale. Do NOT mention assessments, hiring, or proof-of-skills.
+"""
+
+    response = client.responses.create(
+        model=MODEL,
+        input=[{"role": "user", "content": prompt}],
+        reasoning={"effort": "low"},
+    )
+
+    raw = response.output_text.strip()
+    # The model is asked for bare JSON; strip a stray markdown fence defensively.
+    match = re.search(r"\{.*\}", raw, re.DOTALL)
+    parsed = json.loads(match.group(0) if match else raw)
+
+    organization = {
+        "organization_id": HARDCODED_ORGANIZATION["organization_id"],
+        "organization_name": parsed["organization_name"],
+        "organization_background": parsed["organization_background"],
+    }
+    return organization, extract_usage(response)
+
+
 def generate_questions_prompt(client: openai.OpenAI, long_scope: str, name: str, proficiency: str, yoe: str) -> tuple[str, dict]:
     """Generate questions_prompt from competency scope using OpenAI Responses API.
 
@@ -349,6 +385,10 @@ def write_json_safe(file_path: Path, data, force: bool = False) -> bool:
     "--role", "-r", default=None,
     help="Role title or description for this assessment — a short string (e.g. 'Product Manager') or a path to a text file with a longer description.",
 )
+@click.option(
+    "--domain", default=None,
+    help="Business domain to set the task in (e.g. 'e-commerce', 'healthcare'). When given, the organization background is generated for this domain instead of the default.",
+)
 @click.option("--folder-name", "-f", default=None, help="Override the auto-generated task subfolder name")
 @click.option("--force", is_flag=True, default=False, help="Overwrite existing files if they exist")
 @click.option("--dry-run", is_flag=True, default=False, help="Show what would be created without writing files")
@@ -357,7 +397,7 @@ def write_json_safe(file_path: Path, data, force: bool = False) -> bool:
     type=click.Choice(["dev", "prod"]),
     help="Supabase environment (default: prod)",
 )
-def generate_input_files(competency_name, proficiency, role, folder_name, force, dry_run, env):
+def generate_input_files(competency_name, proficiency, role, domain, folder_name, force, dry_run, env):
     """Generate competency and background input files from the Supabase competency table.
 
     For multiple competencies in one combined file, use comma-separated names:
@@ -448,6 +488,22 @@ def generate_input_files(competency_name, proficiency, role, folder_name, force,
             f"at the {proficiency_upper} level as described in the competency scope."
         )
 
+    # 4b. Generate a domain-specific organization when a domain was supplied.
+    #     Without a domain, fall back to the default platform organization so
+    #     existing CLI callers (no --domain) are unaffected.
+    organization = HARDCODED_ORGANIZATION
+    if domain:
+        click.echo(f"Generating organization background for domain: {domain}")
+        try:
+            organization, org_usage = generate_organization(openai_client, domain)
+            total_usage["input_tokens"] += org_usage["input_tokens"]
+            total_usage["output_tokens"] += org_usage["output_tokens"]
+            click.echo(f"  organization generated: {organization['organization_name']}")
+        except Exception as e:
+            click.echo(f"  WARNING: Failed to generate domain organization: {e}")
+            click.echo("  Using the default organization.")
+            organization = HARDCODED_ORGANIZATION
+
     # Display LLM cost summary
     total_cost = calculate_cost(total_usage)
     click.echo(f"\n  LLM Usage: {total_usage['input_tokens']} input + {total_usage['output_tokens']} output tokens")
@@ -455,7 +511,7 @@ def generate_input_files(competency_name, proficiency, role, folder_name, force,
 
     # 5. Build background JSON
     background_data = {
-        "organization": HARDCODED_ORGANIZATION,
+        "organization": organization,
         "role_context": role_context,
         "questions_prompt": questions_prompt,
         "yoe": yoe,

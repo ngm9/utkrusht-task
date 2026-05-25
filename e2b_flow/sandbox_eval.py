@@ -10,25 +10,35 @@ full of `implements dynamic` / missing-import errors).
 Scope (v1): ``runtime == "python"`` only (the ``utkrusht-python`` template).
 Other runtimes are SKIPPED — logged, not failed — until their templates exist.
 
-Gated behind the ``SANDBOX_EVAL_ENABLED`` env flag; off by default.
+Gated behind the ``SANDBOX_EVAL_ENABLED`` env flag. Pipeline runs
+(``run_pipeline.py`` and the task-builder) default it ON; a raw ``multiagent.py``
+call leaves it off unless the flag is set.
+
+Every gate run logs a structured, ``[e2b-gate]``-prefixed block — boot, file
+write, ``docker compose``, ``pip``, ``pytest``, the tail of each command's
+output, and the final verdict — so the run is readable in the stage log.
 """
 from __future__ import annotations
 
 import os
 import re
+import time
 from dataclasses import dataclass
 from typing import Any
 
 from logger_config import logger
 
-# runtime (TaskRuntime.runtime) -> E2B template name. Extend as templates ship.
-_TEMPLATE_FOR_RUNTIME: dict[str, str] = {
-    "python": "utkrusht-python",
-}
+# ``template_name_for_runtime`` is imported lazily inside ``run_sandbox_eval``
+# to avoid an import cycle: ``task_generation.gate`` imports this module at
+# package-init time, so importing back from ``task_generation`` here would
+# trigger a partially-initialised-module error during pytest collection.
 
 _TASK_DIR = "/home/user/task"
 _SANDBOX_TIMEOUT_S = 300
 _CMD_TIMEOUT_S = 240
+
+# Prefix on every gate log line, so the block is greppable and visually grouped.
+_GATE = "[e2b-gate]"
 
 
 @dataclass
@@ -52,6 +62,9 @@ class SandboxEvalResult:
             "skipped": self.skipped,
             "verdict": self.verdict,
             "detail": self.detail[:2000],
+            # Persist the tail of the in-sandbox output so the gate run is
+            # inspectable later from the stored eval_info, not just live logs.
+            "stdout_tail": self.stdout_tail[-4000:],
         }
 
 
@@ -123,6 +136,35 @@ def _classify_pytest(exit_code: int, output: str) -> SandboxEvalResult:
     )
 
 
+def _verdict_label(result: SandboxEvalResult) -> str:
+    """PASS / FAIL / SKIP — the one-word outcome class for a result."""
+    if result.skipped:
+        return "SKIP"
+    return "PASS" if result.passed else "FAIL"
+
+
+def _log_output(label: str, output: str, lines: int = 30) -> None:
+    """Log the tail of a sandbox command's output, indented for readability."""
+    tail = [ln for ln in output.splitlines() if ln.strip()][-lines:]
+    if not tail:
+        return
+    logger.info(f"{_GATE}   ── {label} (last {len(tail)} lines) ──")
+    for ln in tail:
+        logger.info(f"{_GATE}   | {ln}")
+
+
+def _finish(result: SandboxEvalResult) -> SandboxEvalResult:
+    """Log the final gate verdict and return the result unchanged.
+
+    Every ``run_sandbox_eval`` return path funnels through here, so the verdict
+    line is always emitted and the log block is always closed.
+    """
+    logger.info(f"{_GATE} verdict: {result.verdict} [{_verdict_label(result)}] "
+                f"— {result.detail}")
+    logger.info(f"{_GATE} {'─' * 60}")
+    return result
+
+
 def run_sandbox_eval(code_files: dict, task_runtime: Any) -> SandboxEvalResult:
     """Boot a sandbox, write the generated code in, verify it compiles + runs.
 
@@ -130,87 +172,113 @@ def run_sandbox_eval(code_files: dict, task_runtime: Any) -> SandboxEvalResult:
     Returns ``skipped=True`` when there is no template for the runtime, no
     code, or E2B infra fails — a skip never blocks the task.
     """
+    from task_generation.runtime_resolver import template_name_for_runtime
+
     runtime = getattr(task_runtime, "runtime", None)
-    template = _TEMPLATE_FOR_RUNTIME.get(runtime or "")
+    template = template_name_for_runtime(runtime)
+
+    logger.info(f"{_GATE} {'─' * 60}")
+    logger.info(f"{_GATE} E2B build/test gate — runtime={runtime!r} "
+                f"template={template or '<none>'} files={len(code_files or {})}")
+
     if template is None:
-        return SandboxEvalResult(
+        return _finish(SandboxEvalResult(
             skipped=True, verdict="no_template",
-            detail=f"no sandbox template for runtime={runtime!r} — gate skipped",
-        )
+            detail=f"no sandbox template for runtime={runtime!r} — gate skipped"))
     if not code_files:
-        return SandboxEvalResult(
+        return _finish(SandboxEvalResult(
             skipped=True, verdict="no_code",
-            detail="no code_files to evaluate — gate skipped",
-        )
+            detail="no code_files to evaluate — gate skipped"))
 
     from e2b import Sandbox
 
+    t0 = time.time()
+    logger.info(f"{_GATE} booting sandbox from {template}…")
     try:
         sb = Sandbox.create(template=template, timeout=_SANDBOX_TIMEOUT_S)
     except Exception as exc:  # noqa: BLE001 — infra failure must not fail the task
-        logger.warning(f"sandbox eval: could not boot {template}: {exc}")
-        return SandboxEvalResult(skipped=True, verdict="infra_error",
-                                 detail=f"sandbox boot failed: {exc}")
+        logger.warning(f"{_GATE} could not boot {template}: {exc}")
+        return _finish(SandboxEvalResult(
+            skipped=True, verdict="infra_error",
+            detail=f"sandbox boot failed: {exc}"))
+    logger.info(f"{_GATE} sandbox up ({time.time() - t0:.1f}s)")
 
     try:
         for path, content in code_files.items():
             dest = f"{_TASK_DIR}/{str(path).lstrip('/')}"
             sb.files.write(dest, content if isinstance(content, str) else str(content))
+        logger.info(f"{_GATE} wrote {len(code_files)} file(s) to {_TASK_DIR}")
 
         names = {str(p).lstrip("/") for p in code_files}
 
         # If the task brings service containers, start them before tests run.
         if any(n == "docker-compose.yml" or n.endswith("/docker-compose.yml")
                for n in names):
+            ts = time.time()
             code, out, err = _run(sb, "docker compose up -d --wait",
                                   cwd=_TASK_DIR, timeout=240)
-            if code != 0:
-                return SandboxEvalResult(
+            ok = code == 0
+            logger.info(f"{_GATE} docker compose up… "
+                        f"{'ok' if ok else f'FAILED exit={code}'} "
+                        f"({time.time() - ts:.1f}s)")
+            if not ok:
+                _log_output("docker compose output", out + err)
+                return _finish(SandboxEvalResult(
                     passed=False, verdict="compose_failed",
                     detail="`docker compose up` failed — the task's service "
                            "containers do not start.",
-                    stdout_tail=(out + err)[-2000:],
-                )
+                    stdout_tail=(out + err)[-3000:]))
 
         # Install the task's declared Python deps (the template pre-installs
         # the common set; this tops up anything task-specific).
         if "requirements.txt" in names:
+            ts = time.time()
             code, out, err = _run(
                 sb, "pip install --break-system-packages -r requirements.txt",
                 cwd=_TASK_DIR, timeout=240)
-            if code != 0:
-                return SandboxEvalResult(
+            ok = code == 0
+            logger.info(f"{_GATE} pip install -r requirements.txt… "
+                        f"{'ok' if ok else f'FAILED exit={code}'} "
+                        f"({time.time() - ts:.1f}s)")
+            if not ok:
+                _log_output("pip output", out + err)
+                return _finish(SandboxEvalResult(
                     passed=False, verdict="pip_failed",
                     detail="`pip install -r requirements.txt` failed.",
-                    stdout_tail=(out + err)[-2000:],
-                )
+                    stdout_tail=(out + err)[-3000:]))
 
+        ts = time.time()
         code, out, err = _run(sb, "python -m pytest -q --tb=short",
                               cwd=_TASK_DIR, timeout=240)
         combined = out + "\n" + err
+        logger.info(f"{_GATE} pytest… exit={code} ({time.time() - ts:.1f}s)")
+        _log_output("pytest output", combined)
 
         if code == 5:
             # No tests collected — fall back to a compile check so a task that
             # legitimately ships no tests still gets a parse gate.
+            ts = time.time()
             cc_code, cc_out, cc_err = _run(sb, "python -m compileall -q .",
                                            cwd=_TASK_DIR, timeout=60)
+            logger.info(f"{_GATE} no tests collected — compileall fallback… "
+                        f"exit={cc_code} ({time.time() - ts:.1f}s)")
             if cc_code == 0:
-                return SandboxEvalResult(
+                return _finish(SandboxEvalResult(
                     passed=True, verdict="no_tests_compile_ok",
-                    detail="task ships no tests, but every .py file compiles",
-                )
-            return SandboxEvalResult(
+                    detail="task ships no tests, but every .py file compiles"))
+            _log_output("compileall output", cc_out + cc_err)
+            return _finish(SandboxEvalResult(
                 passed=False, verdict="compile_error",
                 detail="task ships no tests and `python -m compileall` found a "
                        "syntax error.",
-                stdout_tail=(cc_out + cc_err)[-2000:],
-            )
+                stdout_tail=(cc_out + cc_err)[-3000:]))
 
-        return _classify_pytest(code, combined)
+        return _finish(_classify_pytest(code, combined))
     except Exception as exc:  # noqa: BLE001 — unexpected; treat as an infra skip
-        logger.warning(f"sandbox eval: unexpected error: {exc}")
-        return SandboxEvalResult(skipped=True, verdict="infra_error",
-                                 detail=f"unexpected sandbox error: {exc}")
+        logger.warning(f"{_GATE} unexpected error: {exc}")
+        return _finish(SandboxEvalResult(
+            skipped=True, verdict="infra_error",
+            detail=f"unexpected sandbox error: {exc}"))
     finally:
         try:
             sb.kill()
