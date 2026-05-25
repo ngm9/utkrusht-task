@@ -67,7 +67,7 @@ def _parse_names(raw: list[str]) -> list[str]:
 
 def _combo_slug(names: list[str]) -> str:
     """Mirror the slug logic the other modules use, via prompt_generator.slugs."""
-    from prompt_generator.slugs import slugify
+    from generators.prompts.slugs import slugify
     return "_".join(slugify(n) for n in names)
 
 
@@ -221,7 +221,7 @@ def main() -> int:
     # --- Stage 1: input files ---------------------------------------------
     t0 = time.time()
     input_cmd = [
-        py, "-m", "generate_input_files",
+        py, "-m", "generators.input_files",
         "--competency-name", ", ".join(names),
         "--proficiency", level, "--env", args.env,
     ]
@@ -245,7 +245,7 @@ def main() -> int:
 
     # --- Stage 2: scenarios -----------------------------------------------
     scenario_cmd = [
-        py, "-m", "scenario_generator",
+        py, "-m", "generators.scenarios",
         "--competency-file", str(comp_json),
         "--background-file", str(bg_json),
         "--count", str(args.count), "--append",
@@ -263,7 +263,7 @@ def main() -> int:
 
     # --- Stage 3: prompt generator ----------------------------------------
     rec = _run_stage(combo_dir, "03_prompt", [
-        py, "-m", "prompt_generator",
+        py, "-m", "generators.prompts",
         "--name", ", ".join(names),
         "--proficiency", level, "--env", args.env, "--force", "--verbose",
     ])

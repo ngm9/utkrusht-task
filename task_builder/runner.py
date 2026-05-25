@@ -127,7 +127,7 @@ def run_pipeline_for_brief(brief: TaskBrief, *, run_id: str, emit: EmitFn,
 
         t0 = time.time()
         input_cmd = [
-            py, "-m", "generate_input_files",
+            py, "-m", "generators.input_files",
             "--competency-name", ", ".join(names),
             "--proficiency", level, "--role", brief.role or "", "--env", env,
         ]
@@ -140,7 +140,7 @@ def run_pipeline_for_brief(brief: TaskBrief, *, run_id: str, emit: EmitFn,
         comp_json, bg_json = _locate_input_files(names, level, t0)
 
         scenario_cmd = [
-            py, "-m", "scenario_generator",
+            py, "-m", "generators.scenarios",
             "--competency-file", str(comp_json), "--background-file", str(bg_json),
             "--count", str(brief.scenario_count), "--append",
         ]
@@ -153,7 +153,7 @@ def run_pipeline_for_brief(brief: TaskBrief, *, run_id: str, emit: EmitFn,
             return emit(StageEvent("done", "failed", detail="scenario stage failed"))
 
         rec = _stage("03_prompt", [
-            py, "-m", "prompt_generator", "--name", ", ".join(names),
+            py, "-m", "generators.prompts", "--name", ", ".join(names),
             "--proficiency", level, "--env", env, "--force", "--verbose",
         ])
         if rec["exit_code"] != 0:

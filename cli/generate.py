@@ -6,9 +6,9 @@ from pathlib import Path
 
 import click
 
-from evals import EvalGateError
-from task_generation import create_task
-from utils import read_json_file_robust
+from infra.evals import EvalGateError
+from generators.task import create_task
+from infra.utils import read_json_file_robust
 
 
 def _validate_environment() -> None:

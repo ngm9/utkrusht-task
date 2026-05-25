@@ -24,8 +24,8 @@ try:
 except ImportError:
     pass
 
-from prompt_generator.runtime import Competency
-from task_generation.runtime_resolver import resolve_plan
+from infra.classifier.runtime import Competency
+from generators.task.runtime_resolver import resolve_plan
 
 
 def _banner(text: str) -> None:

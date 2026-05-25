@@ -2,9 +2,9 @@
 import typing
 from unittest.mock import MagicMock, patch
 
-import evals
-from evals import PERSONA_PROMPTS, _persona_prefix, llm_code_eval, llm_task_eval
-from prompt_generator.runtime import Kind
+from infra import evals
+from infra.evals import PERSONA_PROMPTS, _persona_prefix, llm_code_eval, llm_task_eval
+from infra.classifier.runtime import Kind
 
 
 def test_persona_prompts_cover_every_kind():

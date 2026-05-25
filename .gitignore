@@ -12,7 +12,7 @@ data/generated/task_artifacts/
 data/generated/pr_review_tasks/
 temp_deploy_*/
 export/
-non_tech_flow/test_assets/
+flows/non_tech/test_assets/
 agent_task_creator.log
 
 # ----- Environment & Secrets -----

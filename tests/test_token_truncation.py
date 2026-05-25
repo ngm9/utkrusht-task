@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from evals import LLMOutputTruncated
+from infra.evals import LLMOutputTruncated
 
 
 def test_llm_output_truncated_carries_partial_and_attempt():
@@ -33,7 +33,7 @@ def test_generate_task_raises_on_length_finish_reason():
     """A finish_reason of 'length' means max_tokens was hit mid-output —
     generate_task_with_code must raise LLMOutputTruncated, not a generic
     parse error."""
-    import utils
+    from infra import utils
 
     client = MagicMock()
     client.chat.completions.create.return_value = _mock_chat_response(
@@ -45,7 +45,7 @@ def test_generate_task_raises_on_length_finish_reason():
         "background": {},
         "scenarios": [],
     }
-    with patch("utils.get_task_prompt_by_technology_stack",
+    with patch("infra.utils.get_task_prompt_by_technology_stack",
                return_value=["dummy generation prompt"]):
         with pytest.raises(LLMOutputTruncated) as excinfo:
             utils.generate_task_with_code(client, input_data)

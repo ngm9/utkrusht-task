@@ -16,7 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from generate_input_files.generator import init_supabase
+from generators.input_files.generator import init_supabase
 from task_builder.conversation import apply_turn, build_bot_client
 from task_builder.runner import StageEvent, run_pipeline_for_brief
 from task_builder.slots import SessionState, TaskBrief

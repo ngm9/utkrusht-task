@@ -5,10 +5,10 @@ create_task loop can rely on each branch behaving as documented.
 """
 from unittest.mock import patch
 
-from e2b_flow.sandbox_eval import SandboxEvalResult
-from prompt_generator.runtime import TaskRuntime
-from task_generation.gate import GateOutcome, run_gate_for_attempt
-from task_generation.runtime_resolver import ResolvedPlan, TemplateSpec
+from infra.e2b.sandbox_eval import SandboxEvalResult
+from infra.classifier.runtime import TaskRuntime
+from generators.task.gate import GateOutcome, run_gate_for_attempt
+from generators.task.runtime_resolver import ResolvedPlan, TemplateSpec
 
 
 def _plan(runtime: str = "python") -> ResolvedPlan:
@@ -22,7 +22,7 @@ def _plan(runtime: str = "python") -> ResolvedPlan:
 
 
 def test_disabled_when_env_flag_off():
-    with patch("task_generation.gate.sandbox_eval_enabled", return_value=False):
+    with patch("generators.task.gate.sandbox_eval_enabled", return_value=False):
         outcome, fb = run_gate_for_attempt(_plan(), {}, {}, attempt=1)
     assert outcome == GateOutcome.DISABLED
     assert fb == ""
@@ -34,8 +34,8 @@ def test_pass_outcome_proceeds_to_storage():
         detail="test suite compiled and executed",
     )
     candidate_eval: dict = {}
-    with patch("task_generation.gate.sandbox_eval_enabled", return_value=True), \
-         patch("task_generation.gate.run_sandbox_eval", return_value=sb):
+    with patch("generators.task.gate.sandbox_eval_enabled", return_value=True), \
+         patch("generators.task.gate.run_sandbox_eval", return_value=sb):
         outcome, fb = run_gate_for_attempt(
             _plan(), {"code_files": {"a.py": "x"}}, candidate_eval, attempt=1,
         )
@@ -51,8 +51,8 @@ def test_skipped_outcome_when_no_template():
         detail="no template for runtime='java'",
     )
     candidate_eval: dict = {}
-    with patch("task_generation.gate.sandbox_eval_enabled", return_value=True), \
-         patch("task_generation.gate.run_sandbox_eval", return_value=sb):
+    with patch("generators.task.gate.sandbox_eval_enabled", return_value=True), \
+         patch("generators.task.gate.run_sandbox_eval", return_value=sb):
         outcome, fb = run_gate_for_attempt(
             _plan("java"), {"code_files": {"a.java": "x"}}, candidate_eval, attempt=1,
         )
@@ -70,8 +70,8 @@ def test_retry_outcome_includes_feedback_with_verdict_and_tail():
         "task_eval": {"pass": True},
         "code_eval": {"pass": True},
     }
-    with patch("task_generation.gate.sandbox_eval_enabled", return_value=True), \
-         patch("task_generation.gate.run_sandbox_eval", return_value=sb):
+    with patch("generators.task.gate.sandbox_eval_enabled", return_value=True), \
+         patch("generators.task.gate.run_sandbox_eval", return_value=sb):
         outcome, fb = run_gate_for_attempt(
             _plan(), {"code_files": {"t.py": "x"}}, candidate_eval, attempt=2,
         )
@@ -82,13 +82,13 @@ def test_retry_outcome_includes_feedback_with_verdict_and_tail():
     assert candidate_eval["sandbox_eval"]["verdict"] == "collection_error"
 
 
-def test_plan_none_passes_none_runtime_to_gate():
+def test_plan_none_passes_none_plan_to_gate():
     # If classifier failed and the plan is None, the gate still runs (with
-    # task_runtime=None) and returns no_template skip — never crashes.
+    # plan=None) and returns no_template skip — never crashes.
     sb = SandboxEvalResult(skipped=True, verdict="no_template", detail="")
-    with patch("task_generation.gate.sandbox_eval_enabled", return_value=True), \
-         patch("task_generation.gate.run_sandbox_eval", return_value=sb) as mock:
+    with patch("generators.task.gate.sandbox_eval_enabled", return_value=True), \
+         patch("generators.task.gate.run_sandbox_eval", return_value=sb) as mock:
         outcome, _ = run_gate_for_attempt(None, {"code_files": {"a.py": "x"}}, {}, attempt=1)
     assert outcome == GateOutcome.SKIPPED
-    # task_runtime arg to run_sandbox_eval is None when plan is None
+    # plan arg to run_sandbox_eval is None when the caller's plan is None
     assert mock.call_args.args[1] is None

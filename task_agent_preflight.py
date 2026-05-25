@@ -177,8 +177,8 @@ def _check_retriever_has_references(
     flags such combos as HIGH-RISK before we burn ~15 min generating.
     """
     try:
-        from prompt_generator.classifier import Competency
-        from prompt_generator.retriever import retrieve_references
+        from infra.classifier.classifier import Competency
+        from generators.prompts.retriever import retrieve_references
     except Exception as e:
         report.fail(f"could not import retriever: {e}")
         return

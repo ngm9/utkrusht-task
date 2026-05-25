@@ -261,8 +261,8 @@ utkrusht-task/
 | **0** *(done)* | `task_generation/` package already exists with the right shape. | A1 done. |
 | **1a — generated data dirs** *(done 2026-05-25)* | Moved `task_input_files/input_*/`, `task_input_files/task_scenarios/`, `task_generation_prompts/agent_generated_prompts/`, `infra_assets/tasks/` → `data/generated/{input_files,scenarios,agent_prompts,task_artifacts}`. 7 path-constant updates: `generate_input_files/generator.py`, `prompt_generator/input_files.py`, `prompt_generator/__main__.py`, `run_pipeline.py`, `task_input_parser/prepare_inputs.py`, `scenario_generator/generator.py`, `utils.py`, `pr_review_flow/pr_review_utils.py`. `.gitignore` updated (gitignore `data/generated/task_artifacts/` + `pr_review_tasks/`, keep `agent_prompts/` + `scenarios/` tracked). **143 pass / 1 pre-existing fail.** | A1 follow-up. |
 | **1b — curated prompts** *(deferred)* | The curated prompts in `task_generation_prompts/{Basic,Intermediate,Beginner,_general_reference}/` are **Python source modules**, not data — moving them under `data/curated/` either requires converting them to `.md` strings (with retriever / registry / validator rewrites) or making `data/` contain Python packages (violates the no-code-in-data principle). Deferred to its own scoped phase. | TBD. |
-| **2 — engine packages** | Rename engine packages into `generators/`, `infra/`, `flows/`. Pure `git mv` + import updates. **~1 day.** | A1 → A2 boundary. |
-| **3 — apps layer** | Build `apps/`: extract `cli/` from multiagent.py, build `apps/orchestrator/` to replace `run_pipeline.py`, thin `apps/task_builder/`. **1–2 days.** | A2 + A4. |
+| **2 — engine packages** *(done 2026-05-25)* | All engines + flows + shared utilities moved into `generators/`, `infra/`, `flows/`. `task_generation/` → `generators/task/`. `generate_input_files/` → `generators/input_files/`. `scenario_generator/` → `generators/scenarios/`. `prompt_generator/` split: DSPy + retriever + validator + slugs → `generators/prompts/`; `runtime.py` + `llm_classifier.py` + `classifier.py` → `infra/classifier/` (breaks the prior import cycle permanently). `e2b_flow/` → `infra/e2b/`. `pr_review_flow/` → `flows/pr_review/`. `non_tech_flow/` → `flows/non_tech/`. Shared utilities (`github_utils.py`, `utils.py`, `schemas.py`, `evals.py`, `logger_config.py`) → `infra/`. CLI entry points (`python -m generators.{input_files,scenarios,prompts}`, `python -m infra.e2b`, `python multiagent.py`, `python -m cli`) all verified. **143 tests pass, 1 pre-existing fail.** | A1 → A2 boundary. |
+| **3 — apps layer** | Build `apps/`: move `cli/` → `apps/cli/`, build `apps/orchestrator/` to replace `run_pipeline.py`, move `task_builder/` → `apps/task_builder/`. **1–2 days.** | A2 + A4. |
 
 After Phase 3 the source tree has **no remaining references** to
 `multiagent.py` or `run_pipeline.py`, and `git status` is clean after any
@@ -764,6 +764,22 @@ Each phase has a rollback path; nothing is one-way.
   and `infra_assets/tasks/` into `data/generated/{input_files,scenarios,agent_prompts,task_artifacts}`.
   Curated prompts remain at `task_generation_prompts/` pending Phase 1b
   (conversion to `.md`). 143 tests pass; CLI smoke-checked.
+- ✅ **Phase 2 layout migration shipped** (2026-05-25): all engines, flows,
+  and shared utilities moved into `generators/`, `flows/`, and `infra/`.
+  The load-bearing extraction is `infra/classifier/` — the TaskRuntime model
+  and LLM classifier now live as shared infrastructure, breaking the prior
+  two-way dependency between `task_generation/` and `prompt_generator/`.
+  CLI entry points renamed: `python -m generators.{input_files,scenarios,prompts}`
+  and `python -m infra.e2b`. 143 tests pass.
+- ✅ **B6 — template registry wired** (2026-05-25): `_get_template()` in
+  `generators/task/runtime_resolver.py` now reads from the `template_registry`
+  Supabase table with a per-process cache and graceful fallback to the
+  `_TEMPLATES` in-memory seed when the DB is unreachable. `run_sandbox_eval`
+  in `infra/e2b/sandbox_eval.py` now takes a `ResolvedPlan` and reads
+  `plan.template.build_cmd / test_cmd / compile_cmd` — no more hardcoded
+  `pip install` / `python -m pytest`. **Pending one-off action:** apply
+  `migrations/2026-05-25-grant-cache-tables.sql` on dev Supabase so the API
+  role can SELECT from `template_registry` and `competency_combo_classification`.
 
 These are *prototype-good*. The plan above turns them into *service-good*
 behind the Utkrusht admin panel, with the schema designed so v2 (customer-facing

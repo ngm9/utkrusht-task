@@ -6,17 +6,25 @@ code_files) is run separately — it needs E2B and is too slow for the suite.
 import os
 from unittest.mock import patch
 
-from e2b_flow.sandbox_eval import (
+from infra.e2b.sandbox_eval import (
     SandboxEvalResult,
     _classify_pytest,
     run_sandbox_eval,
     sandbox_eval_enabled,
 )
+from generators.task.runtime_resolver import ResolvedPlan, TemplateSpec, _TEMPLATES
 
 
-class _FakeRuntime:
-    def __init__(self, runtime):
-        self.runtime = runtime
+def _plan(runtime: str) -> ResolvedPlan:
+    """Build a ResolvedPlan that mirrors what ``resolve_plan`` returns —
+    template is the seed entry for ``runtime`` (or None for unknown runtimes,
+    which exercises the no_template skip path)."""
+    from infra.classifier.runtime import TaskRuntime
+    return ResolvedPlan(
+        combo_key=f"test-{runtime}",
+        task_runtime=TaskRuntime(runtime=runtime, kind="app"),
+        template=_TEMPLATES.get(runtime),
+    )
 
 
 # --- _classify_pytest -------------------------------------------------------
@@ -62,16 +70,16 @@ def test_classify_internal_error_fails_gate():
 # --- run_sandbox_eval skip paths (no sandbox boot) --------------------------
 
 def test_skips_unknown_runtime():
-    r = run_sandbox_eval({"app.py": "x"}, _FakeRuntime("rust"))
+    r = run_sandbox_eval({"app.py": "x"}, _plan("rust"))
     assert r.skipped and r.verdict == "no_template"
 
 
 def test_skips_empty_code():
-    r = run_sandbox_eval({}, _FakeRuntime("python"))
+    r = run_sandbox_eval({}, _plan("python"))
     assert r.skipped and r.verdict == "no_code"
 
 
-def test_skips_none_runtime():
+def test_skips_none_plan():
     r = run_sandbox_eval({"app.py": "x"}, None)
     assert r.skipped and r.verdict == "no_template"
 

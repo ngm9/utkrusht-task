@@ -3,8 +3,8 @@ from unittest.mock import MagicMock
 
 from click.testing import CliRunner
 
-from scenario_generator.generator import call_llm_generate
-from scenario_generator.prompts import (
+from generators.scenarios.generator import call_llm_generate
+from generators.scenarios.prompts import (
     build_focus_areas_block,
     build_domain_rule_block,
     build_generation_prompt,
@@ -124,7 +124,7 @@ def test_call_llm_generate_passes_focus_and_domain_into_prompt():
 
 
 def test_cli_accepts_focus_areas_and_domain_options():
-    from scenario_generator.__main__ import generate_scenarios_cli
+    from generators.scenarios.__main__ import generate_scenarios_cli
     runner = CliRunner()
     result = runner.invoke(generate_scenarios_cli, ["--help"])
     assert result.exit_code == 0

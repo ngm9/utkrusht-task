@@ -2,7 +2,7 @@
 
 After the droplet path was removed, this package contains only the
 ``generate_tasks`` command. Deploy / reset for live tasks live in
-``e2b_flow/`` (``python -m e2b_flow deploy-task`` / ``reset-task``).
+``infra.e2b/`` (``python -m infra.e2b deploy-task`` / ``reset-task``).
 
 ``.env`` is loaded here so ``python -m cli`` works the same as
 ``python multiagent.py`` — the downstream ``evals`` module reads

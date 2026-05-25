@@ -13,9 +13,9 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from prompt_generator.llm_classifier import ClassifierResult
-from prompt_generator.runtime import Competency, TaskRuntime
-from task_generation.runtime_resolver import (
+from infra.classifier.llm_classifier import ClassifierResult
+from infra.classifier.runtime import Competency, TaskRuntime
+from generators.task.runtime_resolver import (
     ResolvedPlan,
     make_combo_key,
     resolve_plan,
@@ -66,7 +66,7 @@ def test_combo_key_single_competency():
 
 def test_no_cache_falls_through_to_llm(monkeypatch):
     monkeypatch.delenv("UTKRUSHT_ORG_ID", raising=False)
-    with patch("task_generation.runtime_resolver.classify_with_llm",
+    with patch("generators.task.runtime_resolver.classify_with_llm",
                return_value=_fake_result("python", "app")):
         plan = resolve_plan(_comps(("Python", "BASIC")))
     assert plan.task_runtime is not None
@@ -78,7 +78,7 @@ def test_no_cache_falls_through_to_llm(monkeypatch):
 
 def test_no_cache_runtime_without_template_marks_gate_unsupported(monkeypatch):
     monkeypatch.delenv("UTKRUSHT_ORG_ID", raising=False)
-    with patch("task_generation.runtime_resolver.classify_with_llm",
+    with patch("generators.task.runtime_resolver.classify_with_llm",
                return_value=_fake_result("java", "app")):
         plan = resolve_plan(_comps(("Java", "BASIC")))
     assert plan.task_runtime is not None
@@ -95,7 +95,7 @@ def test_cache_hit_skips_llm(monkeypatch):
         "frameworks": ["fastapi"], "datastores": ["postgres"],
         "messaging": [], "needs_browser": False,
     })
-    with patch("task_generation.runtime_resolver.classify_with_llm") as llm:
+    with patch("generators.task.runtime_resolver.classify_with_llm") as llm:
         plan = resolve_plan(_comps(("Python", "BASIC")), supabase=supabase)
     assert plan.task_runtime is not None
     assert plan.task_runtime.runtime == "python"
@@ -110,7 +110,7 @@ def test_cache_hit_skips_llm(monkeypatch):
 def test_cache_miss_calls_llm_and_upserts(monkeypatch):
     monkeypatch.setenv("UTKRUSHT_ORG_ID", "fake-uuid-2")
     supabase = _fake_supabase_miss()
-    with patch("task_generation.runtime_resolver.classify_with_llm",
+    with patch("generators.task.runtime_resolver.classify_with_llm",
                return_value=_fake_result("python", "app", confidence=0.91)):
         plan = resolve_plan(_comps(("Python", "BASIC")), supabase=supabase)
     assert plan.task_runtime is not None
@@ -132,7 +132,7 @@ def test_cache_miss_unknown_runtime_writes_null_template_runtime(monkeypatch):
     """Runtimes without a template row must NOT set template_runtime (FK)."""
     monkeypatch.setenv("UTKRUSHT_ORG_ID", "fake-uuid-3")
     supabase = _fake_supabase_miss()
-    with patch("task_generation.runtime_resolver.classify_with_llm",
+    with patch("generators.task.runtime_resolver.classify_with_llm",
                return_value=_fake_result("java", "app")):
         resolve_plan(_comps(("Java", "BASIC")), supabase=supabase)
     payload = supabase.table.return_value.upsert.call_args.args[0]
@@ -144,7 +144,7 @@ def test_cache_miss_unknown_runtime_writes_null_template_runtime(monkeypatch):
 
 def test_classifier_failure_returns_empty_plan(monkeypatch):
     monkeypatch.delenv("UTKRUSHT_ORG_ID", raising=False)
-    with patch("task_generation.runtime_resolver.classify_with_llm",
+    with patch("generators.task.runtime_resolver.classify_with_llm",
                side_effect=RuntimeError("classifier blew up")):
         plan = resolve_plan(_comps(("Python", "BASIC")))
     assert plan.task_runtime is None
@@ -158,7 +158,7 @@ def test_cache_lookup_failure_falls_through_to_llm(monkeypatch):
     monkeypatch.setenv("UTKRUSHT_ORG_ID", "fake-uuid-4")
     supabase = MagicMock()
     supabase.table.return_value.select.side_effect = RuntimeError("db down")
-    with patch("task_generation.runtime_resolver.classify_with_llm",
+    with patch("generators.task.runtime_resolver.classify_with_llm",
                return_value=_fake_result("python", "app")):
         plan = resolve_plan(_comps(("Python", "BASIC")), supabase=supabase)
     assert plan.task_runtime is not None
