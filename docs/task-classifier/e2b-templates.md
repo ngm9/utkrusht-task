@@ -3,6 +3,7 @@
 > **Status:** `utkrusht-python` shipped; other templates proposed. `template_registry` table is shipped, but the `build_cmd`/`test_cmd`/`compile_cmd` columns aren't actively read by `sandbox_eval` yet.
 > **Updated:** 2026-05-26
 > **Sister doc:** [Task Classifier](./classifier.md) — produces the `TaskRuntime` that picks which template to boot.
+> **Open proposal:** [merge classifier output and template registry into one decision](./classifier.md#proposed-evolution-merge-taskruntime-and-template_registry-into-one-decision) — would turn each row in this registry into the capability sheet the classifier reads, with `no_match` becoming a first-class signal and templates becoming a fragmenting family (e.g. `utkrusht-python` → `utkrusht-python-llm`) driven by data signals. The schema sketch and migration path live in the classifier doc; the operational details for templates (fragmentation policy, sibling-vs-inheritance, manifest-hash-from-Dockerfile) are summarised there too.
 
 ## Problem statement — what is an E2B template, and why one per runtime?
 
@@ -516,9 +517,10 @@ Ten wildly different tasks, all assembled from **~11 templates + each task's own
 
 1. **Wire `sandbox_eval` to read commands from `template_registry`** (~15 LOC). This is the small change that turns the registry from "stored but unused" into "actively consumed." It also validates the pattern before you're under pressure to add a second runtime. See "Why do we need a `template_registry` table?" above for the case.
 2. **Build the second template** (`utkrusht-node-base` + a leaf like `utkrusht-node-web`). This forces the multi-runtime path to work end-to-end and exercises the registry for real.
-3. **Defer the full ~11-template buildout** until you have demand. The current single-template setup handles the largest task chunk (Python).
-4. **Profile `start.sh` if eval-gate latency becomes a problem.** The microVM boot is ~150 ms; everything above that is start-cmd (dockerd warm-up, etc.). Don't pre-optimise image size — 20 GiB headroom on Pro covers anything reasonable.
-5. **Once `kind="infra"` becomes a real need** (K8s / Helm / Terraform tasks), build a `utkrusht-infra` template with `kubectl`, `helm`, `terraform`, and a fake/lightweight cluster (kind / k3d) for validation. The gate then runs `helm lint` / `kubectl --dry-run` / `terraform validate` instead of pytest.
+3. **Decide on the merged-model direction.** Before building the second template, consider the open proposal in the classifier doc to [merge classifier output and template registry into one decision](./classifier.md#proposed-evolution-merge-taskruntime-and-template_registry-into-one-decision). If you go that way, the second template should land with `personas: text[]` and a generated `manifest_hash` from day one — both are prerequisites for the merge, and retrofitting them onto a growing template set is harder than starting with them.
+4. **Defer the full ~11-template buildout** until you have demand. The current single-template setup handles the largest task chunk (Python).
+5. **Profile `start.sh` if eval-gate latency becomes a problem.** The microVM boot is ~150 ms; everything above that is start-cmd (dockerd warm-up, etc.). Don't pre-optimise image size — 20 GiB headroom on Pro covers anything reasonable.
+6. **Once `kind="infra"` becomes a real need** (K8s / Helm / Terraform tasks), build a `utkrusht-infra` template with `kubectl`, `helm`, `terraform`, and a fake/lightweight cluster (kind / k3d) for validation. The gate then runs `helm lint` / `kubectl --dry-run` / `terraform validate` instead of pytest. *(If the merged-model proposal has shipped by then, this template's row will be a no-match's `suggested_template` — the doc-driven roadmap becomes data-driven.)*
 
 ---
 
