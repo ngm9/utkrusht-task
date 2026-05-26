@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.10+, Click CLI, OpenAI via Portkey, Supabase, TypeScript (Figma Plugin API)
 
-**Spec:** `docs/superpowers/specs/2026-03-30-design-review-flow-design.md`
+**Spec:** `docs/specs/2026-03-30-design-review-flow-design.md`
 
 ---
 

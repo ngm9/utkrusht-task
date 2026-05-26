@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python, OpenAI Responses API (gpt-5-nano for evals, configurable for generation), PyGithub, Supabase, Click (CLI)
 
-**Spec:** `docs/superpowers/specs/2026-03-16-pr-review-task-category-design.md`
+**Spec:** `docs/specs/2026-03-16-pr-review-task-category-design.md`
 
 ---
 

@@ -8,7 +8,7 @@
 
 **Tech Stack:** Vanilla JavaScript (no framework, no build step), HTML, CSS, the browser `localStorage` and print APIs.
 
-**Spec:** `docs/superpowers/specs/2026-05-22-task-builder-persistence-pdf-newtask-design.md`
+**Spec:** `docs/specs/2026-05-22-task-builder-persistence-pdf-newtask-design.md`
 
 ---
 

@@ -6,7 +6,7 @@
 >
 > **Scope:** the `task_builder/` package on branch `feat/task-builder`.
 > For the design rationale behind the live stage-logs feature see
-> [`docs/superpowers/specs/2026-05-19-task-builder-stage-logs-design.md`](superpowers/specs/2026-05-19-task-builder-stage-logs-design.md).
+> [`docs/specs/2026-05-19-task-builder-stage-logs-design.md`](specs/2026-05-19-task-builder-stage-logs-design.md).
 
 ---
 

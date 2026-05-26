@@ -1,7 +1,7 @@
 arar# Deployment Infra Talk — Speaking Notes
 
 > This is a script, not a doc. Read it like you'd actually say it.
-> Open `deployment-infrastructure.excalidraw` on the side. ~10–12 min total.
+> Open `../drawings/deployment/infrastructure.excalidraw` on the side. ~10–12 min total.
 > Italics = stage directions to yourself. Bracketed `[…]` = optional, drop if short on time.
 
 ---

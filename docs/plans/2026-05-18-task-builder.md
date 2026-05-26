@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3, FastAPI, uvicorn, sse-starlette, Pydantic v2, Click, pytest. LLM access via the existing Portkey gateway (Claude Sonnet 4.6 for the bot). Vanilla HTML/CSS/JS frontend.
 
-**Spec:** `docs/superpowers/specs/2026-05-18-task-builder-conversational-frontend-design.md`
+**Spec:** `docs/specs/2026-05-18-task-builder-conversational-frontend-design.md`
 
 ---
 
@@ -2071,7 +2071,7 @@ scenario count — validates them (competencies against Supabase), then runs
 `generate_input_files → scenario_generator → prompt_generator → multiagent
 generate_tasks`, streaming per-stage progress over Server-Sent Events.
 
-See `docs/superpowers/specs/2026-05-18-task-builder-conversational-frontend-design.md`.
+See `docs/specs/2026-05-18-task-builder-conversational-frontend-design.md`.
 ```
 
 - [ ] **Step 5: Add a Task Builder entry to `CLAUDE.md`**

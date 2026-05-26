@@ -1,7 +1,7 @@
 # Task Eval Optimizer — design
 
 > Status: Design only. Nothing in this doc is shipped yet.
-> Successor / sister doc to [prompt-generator-agent.md](../prompt-generator/prompt-generator-agent.md).
+> Successor / sister doc to [agent.md](../prompt-generator/agent.md).
 > Recovered design notes from `prompt-generator-optimized.md` §10 (commit `86d1b38`).
 
 ## TL;DR
@@ -26,7 +26,7 @@ Plus one supporting prerequisite:
 
 ## Why this matters
 
-The prompt generator (the *upstream* system documented in [prompt-generator-agent.md](../prompt-generator/prompt-generator-agent.md)) produces a template. `multiagent.py` then uses that template plus a competency + background JSON to produce a concrete task — description, input/ask, instructions, code files. Before that task is committed to GitHub and recorded in Supabase, `evals.py` reviews it.
+The prompt generator (the *upstream* system documented in [agent.md](../prompt-generator/agent.md)) produces a template. `multiagent.py` then uses that template plus a competency + background JSON to produce a concrete task — description, input/ask, instructions, code files. Before that task is committed to GitHub and recorded in Supabase, `evals.py` reviews it.
 
 If `evals.py` lets a broken task through, the candidate sees it. There is no second gate. So eval quality directly controls the false-positive rate of the entire pipeline.
 
@@ -369,7 +369,7 @@ Phase 1 is the only one that's unambiguously worth doing. Phases 2-4 should be d
 ## References
 
 - `evals.py` at repo root — current implementation
-- [prompt-generator-agent.md](../prompt-generator/prompt-generator-agent.md) — upstream system that produces the templates
+- [agent.md](../prompt-generator/agent.md) — upstream system that produces the templates
 - `prompt-generator-optimized.md` §10 — original design notes; recoverable via `git show 86d1b38:docs/research/prompt-generator-optimized.md`
 - [prompt_generator/classifier.py](../../prompt_generator/classifier.py) — `TaskCategory` enum + `classify_task_category` (the routing key for §10.1)
 - `multiagent.py` — main task-generation orchestrator; integration point

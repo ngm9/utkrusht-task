@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python (the runner, pytest), vanilla JavaScript + CSS (the frontend).
 
-**Spec:** `docs/superpowers/specs/2026-05-22-task-builder-result-card-design.md`
+**Spec:** `docs/specs/2026-05-22-task-builder-result-card-design.md`
 
 ---
 

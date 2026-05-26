@@ -34,6 +34,7 @@
   }
   nav a:hover{background:var(--panel); color:var(--text);}
   nav a.sub{padding-left:20px; font-size:12.5px;}
+  nav a.active{background:var(--panel); color:var(--text); font-weight:500; box-shadow:inset 2px 0 0 var(--text);}
   /* ---- content ---- */
   main{padding:48px 56px 96px; min-width:0;}
   .eyebrow{
@@ -139,7 +140,7 @@
 </div>
 <blockquote>
   For the design rationale behind the live stage-logs feature, see
-  <code>docs/superpowers/specs/2026-05-19-task-builder-stage-logs-design.md</code>.
+  <code>docs/specs/2026-05-19-task-builder-stage-logs-design.md</code>.
 </blockquote>
 
 <!-- 1 -->
@@ -694,5 +695,52 @@ emit(ok | failed)                   # with duration_s</code></pre>
 
 </main>
 </div>
+
+<script>
+// Scrollspy — highlight the nav link for the section currently near the top
+// of the viewport. Tracks both h2 and h3 anchored sections so sub-items
+// (3.3 server.py, 3.4 conversation.py, …) also get highlighted.
+(function () {
+  const sections = Array.from(document.querySelectorAll('main h2[id], main h3[id]'));
+  const links = new Map();
+  document.querySelectorAll('nav a').forEach((a) => {
+    const href = a.getAttribute('href');
+    if (href && href.startsWith('#')) links.set(href.slice(1), a);
+  });
+  if (!sections.length || !links.size) return;
+
+  let currentId = null;
+  function setActive(id) {
+    if (id === currentId) return;
+    if (currentId && links.has(currentId)) links.get(currentId).classList.remove('active');
+    if (id && links.has(id)) links.get(id).classList.add('active');
+    currentId = id;
+  }
+
+  function update() {
+    const threshold = 120;
+    let activeId = sections[0].id;
+    for (const sec of sections) {
+      if (sec.getBoundingClientRect().top <= threshold) {
+        // Only treat as active if the nav actually has a link to it —
+        // most h3s aren't in the nav, so skip them.
+        if (links.has(sec.id)) activeId = sec.id;
+      } else break;
+    }
+    setActive(activeId);
+  }
+
+  let ticking = false;
+  window.addEventListener('scroll', () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => { update(); ticking = false; });
+  }, { passive: true });
+
+  window.addEventListener('resize', update);
+  update();
+})();
+</script>
+
 </body>
 </html>

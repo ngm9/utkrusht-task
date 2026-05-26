@@ -1,6 +1,6 @@
 # E2B Build/Test Gate
 
-> Companion to [classifier-and-templates.md](../task-classifier/classifier-and-templates.md).
+> Companion to [classifier.md](../task-classifier/classifier.md).
 > The classifier decides *what* a task is; this gate decides *whether the
 > generated code actually runs*.
 

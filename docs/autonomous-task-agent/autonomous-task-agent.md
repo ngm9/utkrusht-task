@@ -1,7 +1,7 @@
 # Autonomous Task Generator Agent — design
 
 > Status: Design only. Nothing in this doc is shipped yet.
-> Companion docs: [prompt-generator-agent.md](../prompt-generator/prompt-generator-agent.md), [task-eval-optimizer.md](../task-eval-optimizer/task-eval-optimizer.md).
+> Companion docs: [agent.md](../prompt-generator/agent.md), [task-eval-optimizer.md](../eval-system/task-eval-optimizer.md).
 > The verifier gates proposed here lean on the persona-routed critics + sandbox gate in the eval-optimizer doc.
 
 ## TL;DR
@@ -237,7 +237,7 @@ One per sub-agent. Each runs after its agent and decides pass / fail / retry.
 | **Input files** | `questions_prompt` has ≥10 bullets, `role_context` is 3+ sentences with stated YoE, no placeholder text remains (`<TODO>`, `TBD`) |
 | **Scenario** | Each scenario contains "Current Situation", "Your Task", "Success Criteria"; scenarios are textually distinct (cosine sim < 0.85 pairwise); count matches request |
 | **Prompt** | Passes `prompt_generator/validator.py` (already exists — AST parse, `PROMPT_REGISTRY` key, required format vars); the registry key matches `'Name1 (LEVEL), Name2 (LEVEL)'` alphabetical convention |
-| **Task** | `evals.py` `llm_task_eval` + `llm_code_eval` both pass — and (Phase 3) the persona-routed critic from [task-eval-optimizer.md §1](../task-eval-optimizer/task-eval-optimizer.md). Optionally the sandbox-exec gate from §2. |
+| **Task** | `evals.py` `llm_task_eval` + `llm_code_eval` both pass — and (Phase 3) the persona-routed critic from [task-eval-optimizer.md §1](../eval-system/task-eval-optimizer.md). Optionally the sandbox-exec gate from §2. |
 | **Deployment** *(optional stage)* | Ports listening, `kill.sh` cleans up — same as the eval-optimizer's sandbox gate |
 
 #### Verifier interface
@@ -327,15 +327,15 @@ The Prompt Agent adapter is a direct wrapper around `PromptGeneratorAgent`. Outp
 task_generation_prompts/agent_generated_prompts/<Level>/<slug>/<slug>.py
 ```
 
-(Same path the standalone `prompt_generator` CLI writes to today — see [prompt-generator-agent.md](../prompt-generator/prompt-generator-agent.md).)
+(Same path the standalone `prompt_generator` CLI writes to today — see [agent.md](../prompt-generator/agent.md).)
 
 The Coordinator checks whether either the agent-generated path *or* the curated path (`task_generation_prompts/<Level>/<slug>/<slug>.py`) already exists. If either does, the prompt stage is skipped. Curated prompts always take precedence.
 
 ### With the eval optimizer
 
-The Task Verifier is exactly where the persona-routed critics ([task-eval-optimizer.md §1](../task-eval-optimizer/task-eval-optimizer.md)) plug in. The Coordinator's "retry with feedback" loop is exactly where the verifier's `retry_hint` flows back into the Task Creator Agent as `feedback_from_previous_attempt` — the same pattern the prompt generator already uses.
+The Task Verifier is exactly where the persona-routed critics ([task-eval-optimizer.md §1](../eval-system/task-eval-optimizer.md)) plug in. The Coordinator's "retry with feedback" loop is exactly where the verifier's `retry_hint` flows back into the Task Creator Agent as `feedback_from_previous_attempt` — the same pattern the prompt generator already uses.
 
-The Deployment Verifier is where the sandbox-exec gate ([§2](../task-eval-optimizer/task-eval-optimizer.md#section-2-empirical-sandbox-exec-gate)) lives.
+The Deployment Verifier is where the sandbox-exec gate ([§2](../eval-system/task-eval-optimizer.md#section-2-empirical-sandbox-exec-gate)) lives.
 
 In other words: implementing the eval optimizer first gives you better verifiers for free when the autonomous agent ships.
 
@@ -450,8 +450,8 @@ Run ID:          atg-20260114-103317
 ## References
 
 - `multiagent.py` — current monolith (2054 LOC)
-- [prompt-generator-agent.md](../prompt-generator/prompt-generator-agent.md) — the prompt-template sub-agent
-- [task-eval-optimizer.md](../task-eval-optimizer/task-eval-optimizer.md) — verifier brains for the task stage
+- [agent.md](../prompt-generator/agent.md) — the prompt-template sub-agent
+- [task-eval-optimizer.md](../eval-system/task-eval-optimizer.md) — verifier brains for the task stage
 - `generate_input_files/`, `scenario_generator/`, `pipeline/` — existing upstream agents
 - `pr_review_flow/`, `design_review_flow/`, `non_tech_flow/` — sibling flows that could later adopt the same pattern
 - Anthropic, *Building effective agents* — orchestrator-worker + evaluator-optimizer patterns this design borrows from

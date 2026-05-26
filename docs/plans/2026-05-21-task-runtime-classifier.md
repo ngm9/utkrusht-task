@@ -7,7 +7,7 @@
 
 **Architecture:** One LLM call (Claude Sonnet 4.6 via Portkey gateway) per invocation, returning a `TaskRuntime` record. The result is persisted on a new `tasks.task_runtime` JSONB column. No separate cache table — the backfill script does in-memory dedup so each unique competency-set incurs exactly one LLM call.
 
-**Spec:** [docs/task-classifier/classifier-and-templates.md](../../task-classifier/classifier-and-templates.md)
+**Spec:** [docs/task-classifier/classifier.md](../task-classifier/classifier.md)
 
 > ⚠️ **Why no cache table?** An earlier draft of this plan added a `task_runtime_cache` table keyed by a sorted competency string. The numbers didn't justify it: ~50 unique competency-sets in the dev DB × ~$0.001 per LLM call = **$0.05** lifetime saving — at the cost of a permanent table, two indexes, and a 65-line `runtime_cache.py` module. Refactored away. In-memory dedup at backfill time gets the same cost saving without the schema overhead.
 
