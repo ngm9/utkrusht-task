@@ -13,13 +13,13 @@ from pathlib import Path
 
 import pytest
 
-from prompt_generator.classifier import Competency
-from prompt_generator.retriever import (
+from infra.classifier.classifier import Competency
+from generators.prompts.retriever import (
     GENERAL_REFERENCE_DIR,
     _general_reference_path,
     retrieve_references,
 )
-from prompt_generator.validator import _missing_json_schema_keys, _simulate_format_call
+from generators.prompts.validator import _missing_json_schema_keys, _simulate_format_call
 
 
 LEVELS = ("beginner", "basic", "intermediate", "advanced")
@@ -108,7 +108,7 @@ def test_well_referenced_combo_does_not_hit_level_6() -> None:
 def test_general_reference_not_loaded_into_task_registry() -> None:
     """The _general_reference/ folder must NOT pollute utils._PROMPT_REGISTRY —
     those are reference skeletons, not real task prompts."""
-    from utils import _PROMPT_REGISTRY
+    from infra.utils import _PROMPT_REGISTRY
     for key in _PROMPT_REGISTRY:
         assert not key.startswith("General Reference ("), (
             f"general reference {key!r} leaked into the task registry"

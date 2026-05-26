@@ -33,8 +33,8 @@ import sys
 from dotenv import load_dotenv
 from supabase import Client, create_client
 
-from logger_config import logger
-from utils import create_gist_from_template
+from infra.logger_config import logger
+from infra.utils import create_gist_from_template
 
 load_dotenv()
 

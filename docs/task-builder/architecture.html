@@ -1,0 +1,746 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Task Builder — Architecture &amp; File Reference</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --bg:#ffffff; --panel:#f4f4f5; --border:#e4e4e7; --text:#0a0a0a;
+    --muted:#71717a; --accent:#0a0a0a; --soft:#3f3f46; --code-bg:#f7f7f8;
+    --ok:#15803d; --fail:#b91c1c;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;}
+  body{
+    font:15px/1.65 "Inter",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+    color:var(--text); background:var(--bg);
+  }
+  .layout{display:grid; grid-template-columns:248px 1fr; max-width:1180px; margin:0 auto;}
+  /* ---- sidebar ---- */
+  nav{
+    position:sticky; top:0; align-self:start; height:100vh; overflow-y:auto;
+    border-right:1px solid var(--border); padding:26px 18px;
+  }
+  nav .brand{display:flex; align-items:center; gap:9px; margin-bottom:18px;}
+  nav .logo{width:24px; height:24px; border-radius:6px; background:var(--text);}
+  nav .brand b{font-size:14px; font-weight:600; letter-spacing:-0.01em;}
+  nav a{
+    display:block; padding:4px 8px; margin:1px 0; border-radius:7px;
+    color:var(--muted); text-decoration:none; font-size:13px;
+  }
+  nav a:hover{background:var(--panel); color:var(--text);}
+  nav a.sub{padding-left:20px; font-size:12.5px;}
+  nav a.active{background:var(--panel); color:var(--text); font-weight:500; box-shadow:inset 2px 0 0 var(--text);}
+  /* ---- content ---- */
+  main{padding:48px 56px 96px; min-width:0;}
+  .eyebrow{
+    font:500 12px/1 "Roboto Mono",monospace; letter-spacing:0.08em;
+    text-transform:uppercase; color:var(--muted);
+  }
+  h1{font-size:32px; font-weight:700; letter-spacing:-0.02em; margin:10px 0 8px;}
+  h2{
+    font-size:21px; font-weight:600; letter-spacing:-0.01em;
+    margin:46px 0 14px; padding-top:14px; border-top:1px solid var(--border);
+  }
+  h3{font-size:16px; font-weight:600; margin:30px 0 10px;}
+  h2:first-of-type{border-top:0;}
+  p{margin:12px 0;}
+  .lede{font-size:16px; color:var(--soft);}
+  a{color:var(--text);}
+  ul,ol{padding-left:22px;} li{margin:5px 0;}
+  code{
+    font:500 13px/1.4 "Roboto Mono",monospace; background:var(--code-bg);
+    border:1px solid var(--border); border-radius:5px; padding:1px 5px;
+  }
+  pre{
+    background:var(--code-bg); border:1px solid var(--border);
+    border-radius:11px; padding:16px 18px; overflow-x:auto; margin:16px 0;
+  }
+  pre code{background:none; border:0; padding:0; font-size:12.5px; line-height:1.6;}
+  table{
+    border-collapse:collapse; width:100%; margin:16px 0; font-size:13.5px;
+  }
+  th,td{border:1px solid var(--border); padding:8px 11px; text-align:left; vertical-align:top;}
+  th{background:var(--panel); font-weight:600;}
+  tr:nth-child(even) td{background:#fafafa;}
+  blockquote{
+    margin:16px 0; padding:12px 16px; border-left:3px solid var(--text);
+    background:var(--panel); border-radius:0 9px 9px 0; color:var(--soft);
+    font-size:14px;
+  }
+  blockquote p:first-child{margin-top:0;} blockquote p:last-child{margin-bottom:0;}
+  .callout{
+    margin:16px 0; padding:13px 16px; border:1px solid var(--border);
+    border-left:3px solid #b45309; border-radius:0 9px 9px 0;
+    background:#fffbeb; font-size:14px;
+  }
+  .callout b{color:#b45309;}
+  .pill{
+    display:inline-block; font:500 11px/1 "Roboto Mono",monospace;
+    padding:3px 7px; border-radius:5px; background:var(--panel);
+    border:1px solid var(--border); color:var(--soft);
+  }
+  .meta{
+    display:flex; gap:8px; flex-wrap:wrap; margin:14px 0 4px;
+  }
+  footer{
+    margin-top:60px; padding-top:18px; border-top:1px solid var(--border);
+    color:var(--muted); font-size:12.5px;
+  }
+  @media (max-width:860px){
+    .layout{grid-template-columns:1fr;}
+    nav{position:static; height:auto; border-right:0; border-bottom:1px solid var(--border);}
+    main{padding:32px 22px 72px;}
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav>
+  <div class="brand"><div class="logo"></div><b>Task Builder</b></div>
+  <a href="#what">1 · What it is</a>
+  <a href="#big">2 · The big picture</a>
+  <a href="#files">3 · File-by-file reference</a>
+  <a class="sub" href="#f-server">3.3 server.py</a>
+  <a class="sub" href="#f-conversation">3.4 conversation.py</a>
+  <a class="sub" href="#f-slots">3.5 slots.py</a>
+  <a class="sub" href="#f-validation">3.6 validation.py</a>
+  <a class="sub" href="#f-prompts">3.7 prompts.py</a>
+  <a class="sub" href="#f-runner">3.8 runner.py</a>
+  <a class="sub" href="#f-logtail">3.9 log_tail.py</a>
+  <a class="sub" href="#f-static">3.10–3.12 static/</a>
+  <a href="#flow">4 · Data flow</a>
+  <a href="#ui">5 · The web UI</a>
+  <a href="#api">6 · HTTP API</a>
+  <a href="#run">7 · Running it</a>
+  <a href="#gotchas">8 · Limitations &amp; gotchas</a>
+  <a href="#tests">9 · Tests</a>
+  <a href="#runpipeline">10 · vs run_pipeline.py</a>
+</nav>
+
+<main>
+
+<div class="eyebrow">Architecture &amp; File Reference</div>
+<h1>Task Builder</h1>
+<p class="lede">
+  A comprehensive guide to the <code>task_builder/</code> package — what it is,
+  how the pieces fit together, what every file does, the request/SSE data flow,
+  and an element-by-element walkthrough of the web UI.
+</p>
+<div class="meta">
+  <span class="pill">branch feat/task-builder</span>
+  <span class="pill">9 Python modules</span>
+  <span class="pill">3 static files</span>
+  <span class="pill">FastAPI + SSE</span>
+</div>
+<blockquote>
+  For the design rationale behind the live stage-logs feature, see
+  <code>docs/specs/2026-05-19-task-builder-stage-logs-design.md</code>.
+</blockquote>
+
+<!-- 1 -->
+<h2 id="what">1 · What it is</h2>
+<p>
+  Task Builder is a <b>local, single-user web app</b> that replaces the
+  command-line task-generation workflow with a conversation. Instead of
+  hand-assembling competency / background / scenario JSON files and running four
+  CLI tools in sequence, a hiring engineer:
+</p>
+<ol>
+  <li>opens a browser at <code>http://127.0.0.1:8000</code>,</li>
+  <li>chats with a bot that <b>interviews them</b> for the task inputs,</li>
+  <li>clicks <b>Generate task →</b>,</li>
+</ol>
+<p>
+  and the app runs the full <b>five-stage pipeline</b> in a background thread,
+  streaming each stage's live log output straight into the chat.
+</p>
+<p>
+  It is a thin <b>conversational front-end + threaded wrapper</b> around the
+  existing <code>run_pipeline.py</code> linear orchestrator. It reuses that
+  module's stage helpers but adds two things on top: an <b>LLM interview</b> that
+  collects and validates the pipeline inputs, and <b>live per-stage log
+  streaming</b> over Server-Sent Events (SSE).
+</p>
+<table>
+  <tr><th>Phase</th><th>Driver</th><th>What happens</th></tr>
+  <tr><td><b>Interview</b></td><td><code>conversation.py</code></td>
+      <td>The bot fills the <code>TaskBrief</code> slots, one topic at a time, validating each value.</td></tr>
+  <tr><td><b>Generation</b></td><td><code>runner.py</code></td>
+      <td>The five-stage pipeline runs in a worker thread; logs stream to the browser.</td></tr>
+</table>
+
+<!-- 2 -->
+<h2 id="big">2 · The big picture</h2>
+<pre><code>┌────────────────────────────────────────────────────────────────────┐
+│  Browser   static/index.html + app.js + styles.css                  │
+│  ┌─────────────────┐                ┌──────────────────────────┐    │
+│  │ Chat UI         │                │ EventSource (SSE client) │    │
+│  └────────┬────────┘                └─────────────┬────────────┘    │
+└───────────┼───────────────────────────────────────┼─────────────────┘
+   POST /api/session                  GET /api/runs/{run_id}/events
+   POST /api/chat                                    │
+   POST /api/generate                                │
+┌───────────▼───────────────────────────────────────▼─────────────────┐
+│  FastAPI app   server.py                                             │
+│    SESSIONS : dict[session_id -> SessionState]   (in-memory)         │
+│    RUNS     : dict[run_id     -> queue.Queue[StageEvent]] (in-memory)│
+└────┬──────────────────────────────────────────┬─────────────────────┘
+     │ chat turn                                 │ generate
+┌────▼────────────────────────┐   ┌──────────────▼──────────────────────┐
+│ conversation.py             │   │ runner.py   (daemon worker thread)   │
+│   apply_turn()              │   │   run_pipeline_for_brief()           │
+│     run_turn()  ── LLM call │   │     _stage()  ×5                     │
+│     _clean_slots_update()   │   │       StageLogTailer  (log_tail.py)  │
+│       └─ validation.py      │   │       _run_stage()  (run_pipeline.py)│
+│     merge_brief()           │   └──────────────┬───────────────────────┘
+└────┬────────────────────────┘                  │  one subprocess per stage
+     │                                  ┌─────────▼──────────────────────┐
+┌────▼─────────────────┐                │ 00_preflight → 01_input_files →│
+│ Portkey → Claude API │                │ 02_scenarios → 03_prompt →     │
+│ Supabase (dev)       │                │ 04_tasks                       │
+└──────────────────────┘                └────────────────────────────────┘</code></pre>
+<p>
+  <b>Two in-memory registries</b> in <code>server.py</code> hold all state:
+</p>
+<ul>
+  <li><code>SESSIONS</code> — one <code>SessionState</code> per conversation (brief + chat history).</li>
+  <li><code>RUNS</code> — one thread-safe <code>queue.Queue</code> per pipeline run; the
+      worker thread pushes <code>StageEvent</code>s onto it, the SSE endpoint drains it.</li>
+</ul>
+<p>
+  Both are plain dicts with no eviction and no persistence — they are lost on
+  server restart, which is acceptable for a local single-user tool.
+</p>
+
+<!-- 3 -->
+<h2 id="files">3 · File-by-file reference</h2>
+<p>The package is <b>9 Python modules</b> + <b>3 static front-end files</b>.</p>
+<table>
+  <tr><th>File</th><th>Lines</th><th>Responsibility</th></tr>
+  <tr><td><code>__init__.py</code></td><td>1</td><td>Package marker / docstring.</td></tr>
+  <tr><td><code>__main__.py</code></td><td>5</td><td>Entry point — launches the uvicorn server.</td></tr>
+  <tr><td><code>server.py</code></td><td>~137</td><td>FastAPI app: HTTP routes, session/run registries, SSE stream.</td></tr>
+  <tr><td><code>conversation.py</code></td><td>~194</td><td>The interview engine — one LLM call per turn, structured-JSON output.</td></tr>
+  <tr><td><code>slots.py</code></td><td>~54</td><td><code>TaskBrief</code> data model + <code>SessionState</code> + <code>merge_brief</code>.</td></tr>
+  <tr><td><code>validation.py</code></td><td>~66</td><td>Validates slot values (proficiency enum, competency vs Supabase).</td></tr>
+  <tr><td><code>prompts.py</code></td><td>~33</td><td>The bot's system prompt (the interview contract).</td></tr>
+  <tr><td><code>runner.py</code></td><td>~147</td><td>Runs the five-stage pipeline, emits a <code>StageEvent</code> per stage.</td></tr>
+  <tr><td><code>log_tail.py</code></td><td>~86</td><td><code>StageLogTailer</code> — background thread that tails stage log files.</td></tr>
+  <tr><td><code>static/index.html</code></td><td>26</td><td>Page skeleton: header, chat area, input dock.</td></tr>
+  <tr><td><code>static/app.js</code></td><td>~153</td><td>Chat client: talks to the API, renders bubbles, consumes SSE.</td></tr>
+  <tr><td><code>static/styles.css</code></td><td>~99</td><td>Styling for chat, summary card, collapsible log panels.</td></tr>
+</table>
+
+<h3>3.1 · <code>__init__.py</code></h3>
+<p>Just the package marker / docstring. No exports.</p>
+
+<h3>3.2 · <code>__main__.py</code></h3>
+<p>Makes the package runnable with <code>python -m task_builder</code>:</p>
+<pre><code>import uvicorn
+if __name__ == "__main__":
+    uvicorn.run("task_builder.server:app", host="127.0.0.1", port=8000, reload=False)</code></pre>
+<ul>
+  <li>Binds to <code>127.0.0.1</code> only — the app is deliberately not reachable from other machines.</li>
+  <li><code>reload=False</code> — it is a tool, not a dev server.</li>
+</ul>
+
+<h3 id="f-server">3.3 · <code>server.py</code> — the FastAPI app</h3>
+<p>
+  The HTTP surface. Defines <code>app = FastAPI(title="Task Builder")</code>,
+  mounts the <code>static/</code> directory, and holds the two in-memory
+  registries:
+</p>
+<pre><code>SESSIONS: dict[str, SessionState]            # session_id -> conversation state
+RUNS:     dict[str, queue.Queue[StageEvent]] # run_id     -> event queue</code></pre>
+<table>
+  <tr><th>Method &amp; path</th><th>Purpose</th></tr>
+  <tr><td><code>GET /</code></td><td>Serves <code>static/index.html</code>.</td></tr>
+  <tr><td><code>GET /api/health</code></td><td>Liveness check — returns <code>{"status":"ok"}</code>.</td></tr>
+  <tr><td><code>POST /api/session</code></td><td>Starts a conversation. Mints a <code>session_id</code>, stores a fresh <code>SessionState</code>, returns the bot's hard-coded greeting.</td></tr>
+  <tr><td><code>POST /api/chat</code></td><td>Runs <b>one</b> conversation turn. Delegates to <code>conversation.apply_turn</code>. Returns <code>reply</code>, the full <code>brief</code>, <code>missing_slots</code>, <code>ready</code>.</td></tr>
+  <tr><td><code>POST /api/generate</code></td><td>Starts a pipeline run for a session whose brief <code>is_complete()</code>. Mints a <code>run_id</code>, launches the worker thread, returns <code>{run_id}</code>.</td></tr>
+  <tr><td><code>GET /api/runs/{run_id}/events</code></td><td><b>SSE</b> stream of <code>StageEvent</code>s for a run.</td></tr>
+</table>
+<p><b>Key behaviours</b></p>
+<ul>
+  <li><code>_launch_run()</code> creates a <code>queue.Queue</code>, registers it under the
+      <code>run_id</code>, and starts a <b>daemon thread</b> running
+      <code>run_pipeline_for_brief</code>, wiring the queue's <code>.put</code> as the
+      <code>emit</code> callback. The pipeline runs entirely off the request thread.</li>
+  <li><code>chat()</code> builds a fresh bot client and Supabase client per call.</li>
+  <li><code>get_supabase()</code> is hard-wired to the <b><code>dev</code></b> environment —
+      competency validation always hits dev Supabase, even when generation later
+      targets <code>prod</code> (see §8).</li>
+  <li>The SSE generator runs the <b>blocking</b> <code>queue.get()</code> inside
+      <code>loop.run_in_executor(...)</code> so the asyncio loop is never blocked. It
+      JSON-encodes each event via <code>dataclasses.asdict(event)</code>, and
+      <b>breaks the loop when <code>event.stage == "done"</code></b>, then pops the run
+      from <code>RUNS</code>.</li>
+  <li><code>generate()</code> rejects an incomplete brief with HTTP 400; an unknown
+      session/run is HTTP 404.</li>
+</ul>
+
+<h3 id="f-conversation">3.4 · <code>conversation.py</code> — the interview engine</h3>
+<p>
+  The heart of the <b>interview phase</b>. The design is called <i>Approach B</i>:
+  <b>one LLM call per turn that returns structured JSON</b>, rather than
+  tool-calls or a multi-agent loop. Every bot response must be a single JSON
+  object:
+</p>
+<pre><code>{
+  "reply": "&lt;message shown to the user&gt;",
+  "slots_update": { "&lt;slots learned this turn&gt;": &lt;value&gt; },
+  "ready_to_generate": true | false
+}</code></pre>
+<p><b>Functions</b></p>
+<ul>
+  <li><code>build_bot_client()</code> — an <code>openai.OpenAI</code> client pointed at the
+      <b>Portkey gateway</b> with <code>provider="anthropic"</code>. Model:
+      <code>BOT_MODEL = "claude-sonnet-4-6"</code>.</li>
+  <li><code>_extract_json(text)</code> — pulls the <b>first top-level JSON object</b> out
+      of an LLM response by brace-depth matching; tolerates surrounding prose.</li>
+  <li><code>_to_turn(parsed)</code> — converts a parsed dict into a frozen
+      <code>ConversationTurn</code>, defaulting every field.</li>
+  <li><code>run_turn(...)</code> — runs one turn: build <code>messages</code> = system + history
+      + user, call the LLM, parse. <b>On unparseable JSON it retries once</b> (the
+      bad reply is inserted as an <code>assistant</code> message and a corrective
+      <code>user</code> nudge is appended — roles must alternate, the Anthropic API
+      rejects two consecutive <code>user</code> messages). If the retry also fails it
+      <b>degrades gracefully</b> to a fallback reply instead of raising.</li>
+  <li><code>_clean_slots_update(...)</code> — <b>validates a raw <code>slots_update</code>
+      before anything is stored</b>. Returns
+      <code>(accepted_fields, rejection_messages)</code>. Proficiency → enum check;
+      competencies → Supabase check with up to 5 "did you mean" suggestions;
+      <code>role</code>/<code>domain</code> → trimmed strings; <code>focus_areas</code> → trimmed
+      list; <code>scenario_count</code> → positive <code>int</code> only. <b>Rejected fields are
+      dropped.</b></li>
+  <li><code>apply_turn(...)</code> — the full turn the <code>/api/chat</code> route calls:
+      <code>run_turn()</code> → <code>_clean_slots_update()</code> → <code>merge_brief()</code> →
+      <b>a corrective turn if anything was rejected</b> (rejection messages are
+      appended to the user message as a <code>SERVER VALIDATION:</code> note so the
+      re-ask reaches the user inside the same HTTP response) → append to history
+      → return a <code>ChatResult</code>.
+      <code>ready = turn.ready_to_generate AND no missing slots</code> — the server has
+      the final say.</li>
+</ul>
+
+<h3 id="f-slots">3.5 · <code>slots.py</code> — the brief data model</h3>
+<p>Defines the <b><code>TaskBrief</code></b> — the interview answers, owned authoritatively by the server (the LLM only <i>proposes</i> updates).</p>
+<pre><code>class TaskBrief(BaseModel):
+    competencies:   list[str]  = []
+    proficiency:    str | None = None
+    role:           str | None = None
+    focus_areas:    list[str]  = []
+    domain:         str | None = None
+    scenario_count: int        = 6</code></pre>
+<ul>
+  <li><code>REQUIRED_SLOTS</code> = <code>competencies, proficiency, role, focus_areas,
+      domain</code> — <b>five</b> slots. <code>scenario_count</code> is <b>not</b> required
+      (defaults to <code>6</code>; the bot is told never to ask about it).</li>
+  <li><code>VALID_PROFICIENCIES</code> = <code>BEGINNER, BASIC, INTERMEDIATE, ADVANCED</code>.</li>
+  <li><code>missing_slots()</code> / <code>is_complete()</code> — completeness checks.</li>
+  <li><code>merge_brief(brief, update)</code> — returns a <b>new</b> <code>TaskBrief</code>;
+      never mutates (immutable update via <code>model_copy</code>).</li>
+</ul>
+<div class="callout">
+  <b>Note on "six slots".</b> Precisely, there are <b>five interview slots</b> the
+  bot asks about, plus <code>scenario_count</code>, an auto-defaulted field the user
+  never sees.
+</div>
+<p>
+  Also defined: <code>Message</code> (a <code>role</code>/<code>content</code> chat turn) and
+  <code>SessionState</code> (<code>session_id</code> + <code>brief</code> + <code>history</code>).
+</p>
+
+<h3 id="f-validation">3.6 · <code>validation.py</code> — slot validation</h3>
+<p>Ensures a slot value is real <b>before</b> it enters the brief.</p>
+<ul>
+  <li><code>SlotValidation</code> — frozen result: <code>ok</code>, <code>cleaned</code>,
+      <code>error</code>, <code>suggestions</code>.</li>
+  <li><code>validate_proficiency(value)</code> — upper-cases and checks against the
+      enum; on miss, the error lists the valid choices.</li>
+  <li><code>validate_competency(name, proficiency, supabase)</code> — queries the
+      Supabase <code>competencies</code> table for a row matching <code>name</code>
+      (case-insensitive <code>ilike</code>) at the given <code>proficiency</code>. On a miss,
+      uses <code>difflib.get_close_matches</code> (<code>n=5</code>, <code>cutoff=0.5</code>) to
+      offer close spellings — the bot's "did you mean" suggestions.</li>
+</ul>
+
+<h3 id="f-prompts">3.7 · <code>prompts.py</code> — the bot's system prompt</h3>
+<p>A single <code>SYSTEM_PROMPT</code> string — the <b>interview contract</b>. It tells the LLM to:</p>
+<ul>
+  <li>collect the five slots and their shapes;</li>
+  <li>ask about <b>missing</b> slots one topic at a time, concisely and warmly;</li>
+  <li><b>never</b> ask how many scenarios/tasks to generate, and never claim
+      generation has started or finished;</li>
+  <li>set <code>ready_to_generate: true</code> <b>only</b> when all five slots are
+      filled, and summarise + ask for confirmation first;</li>
+  <li>apologise and re-ask, offering suggestions, on an unknown competency;</li>
+  <li>obey the strict <b>JSON-only output contract</b> (no markdown, no fences).</li>
+</ul>
+
+<h3 id="f-runner">3.8 · <code>runner.py</code> — the five-stage pipeline runner</h3>
+<p>
+  Drives the <b>generation phase</b>. Executes the pipeline for a
+  <code>TaskBrief</code> and calls an <code>emit</code> callback with a
+  <code>StageEvent</code> before and after each stage.
+</p>
+<p><b><code>StageEvent</code></b> (frozen dataclass) — the unit streamed to the browser:</p>
+<table>
+  <tr><th>Field</th><th>Meaning</th></tr>
+  <tr><td><code>stage</code></td><td>A <code>STAGES</code> label, or <code>"done"</code> for the terminal event.</td></tr>
+  <tr><td><code>status</code></td><td><code>running</code> / <code>ok</code> / <code>failed</code> / <code>completed</code>, or <code>log</code> for a live chunk.</td></tr>
+  <tr><td><code>detail</code></td><td>Free text — an error, an outcome, or a chunk of log output.</td></tr>
+  <tr><td><code>duration_s</code></td><td>Stage wall-clock time (on <code>ok</code>/<code>failed</code>).</td></tr>
+  <tr><td><code>outcome</code></td><td>Stage-4 classification string.</td></tr>
+  <tr><td><code>task_id</code>, <code>task_url</code></td><td>Set on a successful <code>done</code> event.</td></tr>
+</table>
+<p>
+  <b><code>STAGES</code></b> = <code>00_preflight, 01_input_files, 02_scenarios,
+  03_prompt, 04_tasks</code>.
+</p>
+<p><b><code>run_pipeline_for_brief(brief, *, run_id, emit, env, runs_root)</code></b></p>
+<ol>
+  <li>Picks the Python interpreter (<code>_pick_python</code> — prefers the project venv).</li>
+  <li>Creates a per-run log dir: <code>.task_agent_runs/web-&lt;UTC-timestamp&gt;-&lt;run_id&gt;/</code>.</li>
+  <li>Walks the five stages via the inner <code>_stage()</code> closure.</li>
+  <li><b>Stops at the first failing stage</b> and always emits a terminal
+      <code>"done"</code> event (<code>completed</code> or <code>failed</code>).</li>
+  <li>Any unexpected exception is caught and surfaced as a <code>failed</code>
+      <code>done</code> event — a stage crash never kills the worker silently.</li>
+</ol>
+<p>The <code>_stage(label, cmd)</code> closure is where live logs come from:</p>
+<pre><code>emit(running)
+  → StageLogTailer.start()          # tails &lt;label&gt;.stdout + &lt;label&gt;.stderr
+    → _run_stage()                  # blocks: runs the stage subprocess
+  → StageLogTailer.stop()           # final flush of log files
+emit(ok | failed)                   # with duration_s</code></pre>
+<p>
+  The tailer's callback wraps each new chunk as
+  <code>StageEvent(stage=label, status="log", detail=chunk)</code>, so per-stage
+  event order is always <b><code>running → log… → ok/failed</code></b>.
+</p>
+<table>
+  <tr><th>Stage</th><th>Command</th><th>Notes</th></tr>
+  <tr><td><code>00_preflight</code></td><td><code>task_agent_preflight.py --combo "&lt;names&gt;:&lt;LEVEL&gt;" --env</code></td><td>Sanity-checks the combo before expensive work.</td></tr>
+  <tr><td><code>01_input_files</code></td><td><code>python -m generate_input_files …</code></td><td>Writes competency + background JSON.</td></tr>
+  <tr><td><i>(locate)</i></td><td><code>_locate_input_files()</code></td><td>Finds the JSON files stage 1 just produced.</td></tr>
+  <tr><td><code>02_scenarios</code></td><td><code>python -m scenario_generator … --append</code> + <code>--focus-areas</code>/<code>--domain</code></td><td><code>focus_areas</code> and <code>domain</code> from the brief are threaded in.</td></tr>
+  <tr><td><code>03_prompt</code></td><td><code>python -m prompt_generator … --force --verbose</code></td><td>Synthesises the tech-specific task prompt.</td></tr>
+  <tr><td><code>04_tasks</code></td><td><code>python multiagent.py generate_tasks … --env</code></td><td>The actual task creation. <code>--env</code> must be threaded so a <code>prod</code> run stores in prod.</td></tr>
+</table>
+<p><b>Outcome handling</b></p>
+<ul>
+  <li><code>_summarise_task_stage()</code> reads stage-4 stdout and classifies it:
+      <code>TASK CREATED</code> / <code>EVAL GATE REJECTED</code> / <code>ERROR</code> /
+      <code>UNKNOWN</code>.</li>
+  <li>The <code>done</code> event is <code>failed</code> if the exit code is non-zero
+      <b>or</b> the outcome contains <code>REJECTED</code>/<code>ERROR</code>/<code>UNKNOWN</code>
+      — a task rejected by the eval gate is still a failure.</li>
+  <li><code>_extract_task_result()</code> scrapes <code>Task ID:</code> and
+      <code>GitHub Repository:</code> lines from stage-4 stdout to populate
+      <code>task_id</code>/<code>task_url</code> on success.</li>
+</ul>
+
+<h3 id="f-logtail">3.9 · <code>log_tail.py</code> — live log tailing</h3>
+<p>
+  <code>StageLogTailer</code> makes the per-stage logs appear <b>while the stage
+  runs</b>, instead of only after it finishes.
+</p>
+<ul>
+  <li>Constructed with file paths, an <code>emit</code> callback, and a poll interval
+      (<code>interval_s</code>, default <b>0.5 s</b>).</li>
+  <li><code>start()</code> spins up a <b>daemon thread</b>; <code>stop()</code> signals it
+      and joins.</li>
+  <li>Each poll, <code>_read_new(path)</code> tracks a <b>per-path byte offset</b>,
+      <code>seek</code>s, reads appended bytes, decodes <code>utf-8</code> with
+      <code>errors="replace"</code>. A not-yet-created file yields an empty read.</li>
+  <li>The run loop uses <code>Event.wait(interval)</code> so <code>stop()</code> exits it
+      promptly, and performs <b>one final <code>_drain()</code></b> after stopping — so
+      block-buffered output flushed at subprocess exit is never lost.</li>
+</ul>
+<blockquote>
+  This module needed <b>no changes to <code>server.py</code></b> — the tailer rides
+  the existing SSE event queue by emitting ordinary <code>StageEvent</code>s with
+  <code>status="log"</code>.
+</blockquote>
+
+<h3 id="f-static">3.10–3.12 · <code>static/</code> — the front-end</h3>
+<p><b><code>index.html</code></b> — a minimal single page: a <code>&lt;header&gt;</code>
+  (logo + title), <code>&lt;main&gt;</code> with the scrolling <code>#chat</code> area, and a
+  fixed-bottom <code>.dock</code> (text input + Send button). No content is
+  server-rendered; the page is an empty shell that <code>app.js</code> fills.</p>
+<p><b><code>app.js</code></b> — all browser-side logic. ~150 lines, no framework, no
+  build step.</p>
+<ul>
+  <li><code>bubble(role, text, cls)</code> — creates one chat row, returns the bubble
+      element so callers can mutate it later. User text goes in via
+      <code>textContent</code> (XSS-safe).</li>
+  <li><code>summaryCard(brief)</code> — renders the <b>task-brief card</b>: a key/value
+      grid of the five slots, an environment <code>&lt;select&gt;</code> (<code>dev</code>/
+      <code>prod</code>), and the <b>Generate task →</b> button.</li>
+  <li><code>startSession()</code> — <code>POST /api/session</code> on page load.</li>
+  <li><code>send()</code> — shows the user bubble + a <code>…</code> placeholder,
+      <code>POST /api/chat</code>, replaces the placeholder with the reply; if
+      <code>data.ready</code>, also renders the summary card.</li>
+  <li><code>startGeneration()</code> — disables the controls, <code>POST /api/generate</code>,
+      hands the <code>run_id</code> to <code>streamRun</code>.</li>
+  <li><code>stagePanel()</code> — lazily creates one collapsible <code>&lt;details&gt;</code>
+      panel per stage.</li>
+  <li><code>streamRun(runId)</code> — opens an <code>EventSource</code> and maps each event
+      to UI (see table below).</li>
+</ul>
+<table>
+  <tr><th><code>status</code></th><th>UI effect</th></tr>
+  <tr><td><code>running</code></td><td>open the panel, summary <code>⏳ &lt;stage&gt;</code></td></tr>
+  <tr><td><code>log</code></td><td>append <code>detail</code> to the <code>&lt;pre&gt;</code>, auto-scroll</td></tr>
+  <tr><td><code>ok</code></td><td>summary <code>✓ &lt;stage&gt; · &lt;n&gt;s</code>, <b>collapse</b></td></tr>
+  <tr><td><code>failed</code></td><td>summary <code>✗ &lt;stage&gt; &lt;detail&gt;</code>, <b>stay expanded</b></td></tr>
+  <tr><td><code>stage === "done"</code></td><td>render the done bubble, close the stream</td></tr>
+</table>
+<p><b><code>styles.css</code></b> — a small, dependency-free light-theme stylesheet
+  driven by CSS custom properties: chat bubbles, the <code>.summary</code> brief
+  card, the collapsible <code>.stage-log</code> panels (custom ▸/▾ triangle,
+  scrollable monospace <code>&lt;pre&gt;</code>), and the fixed input <code>.dock</code>.</p>
+
+<!-- 4 -->
+<h2 id="flow">4 · End-to-end data flow</h2>
+<h3>4.1 · Interview phase (one chat turn)</h3>
+<pre><code>Browser                 server.py            conversation.py        external
+   │  POST /api/chat        │                      │                   │
+   ├───────────────────────▶│                      │                   │
+   │                        │  apply_turn()        │                   │
+   │                        ├─────────────────────▶│                   │
+   │                        │                      │ run_turn() ───────▶ Claude (Portkey)
+   │                        │                      │◀──────────────────┤ JSON turn
+   │                        │                      │ _clean_slots_update()
+   │                        │                      │   validate_competency ─▶ Supabase (dev)
+   │                        │                      │ merge_brief()      │
+   │                        │                      │ (corrective turn if rejected)
+   │                        │◀─────────────────────┤ ChatResult         │
+   │  {reply, brief,        │                      │                   │
+   │   missing_slots, ready}│                      │                   │
+   │◀───────────────────────┤                      │                   │</code></pre>
+<h3>4.2 · Generation phase (SSE)</h3>
+<pre><code>Browser              server.py           worker thread (runner.py)
+   │ POST /api/generate   │                      │
+   ├─────────────────────▶│ _launch_run()        │
+   │                      ├─ queue.Queue ────────┤ run_pipeline_for_brief()
+   │  {run_id}            │  RUNS[run_id]=q       │
+   │◀─────────────────────┤                      │
+   │ GET /api/runs/{id}/events (EventSource)      │
+   ├─────────────────────▶│                      │
+   │                      │  q.get() in executor │  _stage("00_preflight")
+   │                      │◀─────────────────────┤  emit(running)
+   │  data: {running}     │                      │  StageLogTailer →
+   │◀─────────────────────┤◀─────────────────────┤  emit(log) ×N
+   │  data: {log} ×N      │                      │  emit(ok)
+   │◀─────────────────────┤◀─────────────────────┤   … stages 01–04 …
+   │  data: {done}        │◀─────────────────────┤  emit(done)
+   │◀─────────────────────┤  break; RUNS.pop()   │</code></pre>
+<p>
+  The SSE stream is one-way; the queue decouples the synchronous worker thread
+  from the async HTTP response.
+</p>
+
+<!-- 5 -->
+<h2 id="ui">5 · The web UI, element by element</h2>
+<pre><code>┌──────────────────────────────────────────────────────────┐
+│ ▪ Task Builder                                  ← header  │
+├──────────────────────────────────────────────────────────┤
+│  U  Hi! I'll help you put together a coding assessment…    │  ← bot bubble
+│                          What tech stack…?  Y             │  ← user bubble
+│  U  Great — what proficiency level?                        │
+│  ┌──────────────────────────────────────────────┐         │
+│  │ Task brief                                    │         │  ← summary card
+│  │ Tech stack   Java, Spring Boot                │         │   (appears when
+│  │ Proficiency  INTERMEDIATE                     │         │    ready === true)
+│  │ Role         Backend engineer                 │         │
+│  │ Focus areas  idempotency, retries             │         │
+│  │ Domain       fintech payments                 │         │
+│  │ Environment [dev ▾]      [ Generate task → ]  │         │
+│  └──────────────────────────────────────────────┘         │
+│  ▾ ✓ 01_input_files · 12.4s                                │  ← collapsible
+│  ┌──────────────────────────────────────────────┐         │   stage-log panel
+│  │ wrote competency_java_spring_boot…json        │         │
+│  └──────────────────────────────────────────────┘         │
+│  ⏳ 04_tasks            (running — auto-expanded)           │
+├──────────────────────────────────────────────────────────┤
+│  [ Type a message…                          ] [ Send ]    │  ← input dock
+└──────────────────────────────────────────────────────────┘</code></pre>
+<table>
+  <tr><th>Element</th><th>Behaviour</th></tr>
+  <tr><td><b>Header</b></td><td>Static title bar.</td></tr>
+  <tr><td><b>Bot / user bubbles</b></td><td>Plain conversation. The bot bubble shows <code>…</code> while a turn is in flight, then is replaced in place with the reply.</td></tr>
+  <tr><td><b>Summary card</b></td><td>Appears once the brief is complete (<code>ready</code>). Shows the five slots, an environment picker, and the Generate button.</td></tr>
+  <tr><td><b>Environment picker</b></td><td><code>dev</code> or <code>prod</code> — passed to <code>/api/generate</code>; selects which Supabase the task storage (stage 4) uses. Disabled once generation starts.</td></tr>
+  <tr><td><b>Generate task →</b></td><td>Starts the run; disables itself; opens the SSE stream.</td></tr>
+  <tr><td><b>Stage-log panel</b></td><td>One collapsible <code>&lt;details&gt;</code> per stage. The running stage auto-expands; on <code>ok</code> it collapses to a one-line <code>✓</code> summary; a failed stage stays expanded.</td></tr>
+  <tr><td><b>Done bubble</b></td><td>Final outcome line; on success it includes a clickable link to the generated GitHub repo.</td></tr>
+  <tr><td><b>Input dock</b></td><td>Text input + Send. Enter also sends. Overlapping sends are blocked by the <code>busy</code> flag.</td></tr>
+</table>
+
+<!-- 6 -->
+<h2 id="api">6 · HTTP API reference</h2>
+<table>
+  <tr><th>Endpoint</th><th>Request body</th><th>Response</th></tr>
+  <tr><td><code>GET /</code></td><td>—</td><td><code>index.html</code></td></tr>
+  <tr><td><code>GET /api/health</code></td><td>—</td><td><code>{"status":"ok"}</code></td></tr>
+  <tr><td><code>POST /api/session</code></td><td>—</td><td><code>{session_id, reply}</code></td></tr>
+  <tr><td><code>POST /api/chat</code></td><td><code>{session_id, message}</code></td><td><code>{reply, brief, missing_slots, ready}</code></td></tr>
+  <tr><td><code>POST /api/generate</code></td><td><code>{session_id, env}</code></td><td><code>{run_id}</code></td></tr>
+  <tr><td><code>GET /api/runs/{run_id}/events</code></td><td>—</td><td>SSE stream of JSON <code>StageEvent</code>s</td></tr>
+</table>
+<p>
+  <b>Error responses:</b> <code>404</code> for an unknown <code>session_id</code>/
+  <code>run_id</code>; <code>400</code> for an incomplete brief or an <code>env</code> that is
+  not <code>dev</code>/<code>prod</code>.
+</p>
+
+<!-- 7 -->
+<h2 id="run">7 · Running it</h2>
+<pre><code>.venv/bin/python -m task_builder
+# then open http://127.0.0.1:8000</code></pre>
+<p><b>Required environment variables</b> (in <code>.env</code>):</p>
+<table>
+  <tr><th>Variable</th><th>Used by</th></tr>
+  <tr><td><code>ANTHROPIC_API_KEY</code></td><td>the conversational bot (the API key Portkey forwards)</td></tr>
+  <tr><td><code>PORTKEY_API_KEY</code></td><td>the Portkey gateway</td></tr>
+  <tr><td><code>SUPABASE_URL_APTITUDETESTSDEV</code>, <code>SUPABASE_API_KEY_APTITUDETESTSDEV</code></td><td>competency validation (dev)</td></tr>
+  <tr><td><i>everything the pipeline stages need</i></td><td>preflight, input files, scenarios, prompt, tasks — see <code>TASK_MANAGEMENT_GUIDE.md</code></td></tr>
+</table>
+
+<!-- 8 -->
+<h2 id="gotchas">8 · Known limitations &amp; gotchas</h2>
+<div class="callout">
+  <b>State is in-memory and unbounded.</b> <code>SESSIONS</code> and <code>RUNS</code> are
+  plain dicts with no eviction and no persistence — everything is lost on
+  restart. Fine for a local single-user tool; not safe for multi-user or
+  long-running deployment.
+</div>
+<div class="callout">
+  <b>Competency validation is always <code>dev</code>.</b> <code>get_supabase()</code> is
+  hard-wired to dev. A user can pick <code>prod</code> for <i>task storage</i>, but the
+  competency they were validated against came from dev. If dev and prod
+  competency tables diverge, a <code>prod</code> run can hit a competency the interview
+  accepted.
+</div>
+<ul>
+  <li><b>Chat is synchronous.</b> Each <code>/api/chat</code> call makes 1–2 blocking LLM
+      calls on the request thread (a second one whenever a value is rejected).</li>
+  <li><b>The LLM proposes, the server disposes.</b> The bot can set
+      <code>ready_to_generate</code>, but <code>apply_turn</code> only reports <code>ready</code>
+      when the brief is genuinely complete, and <code>/api/generate</code>
+      independently re-checks <code>brief.is_complete()</code>.</li>
+  <li><b><code>scenario_count</code> is not interviewed.</b> It defaults to <code>6</code>;
+      the prompt forbids the bot from asking about it.</li>
+  <li><b>Eval-gate rejections count as failures.</b> A stage-4 task that is
+      generated but rejected by the eval gate produces a <code>failed</code>
+      <code>done</code> event, not a partial success.</li>
+</ul>
+
+<!-- 9 -->
+<h2 id="tests">9 · Tests</h2>
+<p>The package is covered by seven test modules under <code>tests/</code>:</p>
+<table>
+  <tr><th>Test file</th><th>Covers</th></tr>
+  <tr><td><code>test_task_builder_conversation.py</code></td><td>turn parsing, JSON extraction, validation, corrective turns</td></tr>
+  <tr><td><code>test_task_builder_slots.py</code></td><td><code>TaskBrief</code> completeness, <code>merge_brief</code> immutability</td></tr>
+  <tr><td><code>test_task_builder_validation.py</code></td><td>proficiency + competency validation, suggestions</td></tr>
+  <tr><td><code>test_task_builder_runner.py</code></td><td>five-stage ordering, failure short-circuit, outcome classification</td></tr>
+  <tr><td><code>test_task_builder_log_tail.py</code></td><td>tailer emits appended content, final flush, missing-file tolerance</td></tr>
+  <tr><td><code>test_task_builder_server.py</code></td><td>route behaviour, session/run registries, error codes</td></tr>
+  <tr><td><code>test_task_builder_integration.py</code></td><td>end-to-end interview → generate flow</td></tr>
+</table>
+
+<!-- 10 -->
+<h2 id="runpipeline">10 · Relationship to <code>run_pipeline.py</code></h2>
+<p>
+  Task Builder does <b>not</b> re-implement the pipeline. <code>runner.py</code>
+  imports the stage helpers directly from <code>run_pipeline.py</code>:
+</p>
+<table>
+  <tr><th>Imported</th><th>Role</th></tr>
+  <tr><td><code>REPO_ROOT, RUNS_DIR, SCENARIOS_FILE</code></td><td>paths</td></tr>
+  <tr><td><code>_pick_python</code></td><td>choose the interpreter for subprocess stages</td></tr>
+  <tr><td><code>_run_stage</code></td><td>run one stage as a subprocess, capture stdout/stderr/timing</td></tr>
+  <tr><td><code>_locate_input_files</code></td><td>find the JSON files stage 1 produced</td></tr>
+  <tr><td><code>_summarise_task_stage</code></td><td>classify the stage-4 outcome</td></tr>
+</table>
+<p>
+  The difference is the <b>stage loop</b>: <code>run_pipeline.py</code> <code>print</code>s
+  progress to a terminal; Task Builder's <code>runner.py</code> re-implements the loop
+  to emit <code>StageEvent</code>s and attach a <code>StageLogTailer</code> for live
+  streaming. Everything below the stage loop — the subprocess execution, the log
+  files under <code>.task_agent_runs/</code>, the outcome classification — is shared.
+</p>
+<blockquote>
+  <code>run_pipeline.py</code> is a plain <b>linear</b> orchestrator: no coordinator
+  agent, no per-stage verifier agents, no prompt-level escalation. The "smart"
+  autonomous version is a separate Phase-2 design
+  (<code>docs/research/autonomous-task-agent/</code>).
+</blockquote>
+
+<footer>
+  Task Builder — Architecture &amp; File Reference · branch
+  <code>feat/task-builder</code> · generated 2026-05-22.
+  Markdown source: <code>docs/task-builder-architecture.md</code>.
+</footer>
+
+</main>
+</div>
+
+<script>
+// Scrollspy — highlight the nav link for the section currently near the top
+// of the viewport. Tracks both h2 and h3 anchored sections so sub-items
+// (3.3 server.py, 3.4 conversation.py, …) also get highlighted.
+(function () {
+  const sections = Array.from(document.querySelectorAll('main h2[id], main h3[id]'));
+  const links = new Map();
+  document.querySelectorAll('nav a').forEach((a) => {
+    const href = a.getAttribute('href');
+    if (href && href.startsWith('#')) links.set(href.slice(1), a);
+  });
+  if (!sections.length || !links.size) return;
+
+  let currentId = null;
+  function setActive(id) {
+    if (id === currentId) return;
+    if (currentId && links.has(currentId)) links.get(currentId).classList.remove('active');
+    if (id && links.has(id)) links.get(id).classList.add('active');
+    currentId = id;
+  }
+
+  function update() {
+    const threshold = 120;
+    let activeId = sections[0].id;
+    for (const sec of sections) {
+      if (sec.getBoundingClientRect().top <= threshold) {
+        // Only treat as active if the nav actually has a link to it —
+        // most h3s aren't in the nav, so skip them.
+        if (links.has(sec.id)) activeId = sec.id;
+      } else break;
+    }
+    setActive(activeId);
+  }
+
+  let ticking = false;
+  window.addEventListener('scroll', () => {
+    if (ticking) return;
+    ticking = true;
+    requestAnimationFrame(() => { update(); ticking = false; });
+  }, { passive: true });
+
+  window.addEventListener('resize', update);
+  update();
+})();
+</script>
+
+</body>
+</html>

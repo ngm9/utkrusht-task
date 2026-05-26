@@ -29,7 +29,7 @@ import click
 
 # Reuse Supabase / LLM helpers from the existing generate_input_files module
 # so there is a single source of truth for auth, pricing, and file conventions.
-from generate_input_files.generator import (
+from generators.input_files.generator import (
     HARDCODED_ORGANIZATION,
     PROFICIENCY_YOE_MAP,
     fetch_competencies_from_db,
@@ -42,7 +42,7 @@ from generate_input_files.generator import (
 
 # ── Constants ──────────────────────────────────────────────────────────────────
 
-_BASE_DIR = Path("task_input_files")
+_BASE_DIR = Path("data") / "generated" / "input_files"
 
 # Best-effort keyword → Supabase competency name mapping.
 # Keys are lowercase substrings to search for in the markdown content.

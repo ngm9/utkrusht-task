@@ -1,0 +1,1278 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Prompt Generator — Architecture & Design · Utkrushta AI</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/themes/prism-tomorrow.min.css">
+
+<style>
+/* ─── Utkrushta design system ─── */
+:root {
+  --ink:        #0f172a;
+  --ink-soft:   #334155;
+  --ink-muted:  #64748b;
+  --bg:         #ffffff;
+  --bg-soft:    #f8fafc;
+  --bg-card:    #ffffff;
+  --rule:       #e2e8f0;
+  --rule-soft:  #f1f5f9;
+
+  --brand:        #4f46e5;
+  --brand-soft:   #eef2ff;
+  --brand-strong: #4338ca;
+
+  --success:      #10b981;
+  --success-soft: #ecfdf5;
+  --warning:      #f59e0b;
+  --warning-soft: #fffbeb;
+  --danger:       #ef4444;
+  --danger-soft:  #fef2f2;
+  --info:         #0ea5e9;
+  --info-soft:    #f0f9ff;
+
+  --shadow-sm:  0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow:     0 4px 12px rgba(15, 23, 42, 0.06);
+  --shadow-lg:  0 12px 28px rgba(15, 23, 42, 0.08);
+
+  --radius-sm: 6px;
+  --radius:    10px;
+  --radius-lg: 16px;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; scroll-padding-top: 24px; }
+body {
+  margin: 0;
+  font-family: var(--font-sans);
+  color: var(--ink);
+  background: var(--bg-soft);
+  line-height: 1.65;
+  font-size: 15.5px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Top bar ─── */
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--bg);
+  border-bottom: 1px solid var(--rule);
+  padding: 14px 32px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  box-shadow: var(--shadow-sm);
+}
+.brand {
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+}
+.brand .dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--brand);
+  margin-right: 8px;
+}
+.topbar .crumbs {
+  color: var(--ink-muted);
+  font-size: 14px;
+}
+.topbar .status-pill {
+  margin-left: auto;
+  background: var(--success-soft);
+  color: var(--success);
+  font-weight: 600;
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+
+/* ─── Layout ─── */
+.layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 0;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+aside.toc {
+  position: sticky;
+  top: 64px;
+  align-self: start;
+  height: calc(100vh - 64px);
+  overflow-y: auto;
+  padding: 28px 18px 28px 24px;
+  border-right: 1px solid var(--rule);
+}
+aside.toc h4 {
+  margin: 0 0 12px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+aside.toc a {
+  display: block;
+  padding: 5px 10px;
+  font-size: 13.5px;
+  color: var(--ink-soft);
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+  border-left: 2px solid transparent;
+  margin: 2px 0;
+  transition: all 0.15s ease;
+}
+aside.toc a:hover {
+  background: var(--bg-soft);
+  color: var(--ink);
+}
+aside.toc a.active {
+  background: var(--brand-soft);
+  color: var(--brand-strong);
+  border-left-color: var(--brand);
+  font-weight: 600;
+}
+
+main {
+  padding: 56px 64px 120px;
+  background: var(--bg);
+  min-width: 0;
+}
+@media (max-width: 1024px) {
+  .layout { grid-template-columns: 1fr; }
+  aside.toc { display: none; }
+  main { padding: 32px 24px 80px; }
+}
+
+/* ─── Typography ─── */
+.page-title {
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+  line-height: 1.1;
+  margin: 0 0 14px;
+  background: linear-gradient(115deg, #0f172a 0%, #4f46e5 70%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.subtitle {
+  font-size: 17px;
+  color: var(--ink-muted);
+  max-width: 64ch;
+  margin: 0 0 32px;
+  line-height: 1.55;
+}
+
+h2 {
+  scroll-margin-top: 80px;
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  margin: 64px 0 16px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--rule);
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+h2 .num {
+  font-family: var(--font-mono);
+  color: var(--brand);
+  font-size: 20px;
+  font-weight: 600;
+}
+
+h3 {
+  margin: 36px 0 12px;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+p { color: var(--ink-soft); margin: 14px 0; }
+a { color: var(--brand); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+ul, ol { color: var(--ink-soft); padding-left: 22px; }
+li { margin: 6px 0; }
+
+/* ─── Callouts ─── */
+.callout {
+  display: flex;
+  gap: 14px;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  margin: 22px 0;
+  box-shadow: var(--shadow-sm);
+  border-left: 4px solid;
+}
+.callout .icon {
+  font-size: 18px;
+  margin-top: 1px;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+.callout p:first-child { margin-top: 0; }
+.callout p:last-child  { margin-bottom: 0; }
+.callout-tldr     { background: var(--brand-soft);   border-color: var(--brand);   }
+.callout-tldr .icon, .callout-tldr strong { color: var(--brand-strong); }
+.callout-success  { background: var(--success-soft); border-color: var(--success); }
+.callout-success .icon { color: var(--success); }
+.callout-warning  { background: var(--warning-soft); border-color: var(--warning); }
+.callout-warning .icon { color: var(--warning); }
+.callout-danger   { background: var(--danger-soft);  border-color: var(--danger);  }
+.callout-danger .icon { color: var(--danger); }
+.callout-info     { background: var(--info-soft);    border-color: var(--info);    }
+.callout-info .icon { color: var(--info); }
+.callout-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+/* ─── Tables ─── */
+.table-wrap {
+  border-radius: var(--radius);
+  border: 1px solid var(--rule);
+  overflow: hidden;
+  margin: 22px 0;
+  box-shadow: var(--shadow-sm);
+  background: var(--bg-card);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14.5px;
+}
+th, td {
+  text-align: left;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--rule-soft);
+  vertical-align: top;
+  color: var(--ink-soft);
+}
+th {
+  background: var(--bg-soft);
+  color: var(--ink);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+}
+tr:last-child td { border-bottom: 0; }
+tr:hover td { background: var(--rule-soft); }
+td code { font-size: 13px; }
+
+/* ─── Code ─── */
+code {
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  background: var(--bg-soft);
+  padding: 1.5px 6px;
+  border-radius: 4px;
+  color: var(--ink);
+  border: 1px solid var(--rule);
+}
+pre {
+  border-radius: var(--radius);
+  padding: 18px 20px !important;
+  font-size: 13.5px;
+  line-height: 1.65;
+  margin: 18px 0;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--rule);
+}
+pre code {
+  background: transparent;
+  padding: 0;
+  border: 0;
+  color: inherit;
+}
+
+/* ─── Diagram cards ─── */
+.diagram {
+  background: var(--bg-card);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 28px 24px;
+  margin: 26px 0;
+  display: flex;
+  justify-content: center;
+  box-shadow: var(--shadow);
+  overflow-x: auto;
+}
+.diagram .caption {
+  display: block;
+  font-size: 12.5px;
+  color: var(--ink-muted);
+  text-align: center;
+  margin-top: 14px;
+  font-weight: 500;
+}
+
+/* ─── Signal cards ─── */
+.signals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin: 24px 0;
+}
+.signal {
+  background: var(--bg-card);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 20px 22px;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.signal:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-lg);
+}
+.signal .num {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--brand);
+  background: var(--brand-soft);
+  padding: 3px 8px;
+  border-radius: 999px;
+  margin-bottom: 12px;
+  display: inline-block;
+  letter-spacing: 0.04em;
+}
+.signal h4 {
+  margin: 0 0 8px;
+  font-size: 15.5px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.signal .source {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--ink-muted);
+  margin-bottom: 10px;
+}
+.signal p {
+  margin: 8px 0 0;
+  font-size: 14px;
+  color: var(--ink-soft);
+}
+
+/* ─── Step cards ─── */
+.step {
+  background: var(--bg-card);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 22px 24px 22px 78px;
+  margin: 16px 0;
+  position: relative;
+  box-shadow: var(--shadow-sm);
+}
+.step::before {
+  content: attr(data-step);
+  position: absolute;
+  left: 22px;
+  top: 22px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: var(--brand);
+  color: white;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 6px rgba(79, 70, 229, 0.3);
+}
+.step h4 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 700;
+}
+.step p { margin: 8px 0; }
+
+/* ─── Comparison rail ─── */
+.compare {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  margin: 20px 0;
+}
+@media (max-width: 700px) {
+  .compare { grid-template-columns: 1fr; }
+}
+.compare > div {
+  background: var(--bg-card);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 18px 22px;
+  box-shadow: var(--shadow-sm);
+}
+.compare > div h5 {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.compare .pro h5  { color: var(--success); }
+.compare .con h5  { color: var(--danger); }
+
+/* ─── Misc ─── */
+.tag {
+  display: inline-block;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-soft);
+  color: var(--ink-soft);
+  border: 1px solid var(--rule);
+  margin-right: 6px;
+}
+.tag.ok   { background: var(--success-soft); color: var(--success); border-color: var(--success); }
+.tag.no   { background: var(--danger-soft);  color: var(--danger);  border-color: var(--danger); }
+
+hr {
+  border: 0;
+  height: 1px;
+  background: var(--rule);
+  margin: 48px 0;
+}
+
+footer {
+  margin-top: 80px;
+  padding-top: 28px;
+  border-top: 1px solid var(--rule);
+  color: var(--ink-muted);
+  font-size: 13px;
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+/* ─── Mermaid theme tweaks ─── */
+.mermaid {
+  background: transparent;
+  font-family: var(--font-sans) !important;
+}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <span class="brand"><span class="dot"></span>Utkrushta AI</span>
+  <span class="crumbs">docs · research · prompt-generator</span>
+  <span class="status-pill">Shipped · Uncompiled</span>
+</header>
+
+<div class="layout">
+
+<aside class="toc">
+  <h4>On this page</h4>
+  <nav id="toc-nav">
+    <a href="#tldr">TL;DR</a>
+    <a href="#decision">The decision</a>
+    <a href="#what">What the agent does</a>
+    <a href="#pipeline">Pipeline overview</a>
+    <a href="#modules">Modules</a>
+    <a href="#signals">The 5 context signals</a>
+    <a href="#ladder">Retriever fallback ladder</a>
+    <a href="#walkthrough">Walkthrough: Python+SQL BASIC</a>
+    <a href="#loop">Generate ⇄ Verify loop</a>
+    <a href="#dspy">What DSPy gives us</a>
+    <a href="#compilation">Compilation — and why we stopped</a>
+    <a href="#contamination">The contamination failure mode</a>
+    <a href="#artifacts">Compiled artifacts</a>
+    <a href="#how-to-run">How to run</a>
+    <a href="#config">Configuration knobs</a>
+    <a href="#errors">Common errors</a>
+    <a href="#future">Future work</a>
+  </nav>
+</aside>
+
+<main>
+
+<h1 class="page-title">Prompt Generator</h1>
+<p class="subtitle">DSPy agent that synthesises task-generation prompt templates for any
+<code>(competencies, proficiency)</code> combo. Scope-respecting, complexity-calibrated, category-correct.
+Ships uncompiled — empirical evidence shows few-shot demos hurt quality on this codebase.</p>
+
+<div class="callout callout-tldr" id="tldr">
+  <span class="icon">→</span>
+  <div>
+    <div class="callout-label">TL;DR</div>
+    <p>
+      Run <code>python -m prompt_generator --name "Python, SQL" --proficiency BASIC</code>.
+      The agent gathers 5 context signals, asks one LLM to <strong>Generate</strong> a prompt file, asks
+      a second LLM to <strong>Verify</strong> it against 4 hard-fail rules, then runs a deterministic
+      Python <strong>Validator</strong>. Loops up to 5 times with feedback if anything fails. On pass,
+      writes <code>task_generation_prompts/&lt;Level&gt;/&lt;tech&gt;_&lt;level&gt;_prompt.py</code>.
+    </p>
+    <p>
+      <strong>Decision:</strong> ship uncompiled. 4 compile experiments all regressed quality. Per-call
+      signals already saturate the structural-pattern role that demos try to play.
+    </p>
+  </div>
+</div>
+
+<h2 id="decision"><span class="num">01</span>The decision: uncompiled wins</h2>
+
+<p>Three independent compile experiments + one blind-regeneration test, all returning negative lift:</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Experiment</th><th>Setup</th><th>Lift</th><th>Verdict</th></tr></thead>
+  <tbody>
+    <tr><td>Hand-built, gpt-4.1-mini, 4 demos</td><td>$0</td><td><strong style="color:var(--danger)">-0.675</strong></td><td>Catastrophic</td></tr>
+    <tr><td>Sonnet 4 compile, 23 pairs, 3 demos, 2 holdouts</td><td>~$1</td><td>-0.035</td><td>Noise</td></tr>
+    <tr><td>Sonnet 4 compile, 30 pairs, 3 demos, 8 holdouts</td><td>~$1</td><td>-0.021</td><td>Noise</td></tr>
+    <tr><td>Blind regen, HTML+CSS, Sonnet 4 demos</td><td>~$0.30</td><td><strong style="color:var(--danger)">-0.173</strong></td><td>Measurable drift</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout callout-warning">
+  <span class="icon">!</span>
+  <div>
+    <div class="callout-label">Why compilation hurts here</div>
+    <p>
+      Five per-call signals already give the LLM strong structural examples for every call.
+      Demos add a redundant fourth source of structural pattern, on top of three sources that
+      already match the target combo better. With weaker matching to the user's combo, demos
+      <strong>drift across task_category boundaries</strong> (see §13).
+    </p>
+  </div>
+</div>
+
+<h2 id="what"><span class="num">02</span>What the agent does</h2>
+
+<p>The agent produces a <code>.py</code> file that registers a <code>PROMPT_REGISTRY</code> entry the
+existing <code>multiagent.py</code> pipeline can consume to generate candidate-facing tasks.</p>
+
+<div class="diagram">
+<pre class="mermaid">
+flowchart LR
+  U["User CLI<br/>--name &#39;Python, SQL&#39;<br/>--proficiency BASIC"] --> A["prompt_generator<br/>agent"]
+  A --> F["python_sql_basic_prompt.py<br/>(PROMPT_REGISTRY entry)"]
+  F --> M["multiagent.py<br/>(task generation)"]
+  M --> T["actual candidate tasks<br/>(GitHub + Supabase)"]
+
+  classDef in   fill:#eef2ff,stroke:#4f46e5,color:#3730a3,font-weight:600;
+  classDef out  fill:#ecfdf5,stroke:#10b981,color:#065f46,font-weight:600;
+  classDef step fill:#f8fafc,stroke:#64748b,color:#0f172a;
+  class U in
+  class A,M step
+  class F,T out
+</pre>
+<span class="caption">From CLI invocation to candidate-facing tasks</span>
+</div>
+
+<h2 id="pipeline"><span class="num">03</span>Pipeline overview</h2>
+
+<div class="diagram">
+<pre class="mermaid">
+flowchart TD
+  CLI["python -m prompt_generator"] --> M["__main__.py<br/>parse args · configure DSPy"]
+  M --> AG["agent.forward()"]
+
+  AG --> S1["STEP 1<br/>classifier.py<br/>→ task_category"]
+  S1 --> S2["STEP 2<br/>retriever.py<br/>→ 2-5 reference files<br/>(5-level fallback)"]
+  S2 --> S3["STEP 3<br/>db_queries.py<br/>→ scopes + similar tasks<br/>(Supabase)"]
+  S3 --> S4["STEP 4<br/>input_files.py<br/>→ detailed_skill_signal"]
+  S4 --> S5["STEP 5<br/>assemble context payload"]
+  S5 --> S6["STEP 6<br/>Generate ⇄ Verify ⇄ Validate<br/>(loop, up to 5 attempts)"]
+
+  S6 --> W["write task_generation_prompts/<br/>&lt;Level&gt;/&lt;name&gt;_&lt;level&gt;_prompt.py"]
+
+  classDef llm  fill:#fef2f2,stroke:#ef4444,color:#991b1b,font-weight:600;
+  classDef det  fill:#ecfdf5,stroke:#10b981,color:#065f46,font-weight:500;
+  classDef io   fill:#f0f9ff,stroke:#0ea5e9,color:#075985,font-weight:500;
+  classDef out  fill:#eef2ff,stroke:#4f46e5,color:#3730a3,font-weight:600;
+  class S1,S2,S4,S5 det
+  class S3 io
+  class S6 llm
+  class W out
+</pre>
+<span class="caption">
+  <span class="tag" style="background:#ecfdf5;border-color:#10b981;color:#065f46">deterministic Python</span>
+  <span class="tag" style="background:#f0f9ff;border-color:#0ea5e9;color:#075985">I/O (Supabase / files)</span>
+  <span class="tag" style="background:#fef2f2;border-color:#ef4444;color:#991b1b">LLM calls (2 per attempt)</span>
+</span>
+</div>
+
+<h2 id="modules"><span class="num">04</span>Modules</h2>
+
+<div class="table-wrap">
+<table>
+  <thead>
+    <tr><th style="width:24%">File</th><th>Role</th><th style="width:7%">LLM?</th></tr>
+  </thead>
+  <tbody>
+    <tr><td><code>__main__.py</code></td><td>CLI entry. Parses args, configures DSPy, instantiates agent, writes file.</td><td><span class="tag no">no</span></td></tr>
+    <tr><td><code>classifier.py</code></td><td>Pure-Python rules. Maps competency mix → <code>TaskCategory</code> enum.</td><td><span class="tag no">no</span></td></tr>
+    <tr><td><code>retriever.py</code></td><td>Filesystem reader. 5-level fallback ladder for reference prompts.</td><td><span class="tag no">no</span></td></tr>
+    <tr><td><code>db_queries.py</code></td><td>Supabase reader. Fetches <code>competency.scope</code> + enabled+eval-passed tasks.</td><td><span class="tag no">no</span></td></tr>
+    <tr><td><code>input_files.py</code></td><td>Local file reader. Bundles <code>role_context</code> + <code>questions_prompt</code> + scenarios.</td><td><span class="tag no">no</span></td></tr>
+    <tr><td><code>agent.py</code></td><td>DSPy module. Holds Generate + Verify signatures, runs the loop.</td><td><span class="tag ok">yes</span></td></tr>
+    <tr><td><code>validator.py</code></td><td>Deterministic AST + regex checks on the generated source.</td><td><span class="tag no">no</span></td></tr>
+    <tr><td><code>trainset.py</code></td><td>Builds training data from existing prompts (used by compile only).</td><td><span class="tag no">no</span></td></tr>
+    <tr><td><code>metric.py</code></td><td><code>[0.0, 1.0]</code> scoring of predicted prompt vs gold.</td><td><span class="tag no">no</span></td></tr>
+    <tr><td><code>compile.py</code></td><td>Offline few-shot demo selection (currently disabled).</td><td><span class="tag ok">yes</span></td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>LLM is touched in exactly <strong>two places</strong>: inside <code>agent.forward()</code>'s Generate
+/ Verify steps at runtime, and inside <code>compile.py</code> at compile time. Everything else is plain
+Python — predictable, debuggable, fast.</p>
+
+<h2 id="signals"><span class="num">05</span>The 5 context signals</h2>
+
+<p>The agent feeds five context sources to the LLM. Three from Supabase, two from local files. Together
+they give the LLM enough material to write a scoped, calibrated prompt template.</p>
+
+<div class="signals">
+  <div class="signal">
+    <span class="num">01</span>
+    <h4>competency_scopes</h4>
+    <div class="source">db_queries.py · Supabase</div>
+    <p>Authoritative skill bounds. ~2K chars per competency. Source of truth for what the candidate can
+    and can't be asked. Verifier's #1 hard-fail check is against this.</p>
+  </div>
+  <div class="signal">
+    <span class="num">02</span>
+    <h4>reference_prompts</h4>
+    <div class="source">retriever.py · local files</div>
+    <p>2-5 existing prompt files via 5-level fallback ladder. Provides structural template — section
+    ordering, JSON shape, README format. ~10-60K chars.</p>
+  </div>
+  <div class="signal">
+    <span class="num">03</span>
+    <h4>similar_tasks</h4>
+    <div class="source">db_queries.py · Supabase</div>
+    <p>5-7 production tasks matching this combo, <code>is_enabled + eval_info.passed</code>. Calibrates
+    complexity, file count, question style.</p>
+  </div>
+  <div class="signal">
+    <span class="num">04</span>
+    <h4>detailed_skill_signal</h4>
+    <div class="source">input_files.py · local files</div>
+    <p>Bundled: <code>questions_prompt</code> (30 sub-skill bullets) + <code>role_context</code> (YoE +
+    responsibilities) + 3 example scenarios. ~2-4K chars. Empty for brand-new combos.</p>
+  </div>
+  <div class="signal">
+    <span class="num">05</span>
+    <h4>task_category</h4>
+    <div class="source">classifier.py · pure rules</div>
+    <p>Enum from rules-based classifier. One of <code>pure_code, db_only, script_and_db, app_and_db,
+    frontend, llm_framework, vector_db, messaging, microservices, non_code</code>. Hard constraint on
+    file shape.</p>
+  </div>
+  <div class="signal">
+    <span class="num">+1</span>
+    <h4>feedback_from_previous_attempt</h4>
+    <div class="source">verifier + validator · loop only</div>
+    <p>Empty on first attempt. Populated with concrete issue list on retries. Generate's docstring forces
+    every issue to be addressed in the new output.</p>
+  </div>
+</div>
+
+<h2 id="ladder"><span class="num">06</span>The retriever's 5-level fallback ladder</h2>
+
+<p>The retriever picks reference prompts from <code>task_generation_prompts/</code> via a deterministic
+ladder, walking from most-specific to most-generic until it has enough references.</p>
+
+<div class="diagram">
+<pre class="mermaid">
+flowchart TD
+  Start(["Asked for:<br/>Rust + ScyllaDB (BASIC)"]) --> L1
+  L1["Level 1: exact match<br/>any file with 'rust' AND 'scylladb'"] -- "no match" --> L2
+  L1 -- "found" --> Done["return"]
+  L2["Level 2: same combo, adjacent level<br/>look in Beginner/ Intermediate/"] -- "no match" --> L3
+  L2 -- "found" --> Done
+  L3["Level 3: per-competency same level<br/>+ tech-family siblings<br/>(cassandra, mongodb, …)"] -- "&lt;3 refs" --> L4
+  L3 -- "≥3 refs" --> Done
+  L4["Level 4: per-competency any level"] -- "&lt;3 refs" --> L5
+  L4 -- "≥3 refs" --> Done
+  L5["Level 5: same task_category<br/>(generic category examples)"] --> Done
+
+  classDef start fill:#eef2ff,stroke:#4f46e5,color:#3730a3,font-weight:600;
+  classDef end0  fill:#ecfdf5,stroke:#10b981,color:#065f46,font-weight:600;
+  classDef step fill:#f8fafc,stroke:#64748b,color:#0f172a;
+  class Start start
+  class Done end0
+  class L1,L2,L3,L4,L5 step
+</pre>
+<span class="caption">Each level falls through to the next if not enough references are found</span>
+</div>
+
+<h2 id="walkthrough"><span class="num">07</span>Walkthrough — Python + SQL BASIC</h2>
+
+<p>Concrete trace of every step for a successful run.</p>
+
+<div class="step" data-step="0">
+  <h4>CLI invocation</h4>
+<pre><code class="language-bash">PYTHONPATH=. .venv/bin/python -m prompt_generator \
+    --name "Python, SQL" --proficiency BASIC --env dev --verbose</code></pre>
+</div>
+
+<div class="step" data-step="1">
+  <h4>classifier.py — pure rules</h4>
+<pre><code class="language-python">classify_task_category([Competency("Python","BASIC"), Competency("SQL","BASIC")])
+# has_db=True  (SQL → _DB_TOKENS)
+# has_backend=True  (Python → _BACKEND_LANG_TOKENS)
+# has_framework=False (no Flask/FastAPI/etc)
+# has_web_app=False  (Python not in _WEB_APP_LANG_TOKENS)
+# → TaskCategory.SCRIPT_AND_DB</code></pre>
+</div>
+
+<div class="step" data-step="2">
+  <h4>retriever.py — 5-level ladder</h4>
+  <p>Level 1 finds <code>python_sql_basic_prompt.py</code>. Adds 1-2 same-category prompts for style.
+  Returns 5 reference files. <code>fallback_level=1</code>, <code>bootstrap_mode=False</code>.</p>
+</div>
+
+<div class="step" data-step="3">
+  <h4>db_queries.py — Supabase</h4>
+<pre><code class="language-text">fetch_similar_tasks(["Python","SQL"], "BASIC")     → 7 TaskExample objects
+fetch_competency_scope("Python", "BASIC")          → ~1.8K char scope
+fetch_competency_scope("SQL", "BASIC")             → ~1.8K char scope</code></pre>
+</div>
+
+<div class="step" data-step="4">
+  <h4>input_files.py — detailed_skill_signal</h4>
+<pre><code class="language-text">scanning task_input_files/input_python_sql/
+picked   background_forQuestions_utkrusht_python_sql_basic.json
+questions_prompt    1358 chars  (30 sub-skill bullets)
+role_context         839 chars
+scenarios              2 items  from task_scenarios.json
+total signal        4027 chars</code></pre>
+</div>
+
+<div class="step" data-step="5">
+  <h4>Context payload sizes</h4>
+<pre><code class="language-text">competencies                  27 chars
+proficiency                    5 chars
+task_category                 13 chars
+competency_scopes           3649 chars
+reference_prompts          80256 chars  ← biggest payload
+similar_tasks               1941 chars
+detailed_skill_signal       4027 chars
+feedback_from_previous_attempt 0 chars  ← empty on first attempt</code></pre>
+</div>
+
+<div class="step" data-step="6">
+  <h4>Generate ⇄ Verify ⇄ Validate (attempt 1)</h4>
+  <p>Generate produces ~15K chars of Python in ~60s. Verify reads the candidate + same context, judges
+  4 hard-fail conditions → <code>passes=True</code>. Validator runs AST parse + registry-key check +
+  format-var check → <code>passed=True</code>. Loop exits.</p>
+</div>
+
+<div class="step" data-step="7">
+  <h4>Write to disk</h4>
+<pre><code class="language-text">task_generation_prompts/Basic/python_sql_basic_prompt.py
+  - 3 prompt strings (CONTEXT, INPUT_AND_ASK, INSTRUCTIONS)
+  - PROMPT_REGISTRY with alpha-sorted key "Python (BASIC), SQL (BASIC)"
+  - All 5 format vars present</code></pre>
+</div>
+
+<h2 id="loop"><span class="num">08</span>The Generate ⇄ Verify ⇄ Validate loop</h2>
+
+<div class="diagram">
+<pre class="mermaid">
+flowchart TD
+  Start(["feedback = ''"]) --> G["GENERATE<br/>ChainOfThought(GenerateSignature)<br/><br/>8 inputs · returns:<br/>reasoning (discarded) · new_prompt_file"]
+  G --> V["VERIFY<br/>ChainOfThought(VerifySignature)<br/><br/>checks 4 hard-fails:<br/>1 SCOPE VIOLATION<br/>2 CATEGORY MISMATCH<br/>3 STRUCTURAL DAMAGE<br/>4 SOLUTION LEAK"]
+  V --> X["VALIDATE (deterministic)<br/>ast.parse · PROMPT_REGISTRY<br/>· registry key · format vars"]
+  X --> D{"verifier.passes<br/>AND<br/>validator.passed?"}
+  D -- "yes" --> W(["BREAK<br/>write to disk"])
+  D -- "no" --> FB["feedback =<br/>verifier.feedback + validator.issues"]
+  FB --> Attempt{"attempt &lt; 5?"}
+  Attempt -- "yes" --> G
+  Attempt -- "no" --> W
+
+  classDef start fill:#eef2ff,stroke:#4f46e5,color:#3730a3,font-weight:600;
+  classDef llm  fill:#fef2f2,stroke:#ef4444,color:#991b1b,font-weight:600;
+  classDef det  fill:#ecfdf5,stroke:#10b981,color:#065f46,font-weight:500;
+  classDef dec  fill:#fffbeb,stroke:#f59e0b,color:#92400e,font-weight:600;
+  classDef end0 fill:#eef2ff,stroke:#4f46e5,color:#3730a3,font-weight:600;
+  class Start start
+  class G,V llm
+  class X det
+  class D,Attempt dec
+  class W end0
+  class FB det
+</pre>
+<span class="caption">Two LLM calls per attempt. Up to 5 attempts. Feedback flows between iterations.</span>
+</div>
+
+<div class="callout callout-info">
+  <span class="icon">i</span>
+  <div>
+    <div class="callout-label">Why two separate LLM calls</div>
+    <p>If the same LLM both writes AND critiques, it tends to confirm its own output. A separate
+    <code>VerifyPromptSignature</code> with different instructions (focused on the 4 hard-fail
+    conditions) acts as a real adversary, not an echo chamber.</p>
+  </div>
+</div>
+
+<h2 id="dspy"><span class="num">09</span>What DSPy gives us</h2>
+
+<p>DSPy turns LLM calls into typed functions with declarative signatures. Without it, the agent code
+would be ~800 lines of f-string templates and brittle JSON parsing.</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>DSPy feature</th><th>What you'd write by hand without it</th></tr></thead>
+  <tbody>
+    <tr><td><code>dspy.Signature</code> class</td><td>200-line f-string template per LLM call</td></tr>
+    <tr><td><code>dspy.ChainOfThought</code></td><td>Manual "think step by step" prompt + reasoning extraction</td></tr>
+    <tr><td>Typed output fields</td><td><code>json.loads</code> + regex + retry on malformed</td></tr>
+    <tr><td><code>dspy.Module</code> composition</td><td>Inline procedural code with strings</td></tr>
+    <tr><td><code>configure_dspy()</code></td><td>Provider-specific HTTP clients scattered everywhere</td></tr>
+    <tr><td>Compile framework</td><td>Roll your own search algorithm</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Example — the <em>entire</em> Generate call is declared like this in
+<code>agent.py</code>:</p>
+
+<pre><code class="language-python">class GeneratePromptSignature(dspy.Signature):
+    """[docstring — the rules. ~150 lines with hard constraints
+    for scope, structure, category, proficiency boundaries.]"""
+
+    competencies:          str = dspy.InputField(desc="…")
+    proficiency:           str = dspy.InputField(desc="…")
+    task_category:         str = dspy.InputField(desc="…")
+    competency_scopes:     str = dspy.InputField(desc="…")
+    reference_prompts:     str = dspy.InputField(desc="…")
+    similar_tasks:         str = dspy.InputField(desc="…")
+    detailed_skill_signal: str = dspy.InputField(desc="…")
+    feedback_from_previous_attempt: str = dspy.InputField(desc="…")
+
+    new_prompt_file:       str = dspy.OutputField(desc="…")
+
+# in the agent:
+self.generate = dspy.ChainOfThought(GeneratePromptSignature)
+out = self.generate(competencies="Python (BASIC), SQL (BASIC)", ...)
+text = out.new_prompt_file   # already typed and parsed</code></pre>
+
+<p>DSPy reads the signature and renders the LLM prompt for you, parses the response back into typed
+attributes, and adds a <code>reasoning</code> field automatically when ChainOfThought is applied. None
+of this is compilation-specific. Even with compilation disabled, DSPy is still paying for itself
+just on these features.</p>
+
+<h2 id="compilation"><span class="num">10</span>Compilation — and why we stopped</h2>
+
+<p>Compilation is an offline search that picks the 3-4 "best" few-shot demos from your training pool and
+saves them to <code>compiled/agent_bootstrap.json</code>. At runtime, those demos get prepended to every
+LLM call. The promise: examples beat instructions, so the agent should produce more consistent output.</p>
+
+<div class="diagram">
+<pre class="mermaid">
+flowchart LR
+  TS["trainset.py<br/>23-30 (input, gold) pairs<br/>filtered by Supabase<br/>quality signal"] --> BFS["compile.py<br/>BootstrapFewShot"]
+  M["metric.py<br/>structural + Jaccard +<br/>length similarity"] --> BFS
+  BFS --> J["agent_bootstrap.json<br/>3 selected demos"]
+  J --> RT["runtime: __main__.py<br/>loads demos, prepends<br/>to every LLM call"]
+
+  classDef offline fill:#fffbeb,stroke:#f59e0b,color:#92400e,font-weight:500;
+  classDef runtime fill:#f0f9ff,stroke:#0ea5e9,color:#075985,font-weight:500;
+  class TS,BFS,M,J offline
+  class RT runtime
+</pre>
+<span class="caption">Compilation runs once offline. The resulting JSON is loaded at every future runtime call.</span>
+</div>
+
+<h3>Why it didn't help</h3>
+
+<div class="compare">
+  <div class="pro">
+    <h5>What demos are supposed to do</h5>
+    <ul>
+      <li>Teach structural conventions (variable names, registry key shape)</li>
+      <li>Teach output style (section ordering, README format)</li>
+      <li>Provide concrete (input → output) examples of the function</li>
+    </ul>
+  </div>
+  <div class="con">
+    <h5>Why per-call signals beat them here</h5>
+    <ul>
+      <li><strong>reference_prompts</strong> (per-call) already shows 3-5 actually-similar examples</li>
+      <li><strong>competency_scopes</strong> already bounds skills authoritatively</li>
+      <li>Demos are <strong>fixed</strong>; references are <strong>per-combo</strong></li>
+      <li>Fixed demos can't match an arbitrary user query's task_category</li>
+    </ul>
+  </div>
+</div>
+
+<h2 id="contamination"><span class="num">11</span>The contamination failure mode</h2>
+
+<p>Most damning evidence: a <strong>blind regeneration</strong> of
+<code>html_css_basic_prompt.py</code> with the gold file hidden. Uncompiled scored
+<strong style="color:var(--success)">0.967</strong> — essentially perfect. Compiled with
+Sonnet 4's Java/Postgres demos scored <strong style="color:var(--danger)">0.794</strong>.</p>
+
+<div class="diagram">
+<pre class="mermaid">
+flowchart TD
+  D["DEMOS<br/>Java (BASIC)<br/>PostgreSQL (BASIC)<br/>NodeJs+MongoDB (INT)<br/>style: nested ### H3<br/>category: pure_code/db_only"]
+  T["TARGET<br/>HTML+CSS (BASIC)<br/>style: flat ## H2<br/>category: frontend"]
+  D --> X["LLM tries to 'average'<br/>demos vs target style"]
+  T --> X
+  X --> O["OUTPUT<br/># HTML & CSS Basic Task Requirements<br/>## GOAL<br/>### Nature of the Task<br/>### CRITICAL REQUIREMENTS FOR…<br/>### AI and External Resource Policy<br/><br/>← Java's nested ### imported<br/>into HTML output"]
+
+  classDef demos fill:#f0f9ff,stroke:#0ea5e9,color:#075985,font-weight:500;
+  classDef target fill:#ecfdf5,stroke:#10b981,color:#065f46,font-weight:500;
+  classDef bad fill:#fef2f2,stroke:#ef4444,color:#991b1b,font-weight:500;
+  class D demos
+  class T target
+  class X,O bad
+</pre>
+<span class="caption">Cross-category demos drag the output toward their style, hurting structural fidelity</span>
+</div>
+
+<div class="callout callout-danger">
+  <span class="icon">×</span>
+  <div>
+    <div class="callout-label">The Δ = -0.173 came from this exact pattern</div>
+    <p>Demos were all <code>pure_code</code>/<code>db_only</code>. Target was <code>frontend</code>. The
+    LLM substituted HTML content correctly but imported demo section structure ("CRITICAL REQUIREMENTS
+    FOR FULLY FUNCTIONAL ENVIRONMENT") into a file that shouldn't have it.</p>
+  </div>
+</div>
+
+<h3>When compilation would help</h3>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Condition</th><th>Our situation</th></tr></thead>
+  <tbody>
+    <tr><td>Weak runtime model (Haiku, free models)</td><td><span class="tag no">no</span> using GPT-5.4 / Sonnet</td></tr>
+    <tr><td>No reference prompts available</td><td><span class="tag no">no</span> 30+ quality references</td></tr>
+    <tr><td>Empty <code>detailed_skill_signal</code> for most combos</td><td><span class="tag no">no</span> most combos have input files</td></tr>
+    <tr><td>Need strict byte-level consistency (CI test)</td><td><span class="tag no">no</span> not our use case</td></tr>
+    <tr><td>Trainset &gt; 50 quality pairs</td><td><span class="tag no">no</span> have 30</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="artifacts"><span class="num">12</span>Compiled artifacts (all disabled)</h2>
+
+<p>Three artifacts remain in <code>compiled/</code>, all kept for forensics. Runtime ignores them
+because none is named <code>agent_bootstrap.json</code> (the active name). You can delete them.</p>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>File</th><th>Size</th><th>Demos</th><th>Lift</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>agent_bootstrap.handbuilt.disabled.json</code></td>
+      <td>424 KB</td>
+      <td>4 hand-picked by category diversity</td>
+      <td style="color:var(--danger)">-0.675</td>
+    </tr>
+    <tr>
+      <td><code>agent_bootstrap.regressed.json</code></td>
+      <td>214 KB</td>
+      <td>Sonnet 4 BootstrapFewShot · 23-pair trainset</td>
+      <td style="color:var(--danger)">-0.035</td>
+    </tr>
+    <tr>
+      <td><code>agent_bootstrap.regressed.gemma.json</code></td>
+      <td>256 KB</td>
+      <td>Sonnet 4 BootstrapFewShot · 30-pair trainset</td>
+      <td style="color:var(--danger)">-0.021</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<p>Filename <em>"gemma"</em> is misleading — Gemma free was rate-limited at compile time, so the script
+fell back to paid Sonnet 4. Naming kept for traceability.</p>
+
+<h2 id="how-to-run"><span class="num">13</span>How to run</h2>
+
+<h3>Dry-run with verbose logs (no file written)</h3>
+<pre><code class="language-bash">cd /home/rsx/Desktop/utkrusht-ai/utkrusht-task
+
+PYTHONPATH=. .venv/bin/python -m prompt_generator \
+    --name "Python, SQL" \
+    --proficiency BASIC \
+    --env dev \
+    --compiled-path "" \
+    --dry-run \
+    --verbose</code></pre>
+
+<h3>Write the file</h3>
+<pre><code class="language-bash">PYTHONPATH=. .venv/bin/python -m prompt_generator \
+    --name "Python, SQL" --proficiency BASIC \
+    --env dev --compiled-path "" --verbose</code></pre>
+<p>Add <code>--force</code> if the file already exists.</p>
+
+<h3>Cwd-immune one-liner (subshell)</h3>
+<pre><code class="language-bash">( cd /home/rsx/Desktop/utkrusht-ai/utkrusht-task && \
+  PYTHONPATH=. .venv/bin/python -m prompt_generator \
+      --name "Python, SQL" --proficiency BASIC --env dev \
+      --compiled-path "" --dry-run --verbose )</code></pre>
+
+<h3>Brand-new combo (no references, no input files)</h3>
+<pre><code class="language-bash">PYTHONPATH=. .venv/bin/python -m prompt_generator \
+    --name "Rust, ScyllaDB" --proficiency BASIC \
+    --compiled-path "" --dry-run --verbose</code></pre>
+<p>You'll see the retriever fall through to fallback levels 4-5 in the logs, and <code>input_files</code>
+show <code>background_found=False</code>, <code>signal_chars=0</code>. The agent still produces a valid
+prompt file using just scopes + retriever fallbacks.</p>
+
+<h2 id="config"><span class="num">14</span>Configuration knobs</h2>
+
+<h3>CLI flags</h3>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Flag</th><th>Default</th><th>Effect</th></tr></thead>
+  <tbody>
+    <tr><td><code>--name "X, Y"</code></td><td>required</td><td>Competencies (comma-separated)</td></tr>
+    <tr><td><code>--proficiency</code></td><td>required</td><td>BEGINNER · BASIC · INTERMEDIATE · ADVANCED</td></tr>
+    <tr><td><code>--env</code></td><td><code>dev</code></td><td>Supabase env (<code>dev</code> · <code>prod</code>)</td></tr>
+    <tr><td><code>--dry-run</code></td><td>off</td><td>Don't write the .py file</td></tr>
+    <tr><td><code>--force</code></td><td>off</td><td>Overwrite existing file</td></tr>
+    <tr><td><code>--max-iterations</code></td><td><code>5</code></td><td>Cap on Generate ⇄ Verify loop</td></tr>
+    <tr><td><code>--model</code></td><td>env / default</td><td>LLM override</td></tr>
+    <tr><td><code>--compiled-path</code></td><td>compiled/agent_bootstrap.json</td><td>Compiled demos. <code>""</code> = uncompiled</td></tr>
+    <tr><td><code>--verbose</code> / <code>-v</code></td><td>off</td><td>Step-by-step logs</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>Environment variables (.env)</h3>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Variable</th><th>Purpose</th></tr></thead>
+  <tbody>
+    <tr><td><code>OPENAI_API_KEY</code></td><td>OpenAI key (via Portkey gateway)</td></tr>
+    <tr><td><code>PORTKEY_API_KEY</code></td><td>Portkey gateway key</td></tr>
+    <tr><td><code>SUPABASE_URL_APTITUDETESTSDEV</code></td><td>Supabase dev URL</td></tr>
+    <tr><td><code>SUPABASE_API_KEY_APTITUDETESTSDEV</code></td><td>Supabase dev key</td></tr>
+    <tr><td><code>SUPABASE_URL_APTITUDETESTS</code></td><td>Supabase prod URL</td></tr>
+    <tr><td><code>SUPABASE_API_KEY_APTITUDETESTS</code></td><td>Supabase prod key</td></tr>
+    <tr><td><code>OPENROUTER_API_KEY</code></td><td>For <code>--model openrouter/…</code></td></tr>
+    <tr><td><code>PROMPT_GENERATOR_MODEL</code></td><td>Runtime model override (default <code>openai/gpt-5.4</code>)</td></tr>
+    <tr><td><code>PROMPT_GENERATOR_COMPILE_MODEL</code></td><td>Compile-time model (default <code>anthropic/claude-haiku-4-5</code>)</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3>What <code>--verbose</code> shows</h3>
+
+<pre><code class="language-text">[INFO ] ============================================================
+[INFO ] AGENT START — competencies=['Python', 'SQL'] proficiency=BASIC env=dev
+[INFO ] ============================================================
+
+[INFO ] STEP 1 / classifier.py — deciding task_category
+[INFO ]   → task_category = script_and_db
+
+[INFO ] STEP 2 / retriever.py — running 5-level fallback ladder
+[INFO ]   → bootstrap_mode = False
+[INFO ]   → fallback_level = 1
+[INFO ]   → references found: 5
+[INFO ]       • python_sql_basic_prompt.py
+[INFO ]       • mongodb_python_basic_prompt.py
+
+[INFO ] STEP 3 / db_queries.py — Supabase env=dev
+[INFO ]   → similar tasks fetched: 7
+[INFO ]   → scope text: 1842 chars
+
+[INFO ] STEP 4 / input_files.py — building detailed_skill_signal
+[INFO ]   → background_found  = True
+[INFO ]   → total signal      = 4027 chars
+
+[INFO ] STEP 5 — context payload sizes for the LLM call
+
+[INFO ] STEP 6 — Generate ⇄ Verify ⇄ Validate loop
+[INFO ]   ── attempt 1 / 5 ──
+[INFO ]   calling Generate (ChainOfThought)...
+[INFO ]     Generate done — new_prompt_file: 15234 chars, rationale: 1078 chars
+[INFO ]   calling Verify (ChainOfThought)...
+[INFO ]     Verify done — passes=True feedback=0 chars
+[INFO ]     validator passed=True
+[INFO ]   ✓ both verifier and validator passed at attempt 1 — exiting loop
+
+[INFO ] AGENT DONE — generated 15234 chars over 1 iteration(s)</code></pre>
+
+<h2 id="errors"><span class="num">15</span>Common errors</h2>
+
+<div class="table-wrap">
+<table>
+  <thead><tr><th>Error</th><th>Cause</th><th>Fix</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><code>ModuleNotFoundError: prompt_generator</code></td>
+      <td>Missing <code>PYTHONPATH=.</code> or wrong cwd</td>
+      <td>Run from project root with <code>PYTHONPATH=.</code></td>
+    </tr>
+    <tr>
+      <td><code>AuthenticationError: invalid x-api-key</code></td>
+      <td>LiteLLM grabbed <code>ANTHROPIC_API_KEY</code> directly, bypassing Portkey</td>
+      <td><code>unset ANTHROPIC_API_KEY</code> or use an <code>openai/*</code> model</td>
+    </tr>
+    <tr>
+      <td><code>reasoning models require temperature=1.0</code></td>
+      <td>Using <code>gpt-5</code> / <code>gpt-5-nano</code> (reasoning model)</td>
+      <td>Use <code>openai/gpt-4.1-2025-04-14</code> instead</td>
+    </tr>
+    <tr>
+      <td><code>File already exists: …</code></td>
+      <td>Output path exists</td>
+      <td>Add <code>--force</code> or move the existing file aside</td>
+    </tr>
+    <tr>
+      <td><code>NO SCOPE found for …</code> (warning)</td>
+      <td>Competency name doesn't match Supabase exactly</td>
+      <td>Check Supabase <code>competencies</code> table for the canonical name</td>
+    </tr>
+    <tr>
+      <td>Hangs on <code>calling Generate</code></td>
+      <td>LLM call in progress; 30-120s normal</td>
+      <td>Be patient. <code>Ctrl+C</code> to abort cleanly</td>
+    </tr>
+    <tr>
+      <td><code>litellm.RateLimitError: 429</code></td>
+      <td>Free OpenRouter model rate-limited</td>
+      <td>Use a paid model or wait for rate-limit window</td>
+    </tr>
+    <tr>
+      <td><code>Verifier did not pass after 5 iteration(s)</code></td>
+      <td>LLM couldn't satisfy verifier rules within budget</td>
+      <td>Inspect <code>verifier_feedback</code>. May need to adjust scope or task_category</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+<h2 id="future"><span class="num">16</span>Future work</h2>
+
+<div class="callout callout-success">
+  <span class="icon">✓</span>
+  <div>
+    <div class="callout-label">Compilation might become viable when</div>
+    <ul>
+      <li>Trainset of quality-signal prompts grows past 50 (currently 30)</li>
+      <li>A specific quality regression appears that demos could target</li>
+      <li>You switch to a weaker runtime model (e.g. Haiku) where demos help more</li>
+    </ul>
+  </div>
+</div>
+
+<h3>Other improvements worth considering</h3>
+
+<ul>
+  <li><strong>Fix the 20 prompt files with <code>unparseable filename</code> errors.</strong> These
+  have <code>__pycache__</code>-confused parents or BOM characters. Cleanup PR would grow the trainset
+  further and improve the retriever's fallback coverage.</li>
+
+  <li><strong><code>tasks.task_category</code> column in Supabase.</strong> Today
+  <code>task_category</code> is an in-memory enum. Promoting it to a real column would enable
+  persona-routed eval critics and category-aware retrieval at any scale.</li>
+
+  <li><strong>Cross-combo embedding retrieval.</strong> <code>retriever.py</code> is filename-based.
+  An embedding index over prompt sources could find better references at levels 4-5 of the fallback
+  ladder.</li>
+
+  <li><strong>Empirical eval gate.</strong> Post-generation, spin up an E2B sandbox and try running
+  the task. Catches generation-level bugs that <code>evals.py</code> LLM-judging misses.</li>
+</ul>
+
+<hr>
+
+<h2 id="references">References</h2>
+
+<ul>
+  <li><a href="agent.md">Source markdown</a> — the same content in markdown form</li>
+  <li><a href="../drawings/prompt-generator/agent.excalidraw">Architecture excalidraw diagram</a> — open in <a href="https://excalidraw.com" target="_blank" rel="noopener">excalidraw.com</a> (drag-and-drop, or File → Open)</li>
+  <li><a href="../drawings/prompt-generator/architecture.excalidraw">Prompt generator architecture diagram</a> — same, broader scope</li>
+  <li><a href="../drawings/task-classifier/classifier-flow.excalidraw">Classifier → consumers flow</a> — how <code>TaskRuntime</code> fans out</li>
+</ul>
+
+<footer>
+  <span>Utkrushta AI · Prompt Generator Documentation</span>
+  <span><code>docs/prompt-generator/agent.html</code></span>
+</footer>
+
+</main>
+</div>
+
+<!-- Mermaid -->
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+<script>
+mermaid.initialize({
+  startOnLoad: true,
+  theme: 'base',
+  themeVariables: {
+    background: '#ffffff',
+    primaryColor: '#f8fafc',
+    primaryTextColor: '#0f172a',
+    primaryBorderColor: '#cbd5e1',
+    lineColor: '#94a3b8',
+    secondaryColor: '#f0f9ff',
+    tertiaryColor: '#eef2ff',
+    fontFamily: 'Inter, system-ui, sans-serif',
+    fontSize: '14px'
+  },
+  flowchart: { curve: 'basis', padding: 20, useMaxWidth: true }
+});
+</script>
+
+<!-- Prism syntax highlighting -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-bash.min.js"></script>
+
+<!-- Active-section TOC highlighting -->
+<script>
+(function() {
+  const links = Array.from(document.querySelectorAll('#toc-nav a'));
+  const sections = links.map(a => ({
+    link: a,
+    el: document.getElementById(a.getAttribute('href').slice(1)),
+  })).filter(s => s.el);
+
+  function onScroll() {
+    const y = window.scrollY + 120;
+    let current = sections[0];
+    for (const s of sections) if (s.el.offsetTop <= y) current = s;
+    links.forEach(l => l.classList.remove('active'));
+    if (current) current.link.classList.add('active');
+  }
+  document.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+})();
+</script>
+
+</body>
+</html>

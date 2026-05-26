@@ -1,0 +1,630 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>glyph</title>
+  <style>/* glyph default theme — v0.1 */
+:root {
+  --fg: #1a1a1a;
+  --fg-muted: #555;
+  --bg: #fff;
+  --accent: #2563eb;
+  --rule: #e5e5e5;
+  --code-bg: #f5f5f5;
+  --note-bg: #f3f4f6;
+  --note-fg: #374151;
+  --tip-bg: #ecfdf5;
+  --tip-fg: #065f46;
+  --warning-bg: #fffbeb;
+  --warning-fg: #92400e;
+  --risk-bg: #fef2f2;
+  --risk-fg: #991b1b;
+  --visual-bg: #f9fafb;
+  --visual-border: #d1d5db;
+  --font-body: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: "SF Mono", "JetBrains Mono", "Menlo", "Consolas", monospace;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  font-family: var(--font-body);
+  color: var(--fg);
+  background: var(--bg);
+  line-height: 1.65;
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+}
+
+.glyph-doc {
+  max-width: 720px;
+  margin: 2.5rem auto;
+  padding: 0 1.25rem;
+}
+
+h1, h2, h3, h4 {
+  font-weight: 600;
+  line-height: 1.25;
+  margin-top: 2rem;
+  margin-bottom: 0.6rem;
+}
+h1 { font-size: 2rem; border-bottom: 1px solid var(--rule); padding-bottom: 0.4rem; }
+h2 { font-size: 1.5rem; }
+h3 { font-size: 1.2rem; }
+p { margin: 0.8rem 0; }
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+hr { border: 0; border-top: 1px solid var(--rule); margin: 2rem 0; }
+
+blockquote {
+  margin: 1rem 0;
+  padding: 0.6rem 1rem;
+  border-left: 3px solid var(--rule);
+  color: var(--fg-muted);
+}
+
+/* admonition callouts (rendered by glyph-components in Task 2.x) */
+.callout {
+  margin: 1.2rem 0;
+  padding: 0.8rem 1rem;
+  border-radius: 6px;
+  border-left: 4px solid currentColor;
+}
+.callout-title { font-weight: 600; text-transform: uppercase; font-size: 0.78rem; letter-spacing: 0.04em; margin-bottom: 0.3rem; }
+.callout-note { background: var(--note-bg); color: var(--note-fg); }
+.callout-tip { background: var(--tip-bg); color: var(--tip-fg); }
+.callout-warning { background: var(--warning-bg); color: var(--warning-fg); }
+.callout-risk { background: var(--risk-bg); color: var(--risk-fg); }
+
+/* visual placeholder (full styling per visual type added later) */
+.visual {
+  margin: 1.5rem 0;
+  padding: 1rem;
+  background: var(--visual-bg);
+  border: 1px solid var(--visual-border);
+  border-radius: 8px;
+}
+
+/* code */
+code, pre { font-family: var(--font-mono); font-size: 0.9em; }
+code { background: var(--code-bg); padding: 0.1em 0.3em; border-radius: 3px; }
+pre { background: var(--code-bg); padding: 0.9rem 1rem; border-radius: 6px; overflow-x: auto; line-height: 1.5; }
+pre code { background: transparent; padding: 0; }
+
+/* tables */
+table { border-collapse: collapse; width: 100%; margin: 1rem 0; }
+th, td { text-align: left; padding: 0.5rem 0.7rem; border-bottom: 1px solid var(--rule); }
+th { font-weight: 600; }
+
+/* mobile */
+@media (max-width: 640px) {
+  .glyph-doc { margin: 1.5rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.6rem; }
+  h2 { font-size: 1.3rem; }
+}
+
+/* print */
+@media print {
+  body { font-size: 11pt; color: #000; background: #fff; }
+  .glyph-doc { max-width: none; margin: 0; padding: 0; }
+  a { color: #000; text-decoration: underline; }
+  pre, .callout, .visual { break-inside: avoid; page-break-inside: avoid; }
+  h1, h2, h3 { page-break-after: avoid; }
+}
+
+/* sticky toc layout */
+body.has-toc { display: grid; grid-template-columns: 220px 1fr; max-width: 1024px; margin: 0 auto; }
+.toc-rail { position: sticky; top: 1.5rem; align-self: start; padding: 1.5rem 1rem; max-height: 100vh; overflow-y: auto; }
+.toc { font-size: 0.88rem; }
+.toc ul { list-style: none; padding: 0; margin: 0; }
+.toc li { margin: 0.3rem 0; }
+.toc a { color: var(--fg-muted); }
+.toc a:hover { color: var(--fg); }
+
+@media (max-width: 800px) {
+  body.has-toc { display: block; }
+  .toc-rail { display: none; }
+}
+
+@media print {
+  .toc-rail { display: none; }
+}
+
+/* grid visual */
+.visual-grid { display: grid; grid-template-columns: repeat(var(--cols, 3), 1fr); gap: 0.8rem; padding: 0; background: transparent; border: 0; }
+.visual-grid .card { background: #fff; border: 1px solid var(--rule); border-radius: 8px; padding: 0.9rem 1rem; }
+.visual-grid .card header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.4rem; gap: 0.5rem; }
+.visual-grid .card .card-title { font-weight: 600; }
+.visual-grid .card p { margin: 0; color: var(--fg-muted); font-size: 0.95rem; }
+.badge { font-size: 0.7rem; text-transform: uppercase; padding: 0.15em 0.5em; border-radius: 999px; letter-spacing: 0.04em; white-space: nowrap; }
+.badge-selected { background: var(--tip-bg); color: var(--tip-fg); }
+.badge-rejected { background: var(--risk-bg); color: var(--risk-fg); }
+.badge-deferred { background: var(--note-bg); color: var(--note-fg); }
+@media (max-width: 800px) { .visual-grid { grid-template-columns: 1fr; } }
+
+/* diagram visual */
+.visual-diagram { padding: 1rem; background: var(--visual-bg); border: 1px solid var(--visual-border); border-radius: 8px; text-align: center; margin: 1.5rem 0; }
+.visual-diagram svg { max-width: 100%; height: auto; display: inline-block; }
+</style>
+</head>
+<body class="has-toc">
+  <aside class="toc-rail"><nav class="toc" aria-label="contents"><ul><li><a href="#1-why-we-re-building-this">1. Why We're Building This</a></li><li><a href="#2-requirements">2. Requirements</a></li><li><a href="#3-what-we-learned-mental-frameworks">3. What We Learned: Mental Frameworks</a></li><li><a href="#4-phase-1-poc">4. Phase 1: POC</a></li><li><a href="#appendix-framework-comparison-summary">Appendix: Framework Comparison Summary</a></li><li><a href="#5-what-we-don-t-know-yet-experiments-on-the-road-to-production">5. What We Don't Know Yet: Experiments on the Road to Production</a></li><li><a href="#appendix-task-type-generation-patterns">Appendix: Task Type Generation Patterns</a></li></ul></nav></aside>
+  <main class="glyph-doc">
+    <h1 id="autonomous-task-generation-research-architecture">Autonomous Task Generation: Research &amp; Architecture</h1>
+<blockquote>
+<p><strong>Status</strong>: Research complete. Phase 1 POC next.
+<strong>Date</strong>: March 2026</p>
+</blockquote>
+<hr />
+<h2 id="1-why-we-re-building-this">1. Why We're Building This</h2>
+<h3 id="the-problem-we-solve">The Problem We Solve</h3>
+<p>Organizations come to us with messy, varied inputs:</p>
+<ul>
+<li>&quot;We need to hire 3 senior Go engineers for our payments team&quot;</li>
+<li>A job description PDF with a tech stack buried in bullet points</li>
+<li>&quot;Our last batch of tasks were too easy — candidates finished in 10 minutes&quot;</li>
+<li>&quot;We want debugging tasks that test production thinking, not just coding&quot;</li>
+<li>A Slack message: &quot;Can you make something for our ML team? They mostly do RAG pipelines.&quot;</li>
+</ul>
+<p>Our job is to take these messy inputs and produce <strong>high-quality, deployable technical assessments</strong> that reflect our taste and standards. The inputs vary wildly. The output must be consistently excellent.</p>
+<h3 id="what-makes-utkrushta-different">What Makes Utkrushta Different</h3>
+<p>We are not HackerRank. We are not CodeSignal. Our assessments are fundamentally different:</p>
+<ul>
+<li><strong>Full AI access.</strong> Candidates use AI assistants naturally, exactly like real work. We don't fight AI — we design around it. The signal comes from judgment and decision-making, not memorization or typing speed.</li>
+<li><strong>Real infrastructure.</strong> We deploy databases, K8s clusters, running APIs. Candidates work in real engineering environments, not sandboxed editors.</li>
+<li><strong>Our taste is the product.</strong> Anyone can generate a coding challenge with GPT. What makes our tasks valuable is the domain knowledge, the realistic scenarios, the calibrated difficulty, the deployability. That taste is encoded in our guidelines, our prompts, and our verification standards.</li>
+</ul>
+<h3 id="why-automate">Why Automate</h3>
+<p>Today, task generation is manual: a human runs CLI commands, selects prompt files, reviews output, publishes. This works at 5-10 tasks per week. It doesn't work at 100 tasks per day, across 15+ tech stacks, 6 task types, and multiple customer domains.</p>
+<p>We need an autonomous system that:</p>
+<ol>
+<li>Understands varied customer inputs</li>
+<li>Applies our domain knowledge and taste consistently</li>
+<li>Generates diverse, high-quality, deployable tasks</li>
+<li>Verifies its own work against reality (not just LLM-checking-LLM)</li>
+<li>Scales without proportional human effort</li>
+</ol>
+<hr />
+<h2 id="2-requirements">2. Requirements</h2>
+<h3 id="varied-customer-domains">Varied Customer Domains</h3>
+<p>A fintech company wants CSV batch processing tasks for their Java team. An AI startup wants RAG pipeline debugging. A DevOps consultancy wants K8s misconfiguration tasks. Each domain brings:</p>
+<ul>
+<li>Industry-specific scenarios (financial transactions, healthcare data, e-commerce carts)</li>
+<li>Tech stack preferences (and strong opinions about them)</li>
+<li>Compliance considerations (PCI for fintech, HIPAA for healthcare)</li>
+<li>Organizational culture (&quot;we value clean architecture&quot; vs &quot;we value shipping speed&quot;)</li>
+</ul>
+<p>The generation system must incorporate domain context without requiring domain-specific prompt files for every combination. The combinatorial space (task type × tech stack × proficiency × domain) is too large for static prompts.</p>
+<h3 id="six-task-types">Six Task Types</h3>
+<p>We define six categories of work, each testing a different kind of engineering judgment:</p>
+<p><strong>BUILD</strong> — Extend a given repo or build from a skeleton. Tests architectural judgment: where and how to add a feature. <em>Example: &quot;Extend this FastAPI service with a CSV batch processing endpoint for financial transactions.&quot;</em></p>
+<p><strong>DEBUG</strong> — Given a broken service, find and fix what's wrong. Tests hypothesis formation and systematic investigation. <em>Example: &quot;This Kafka consumer is losing messages under load. Tests are failing. Diagnose and fix.&quot;</em></p>
+<p><strong>DESIGN REVIEW</strong> — Review a technical design document. Tests systems thinking and trade-off analysis. <em>Example: &quot;Review this payment service design doc. What failure modes are missing?&quot;</em></p>
+<p><strong>PR REVIEW</strong> — Review a pull request, find issues, suggest improvements. Tests pattern recognition and communication. <em>Example: &quot;Review this PR that adds transaction rollback logic.&quot;</em></p>
+<p><strong>UX / CRITICAL THINKING</strong> — Given a design mockup and product scenario, critique or implement. Tests product thinking and user empathy. <em>Example: &quot;This fintech dashboard's filter UX has a 60% drop-off. What's wrong?&quot;</em></p>
+<p><strong>MANAGE INFRA</strong> — Fix misconfigurations, diagnose deployment issues. Tests infrastructure and operational knowledge. <em>Example: &quot;This K8s deployment has misconfigured ingress gateways. Traffic isn't routing.&quot;</em></p>
+<p>Each task type has a different generation pattern (single-phase vs two-phase), different artifacts (code, configs, design docs, logs, error output), and different verification needs.</p>
+<h3 id="opinionated-by-design">Opinionated by Design</h3>
+<p>Technical work is opinionated. A &quot;good&quot; Java task at one organization is different from a &quot;good&quot; Java task at another. Our system must:</p>
+<ul>
+<li>Apply Utkrushta's base standards (what makes any task good)</li>
+<li>Layer customer-specific preferences on top (their tech stack opinions, difficulty calibration, domain context)</li>
+<li>Maintain consistency across tasks (a &quot;BASIC&quot; task should feel BASIC regardless of tech stack)</li>
+<li>Adapt to emerging skill areas (agentic development, context engineering, RAG pipelines) without waiting for hand-crafted prompts</li>
+</ul>
+<h3 id="intelligent-verification">Intelligent Verification</h3>
+<p>Generated tasks must pass verification before publishing:</p>
+<ul>
+<li><strong>Structural</strong>: Required files present, code parses, schemas valid, README has required sections</li>
+<li><strong>Deployability</strong>: Docker configs build, services start, health checks pass, ports are correct</li>
+<li><strong>Test correctness</strong>: For DEBUG tasks — tests fail on the buggy version, pass on the correct version</li>
+<li><strong>Answer validity</strong>: The answer code actually solves the described problem</li>
+<li><strong>Deduplication</strong>: Not too similar to existing tasks (embedding similarity check)</li>
+<li><strong>Difficulty calibration</strong>: Appropriate for the stated proficiency level</li>
+<li><strong>Domain relevance</strong>: The scenario is realistic for the specified industry/domain</li>
+</ul>
+<p>The system should self-correct: if verification reveals issues, fix them and re-verify — not just flag and fail.</p>
+<hr />
+<h2 id="3-what-we-learned-mental-frameworks">3. What We Learned: Mental Frameworks</h2>
+<h3 id="it-s-not-a-pipeline">It's Not a Pipeline</h3>
+<p>The initial instinct was to treat task generation as a fixed pipeline: inputs → scenarios → generate → eval → publish. This is how the current CLI works.</p>
+<p>This framing is wrong. Task generation is a <strong>dynamic graph</strong> where the path depends on:</p>
+<ul>
+<li>What task type was requested (BUILD follows a different path than DEBUG)</li>
+<li>What domain context exists (a fintech customer's tasks need different scenarios than a SaaS company's)</li>
+<li>What the verification tools reveal (a Docker config that doesn't build changes the generation path)</li>
+<li>Whether the human provided clear requirements or something ambiguous that needs clarification</li>
+</ul>
+<p>The right mental model is three layers:</p>
+<pre><code class="lang-">
+<span style="color:#323232;">                    ┌─────────────────────────┐
+</span><span style="color:#323232;">                    │      INTAKE AGENT        │
+</span><span style="color:#323232;">                    │   (understand intent)    │
+</span><span style="color:#323232;">                    └────────────┬────────────┘
+</span><span style="color:#323232;">                                 │
+</span><span style="color:#323232;">                    Structured understanding:
+</span><span style="color:#323232;">                    - What competencies?
+</span><span style="color:#323232;">                    - What task type(s)?
+</span><span style="color:#323232;">                    - What constraints?
+</span><span style="color:#323232;">                    - What customer context?
+</span><span style="color:#323232;">                                 │
+</span><span style="color:#323232;">                    ┌────────────▼────────────┐
+</span><span style="color:#323232;">                    │    GENERATION GRAPH      │
+</span><span style="color:#323232;">                    │   (path depends on       │
+</span><span style="color:#323232;">                    │    intake output)        │
+</span><span style="color:#323232;">                    │                          │
+</span><span style="color:#323232;">                    │   ┌──► BUILD             │
+</span><span style="color:#323232;">                    │   ├──► DEBUG             │
+</span><span style="color:#323232;">                    │   ├──► PR REVIEW         │──► different prompts,
+</span><span style="color:#323232;">                    │   ├──► DESIGN REVIEW     │   different tools,
+</span><span style="color:#323232;">                    │   ├──► MANAGE INFRA      │   different eval criteria
+</span><span style="color:#323232;">                    │   ├──► UX / CRITICAL     │
+</span><span style="color:#323232;">                    │   └──► hybrid / custom   │
+</span><span style="color:#323232;">                    │                          │
+</span><span style="color:#323232;">                    └────────────┬────────────┘
+</span><span style="color:#323232;">                                 │
+</span><span style="color:#323232;">                    ┌────────────▼────────────┐
+</span><span style="color:#323232;">                    │   VERIFICATION TOOLS     │
+</span><span style="color:#323232;">                    │   (ground truth, not     │
+</span><span style="color:#323232;">                    │    LLM guessing)         │
+</span><span style="color:#323232;">                    │                          │
+</span><span style="color:#323232;">                    │   parse_code()           │
+</span><span style="color:#323232;">                    │   validate_dockerfile()  │
+</span><span style="color:#323232;">                    │   run_tests()            │
+</span><span style="color:#323232;">                    │   check_deployability()  │
+</span><span style="color:#323232;">                    └────────────┬────────────┘
+</span><span style="color:#323232;">                                 │
+</span><span style="color:#323232;">                    ┌────────────▼────────────┐
+</span><span style="color:#323232;">                    │    EVAL + PUBLISH        │
+</span><span style="color:#323232;">                    └─────────────────────────┘</span></code></pre>
+<p><strong>Layer 1: Intake</strong> — Convert varied, messy inputs into a structured task request. This needs LLM reasoning (understanding a job description, inferring proficiency levels, retrieving customer context).</p>
+<p><strong>Layer 2: Generation</strong> — Navigate a branching graph of generation strategies based on the task request. Different task types use different prompts, different tools, different numbers of generation phases. The generation agent has access to our domain knowledge (guidelines, prompt libraries) and verification tools.</p>
+<p><strong>Layer 3: Verification</strong> — Check work against reality using deterministic tools (parse code, build Docker, run tests, deploy to sandbox). These tools give the agent ground truth signals that LLMs can't fabricate.</p>
+<h3 id="the-prompt-question">The Prompt Question</h3>
+<p>We have 80+ hand-crafted prompt files encoding deep domain knowledge about what makes good tasks for specific tech stacks at specific proficiency levels. This is real value.</p>
+<p>But static prompts don't scale to the combinatorial space of 6 task types × 15+ tech stacks × 3+ proficiency levels × N customer domains. There's no prompt file for &quot;Go + Kafka + DEBUG + INTERMEDIATE + fintech where the candidate demonstrates systematic investigation.&quot;</p>
+<p>The resolution: <strong>prompts become domain knowledge that the agent loads as context, not fixed scripts it follows.</strong> The agent's behavior (how to generate, when to use tools, how to verify) is defined once. The domain knowledge (what makes a good Java BASIC task, what fintech scenarios look like) is loaded per request from our knowledge base.</p>
+<p>This means our job shifts from writing complete prompts to <strong>curating domain knowledge</strong>: guidelines per task type, per tech stack, per proficiency level. The agent assembles the right knowledge for each request. New combinations work without new prompt files — the agent composes from existing guidelines.</p>
+<p>Our existing prompts are the starting point for this knowledge base. They don't get thrown away — they get decomposed into reusable pieces.</p>
+<h3 id="generate-tasks-directly-not-prompts">Generate Tasks Directly, Not Prompts</h3>
+<p>We considered a two-step approach: an LLM generates a prompt, then that prompt generates a task. We decided against it.</p>
+<p>The intermediate prompt is a leaky abstraction. The generating LLM already has access to the same context — why add indirection? Task generation is an offline activity (no user is waiting), tasks are generated once and deployed many times, and we can always iterate on a bad task. The inspectability benefit of an intermediate prompt doesn't justify the added complexity and failure modes.</p>
+<p>Instead: the agent receives all context (guidelines, competency scope, org preferences, scenario) and generates the task directly. The &quot;prompt construction&quot; is the agent assembling the right context — not a separate generation step.</p>
+<h3 id="tools-are-the-differentiator">Tools Are the Differentiator</h3>
+<p>The biggest quality improvement comes not from better LLM prompting but from <strong>verification tools that give the agent ground truth</strong>.</p>
+<p>An agent that generates a task and checks it with another LLM is LLM-checking-LLM — correlated blind spots. An agent that generates a task and then runs <code>docker compose up</code> to verify it actually deploys gets real signal. An agent that runs the answer code against the test suite knows for certain whether the answer is correct.</p>
+<p>The self-correcting loop — generate → verify with tools → fix issues → re-verify — is where the Anthropic Agent SDK's sub-agent pattern and context management become valuable:</p>
+<pre><code class="lang-">
+<span style="color:#323232;">┌─ Generator Sub-Agent (isolated context) ──────────────────────┐
+</span><span style="color:#323232;">│                                                                │
+</span><span style="color:#323232;">│  LLM: &quot;I&#39;ll generate a Kafka consumer debugging task...&quot;      │
+</span><span style="color:#323232;">│       → generates code files                                   │
+</span><span style="color:#323232;">│                                                                │
+</span><span style="color:#323232;">│  Tool: verify_code(&quot;java&quot;, Main.java)                         │
+</span><span style="color:#323232;">│       → &quot;CompileError: missing import on line 23&quot;              │
+</span><span style="color:#323232;">│                                                                │
+</span><span style="color:#323232;">│  LLM: &quot;Let me fix that import...&quot;                             │
+</span><span style="color:#323232;">│       → fixes code                                             │
+</span><span style="color:#323232;">│                                                                │
+</span><span style="color:#323232;">│  Tool: run_tests(answer_code, test_files)                     │
+</span><span style="color:#323232;">│       → &quot;2/3 pass. testRebalancing fails: AssertionError&quot;     │
+</span><span style="color:#323232;">│                                                                │
+</span><span style="color:#323232;">│  LLM: &quot;The rebalancing test fails because I didn&#39;t handle     │
+</span><span style="color:#323232;">│        consumer group reassignment. Let me fix...&quot;             │
+</span><span style="color:#323232;">│       → fixes answer code                                      │
+</span><span style="color:#323232;">│                                                                │
+</span><span style="color:#323232;">│  Tool: run_tests(answer_code, test_files)                     │
+</span><span style="color:#323232;">│       → &quot;3/3 pass&quot;                                             │
+</span><span style="color:#323232;">│                                                                │
+</span><span style="color:#323232;">│  LLM: &quot;Task verified and complete.&quot;                           │
+</span><span style="color:#323232;">│       → returns final TaskOutput                               │
+</span><span style="color:#323232;">│                                                                │
+</span><span style="color:#323232;">│  (6 turns, ~15K tokens. Context managed automatically.)       │
+</span><span style="color:#323232;">└───────────────────────────────────────────────────────────────┘
+</span><span style="color:#323232;">         │
+</span><span style="color:#323232;">         │ Parent receives: just the TaskOutput
+</span><span style="color:#323232;">         │ (not the 15K tokens of conversation)
+</span><span style="color:#323232;">         ▼</span></code></pre>
+<p>The loop can run for many turns. The SDK manages the growing context automatically. The parent agent only sees the final, verified result.</p>
+<h3 id="framework-choice-leave-the-door-open">Framework Choice: Leave the Door Open</h3>
+<p>We evaluated LangGraph, DSPy, CrewAI, AutoGen, OpenAI Agents SDK, Anthropic Agent SDK, Pydantic AI, and raw tool-use API.</p>
+<p><strong>What we ruled out:</strong></p>
+<ul>
+<li><strong>CrewAI / AutoGen</strong>: Role-playing and actor-based patterns don't fit our problem. We have a structured generation process, not agents debating.</li>
+<li><strong>LangGraph</strong>: Powerful graph framework with checkpointing and human-in-the-loop built in. But our immediate need (Scenario A: self-correction within a single generation run) doesn't require graph-level infrastructure. The state machine is simple enough for Supabase + code. Revisit if graph complexity grows with 5+ task types.</li>
+</ul>
+<p><strong>What remains viable:</strong></p>
+<ul>
+<li><strong>Anthropic Agent SDK</strong>: Best built-in support for the generate → verify → improve loop. Automatic context management. Sub-agent isolation. But locked to Claude models.</li>
+<li><strong>Pydantic AI + Portkey</strong>: Model-agnostic (swap GPT ↔ Claude by changing a string). Type-safe structured outputs. Officially supports Portkey. But no automatic context management — you build it (feasible, ~20-50 lines for our use case).</li>
+<li><strong>Raw tool-use API + Portkey</strong>: Maximum control, zero dependencies. Same capabilities as Pydantic AI but more boilerplate.</li>
+</ul>
+<p><strong>The trade-off is model flexibility vs built-in context management.</strong> The Anthropic SDK gives you sub-agents and automatic context compaction for free, but locks you to Claude. Pydantic AI (or raw API) keeps you model-agnostic but you manage context yourself.</p>
+<p><strong>For Phase 1, we're leaving this choice open.</strong> The architecture — short-lived focused agents, your code as orchestrator, tools for verification, Supabase for state — works with any of these options. The tools are Python functions (portable). The domain knowledge is in files (portable). The structured output schemas are Pydantic models (portable). We can start with either approach and switch without rewriting the valuable parts.</p>
+<h3 id="dspy-later-when-we-have-data">DSPy: Later, When We Have Data</h3>
+<p>DSPy is a prompt optimization framework, not an agent framework. It finds the optimal prompting strategy (instructions, few-shot examples, chain-of-thought decomposition) by optimizing against a quality metric on a dataset.</p>
+<p>This is directly relevant to our prompt question — instead of hand-tuning 80+ prompts, define signatures and let DSPy optimize. But it requires a gold-standard dataset of human-rated tasks (50+ per task type). We don't have this yet.</p>
+<p><strong>Action: Start collecting rated tasks now.</strong> Every task a human reviews and rates is a data point for future DSPy optimization. Build the dataset passively while running Phase 1.</p>
+<h3 id="model-selection-let-data-decide">Model Selection: Let Data Decide</h3>
+<p>We currently use GPT-5.2 for task generation and Claude Opus 4.6 for development. Both are strong. Rather than picking one on gut feel:</p>
+<ul>
+<li><strong>Run a blind comparison</strong>: 30 tasks generated by each model, same inputs, domain expert rates blind</li>
+<li><strong>If one wins &gt;65% of comparisons</strong>, it's meaningfully better for this specific use case</li>
+<li><strong>If tied (45-55%)</strong>, use the cheaper one — or use both (GPT for generation, Claude for eval) to get diversity of error detection</li>
+<li><strong>Cross-provider evaluation</strong>: Different models have different blind spots. Using GPT to generate and Claude to evaluate (or vice versa) catches more errors than same-model self-evaluation</li>
+</ul>
+<p>The system should be designed so any step can use any model. Portkey makes provider switching trivial. Track quality metrics per model per step. Re-evaluate on every major model release.</p>
+<hr />
+<h2 id="4-phase-1-poc">4. Phase 1: POC</h2>
+<h3 id="goal">Goal</h3>
+<p>Achieve parity with the current CLI-driven task generation, but with:</p>
+<ol>
+<li>Agentic self-correction (generate → verify → fix loop)</li>
+<li>State tracking in Supabase</li>
+<li>At least one verification tool integrated</li>
+<li>Architecture that supports future task types and customer context</li>
+</ol>
+<h3 id="what-parity-means">What Parity Means</h3>
+<p>The current system (<code>multiagent.py</code>) generates BUILD (code extension) tasks. Phase 1 generates the same kind of tasks, same quality, but with:</p>
+<ul>
+<li>The generation agent using verification tools to self-correct</li>
+<li>Run state persisted in Supabase (<code>task_generation_runs</code> table)</li>
+<li>Domain knowledge loaded from existing prompt files (not rewriting them)</li>
+<li>A second task type (DESIGN REVIEW — simplest to add) to prove the architecture handles multiple types</li>
+</ul>
+<h3 id="architecture">Architecture</h3>
+<pre><code class="lang-">
+<span style="color:#323232;">┌──────────────────────────────────────────────────────────────┐
+</span><span style="color:#323232;">│  ORCHESTRATOR (your Python code — deterministic)              │
+</span><span style="color:#323232;">│                                                               │
+</span><span style="color:#323232;">│  1. Parse inputs, load context                                │
+</span><span style="color:#323232;">│  2. Load domain knowledge (prompt files / guidelines)         │
+</span><span style="color:#323232;">│  3. Fetch competency scope from Supabase                      │
+</span><span style="color:#323232;">│  4. Update run state → &quot;generating&quot;                           │
+</span><span style="color:#323232;">│     │                                                         │
+</span><span style="color:#323232;">│     ▼                                                         │
+</span><span style="color:#323232;">│  ┌────────────────────────────────────────────────────────┐  │
+</span><span style="color:#323232;">│  │  GENERATOR AGENT (LLM + tools, isolated context)       │  │
+</span><span style="color:#323232;">│  │                                                         │  │
+</span><span style="color:#323232;">│  │  Receives: guidelines + competency + requirements       │  │
+</span><span style="color:#323232;">│  │  Tools: verify_code, check_file_structure,              │  │
+</span><span style="color:#323232;">│  │         validate_dockerfile, run_tests                  │  │
+</span><span style="color:#323232;">│  │                                                         │  │
+</span><span style="color:#323232;">│  │  Generates task → verifies → fixes → re-verifies       │  │
+</span><span style="color:#323232;">│  │  Returns: verified TaskOutput                           │  │
+</span><span style="color:#323232;">│  └────────────────────────────┬───────────────────────────┘  │
+</span><span style="color:#323232;">│     │                                                         │
+</span><span style="color:#323232;">│     ▼                                                         │
+</span><span style="color:#323232;">│  ┌────────────────────────────────────────────────────────┐  │
+</span><span style="color:#323232;">│  │  EVAL AGENT (LLM, fresh isolated context)              │  │
+</span><span style="color:#323232;">│  │                                                         │  │
+</span><span style="color:#323232;">│  │  Receives: TaskOutput + eval rubric (NOT generation     │  │
+</span><span style="color:#323232;">│  │           history — can&#39;t be biased by it)              │  │
+</span><span style="color:#323232;">│  │  Returns: score + feedback                              │  │
+</span><span style="color:#323232;">│  └────────────────────────────┬───────────────────────────┘  │
+</span><span style="color:#323232;">│     │                                                         │
+</span><span style="color:#323232;">│     ├── score &gt;= threshold ──► Publish (GitHub + Supabase)    │
+</span><span style="color:#323232;">│     │                         Update run state → &quot;published&quot;  │
+</span><span style="color:#323232;">│     │                                                         │
+</span><span style="color:#323232;">│     └── score &lt; threshold ──► Retry from generator with       │
+</span><span style="color:#323232;">│                               eval feedback (max 2 retries)   │
+</span><span style="color:#323232;">│                               Update run state → &quot;retrying&quot;   │
+</span><span style="color:#323232;">│                                                               │
+</span><span style="color:#323232;">│     If max retries exceeded → Update run state → &quot;failed&quot;     │
+</span><span style="color:#323232;">└──────────────────────────────────────────────────────────────┘</span></code></pre>
+<h3 id="framework-decision-for-phase-1">Framework Decision for Phase 1</h3>
+<p><strong>Option A: Anthropic Agent SDK</strong> — Use Claude Opus 4.6 for the generator and eval agents. Get sub-agent isolation and context management for free. Evaluate task quality against current GPT-5.2 baseline.</p>
+<p><strong>Option B: Pydantic AI + Portkey</strong> — Use GPT-5.2 (current known-good model) for generation. Build the agent loop with Pydantic AI's <code>@agent.tool</code> and <code>result_type</code>. Manage context manually (short-lived agents, unlikely to need trimming in Phase 1).</p>
+<p><strong>Option C: Raw API + Portkey</strong> — Same as Option B but without Pydantic AI. More boilerplate, fewer dependencies.</p>
+<p><strong>We'll decide after running the model comparison.</strong> If Claude Opus generates tasks as well as GPT-5.2, Option A is cleanest. If GPT-5.2 is meaningfully better, Option B or C preserves model flexibility.</p>
+<p><strong>Regardless of choice:</strong> tools are Python functions, domain knowledge is in files, schemas are Pydantic models. All portable between options.</p>
+<h3 id="immediate-next-steps">Immediate Next Steps</h3>
+<ol>
+<li><strong>Model comparison</strong>: Generate 30 tasks with Claude Opus 4.6, compare blind against 30 from GPT-5.2</li>
+<li><strong>First verification tool</strong>: Build <code>verify_code(language, code)</code> — syntax checking for Python, Java, Go, JS</li>
+<li><strong>Supabase table</strong>: Create <code>task_generation_runs</code> for state tracking</li>
+<li><strong>Domain knowledge extraction</strong>: Take 3-5 existing prompt files and decompose them into structured guidelines (test whether the agent generates equivalent quality from guidelines vs the monolithic prompt)</li>
+<li><strong>DESIGN REVIEW prototype</strong>: Generate one design review task to prove the architecture handles a second task type</li>
+<li><strong>Start rating dataset</strong>: Every task reviewed by a human gets a 1-5 rating stored. Build toward the 50-task DSPy threshold.</li>
+</ol>
+<hr />
+<h2 id="appendix-framework-comparison-summary">Appendix: Framework Comparison Summary</h2>
+<table>
+<thead>
+<tr><th></th><th>Anthropic Agent SDK</th><th>Pydantic AI + Portkey</th><th>Raw API + Portkey</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>Model flexibility</strong></td><td>Claude only</td><td>Any model</td><td>Any model</td></tr>
+<tr><td><strong>Context management</strong></td><td>Automatic compaction + sub-agents</td><td>Manual (history_processors)</td><td>Manual</td></tr>
+<tr><td><strong>Tool ergonomics</strong></td><td><code>@tool</code> decorator</td><td><code>@agent.tool</code> + Pydantic types</td><td>Manual JSON schemas</td></tr>
+<tr><td><strong>Structured output</strong></td><td>Tool use</td><td>Pydantic <code>result_type</code></td><td>Manual validation</td></tr>
+<tr><td><strong>Self-correcting loop</strong></td><td>Built-in agent loop</td><td>Built-in agent loop</td><td>~15 lines of code</td></tr>
+<tr><td><strong>Dependencies</strong></td><td>claude-agent-sdk</td><td>pydantic-ai</td><td>Just API client</td></tr>
+<tr><td><strong>Migration cost if wrong</strong></td><td>Rewrite agent loop (~50 lines), keep tools + knowledge + schemas</td><td>Same</td><td>Same</td></tr>
+</tbody>
+</table>
+<hr />
+<h2 id="5-what-we-don-t-know-yet-experiments-on-the-road-to-production">5. What We Don't Know Yet: Experiments on the Road to Production</h2>
+<p>Phase 1 is a POC. Getting from POC to the production system that generates 100 tasks/day requires answers to questions we can only learn by building.</p>
+<h3 id="model-quality-for-task-generation">Model Quality for Task Generation</h3>
+<p><strong>Experiment</strong>: Blind comparison — 30 tasks from GPT-5.2, 30 from Claude Opus 4.6, same inputs.</p>
+<p><strong>What we'll learn</strong>: Which model produces better assessment tasks. This isn't about general benchmarks — it's about OUR specific task quality criteria (realistic scenarios, appropriate difficulty, deployable code, good answer keys). The winner determines our framework choice.</p>
+<p><strong>What we might discover</strong>: They could be tied. Or one could be clearly better for code-heavy tasks (BUILD, DEBUG) while the other is better for reasoning-heavy tasks (DESIGN REVIEW). If so, a multi-model strategy makes sense — and that rules out the Anthropic SDK as the sole framework.</p>
+<h3 id="guidelines-vs-monolithic-prompts">Guidelines vs Monolithic Prompts</h3>
+<p><strong>Experiment</strong>: Take 3 existing prompt files (e.g., Java BASIC, Python INTERMEDIATE, Go BASIC). Decompose each into structured guidelines. Generate 10 tasks with the original monolithic prompt, 10 with the decomposed guidelines fed to an agent. Blind quality comparison.</p>
+<p><strong>What we'll learn</strong>: Can the agent compose tasks from guidelines as well as from hand-crafted prompts? If yes, we can scale to new combinations without writing prompt files. If no, we need to understand what the monolithic prompts capture that guidelines miss — and whether that gap is fixable.</p>
+<p><strong>What we might discover</strong>: The monolithic prompts might encode subtle things (ordering of instructions, specific phrasing that steers the model) that are hard to decompose. Or the agent with guidelines might actually produce MORE diverse tasks because it's not locked into one prompt's framing.</p>
+<h3 id="self-correction-loop-effectiveness">Self-Correction Loop Effectiveness</h3>
+<p><strong>Experiment</strong>: Generate 50 tasks with verification tools enabled (self-correcting loop) and 50 without (current approach: generate once, eval, retry from scratch if it fails).</p>
+<p><strong>What we'll learn</strong>: Does tool-based self-correction improve first-pass quality? Reduce retries? Produce more deployable tasks? At what cost increase?</p>
+<p><strong>What we might discover</strong>: Self-correction might add cost without improving quality (the model's first attempt is usually good enough). Or it might be transformative for specific task types (MANAGE INFRA tasks might fail deployment often without self-correction). The answer determines how much we invest in verification tools.</p>
+<h3 id="context-window-pressure">Context Window Pressure</h3>
+<p><strong>Experiment</strong>: Run the generator agent on 20 complex tasks (multi-file, Docker, multiple verification rounds) and measure peak context usage.</p>
+<p><strong>What we'll learn</strong>: Whether context management is a real problem or a theoretical one. If peak context is 30K tokens in a 200K window, we don't need automatic compaction — and model flexibility (Pydantic AI) wins over context management (Anthropic SDK).</p>
+<p><strong>What we might discover</strong>: Some task types (MANAGE INFRA with K8s configs, DEBUG with large codebases) might push context harder than others. We might need sub-agent isolation only for specific task types, not universally.</p>
+<h3 id="deduplication-at-scale">Deduplication at Scale</h3>
+<p><strong>Experiment</strong>: Generate embeddings for all existing tasks (~200). Measure cosine similarity distributions. Determine the threshold where tasks are &quot;too similar.&quot;</p>
+<p><strong>What we'll learn</strong>: How to set the dedup threshold. Whether embedding similarity correlates with human judgment of &quot;these tasks are basically the same.&quot;</p>
+<p><strong>What we might discover</strong>: Simple embedding similarity might not be enough — two tasks about &quot;REST API CRUD&quot; might have high similarity but test completely different competencies. We might need structured dedup (same competency + same scenario pattern = duplicate) rather than pure embedding distance.</p>
+<h3 id="customer-context-injection">Customer Context Injection</h3>
+<p><strong>Experiment</strong>: Generate 10 tasks with no org context and 10 with rich org context (industry, preferences, past feedback) for a simulated customer profile.</p>
+<p><strong>What we'll learn</strong>: How much does org context improve task relevance? Is the improvement worth the added complexity?</p>
+<p><strong>What we might discover</strong>: Org context might matter a lot for domain-specific tasks (fintech, healthcare) and barely matter for generic ones (Python BASIC). This tells us whether to invest in rich org profiles or keep it simple.</p>
+<h3 id="task-type-transferability">Task Type Transferability</h3>
+<p><strong>Experiment</strong>: Build DEBUG task generation using the same agent architecture as BUILD. Measure: how much new code was needed? How much was reused?</p>
+<p><strong>What we'll learn</strong>: Whether the plugin architecture actually works — can we add a new task type by writing guidelines + a generation phase definition, or does each type need significant custom code?</p>
+<p><strong>What we might discover</strong>: The two-phase pattern (clean artifact → inject flaws) might need fundamentally different tooling than the single-phase pattern (generate incomplete code). If so, &quot;plugin&quot; is the wrong metaphor — it's more like &quot;two distinct generation engines with shared infrastructure.&quot;</p>
+<h3 id="human-in-the-loop-calibration">Human-in-the-Loop Calibration</h3>
+<p><strong>Experiment</strong>: Generate 100 tasks over 2-3 weeks. Have humans review all of them and rate 1-5. Track auto-eval scores (LLM eval) against human ratings.</p>
+<p><strong>What we'll learn</strong>: How well our LLM eval correlates with human judgment (Cohen's kappa). At what eval score threshold we can safely auto-approve without human review.</p>
+<p><strong>What we might discover</strong>: The correlation might be low (kappa &lt; 0.5), meaning our eval rubric needs work before we can trust auto-approval. Or it might be high for some task types (DESIGN REVIEW is easier to evaluate) and low for others (BUILD tasks where &quot;quality&quot; is subjective). This determines the path from supervised to autonomous generation.</p>
+<h3 id="cost-economics">Cost Economics</h3>
+<p><strong>Experiment</strong>: Track end-to-end cost for 50 tasks across different task types. Break down by: intake, generation, verification tools, evaluation, retries.</p>
+<p><strong>What we'll learn</strong>: The actual cost per published task. Where the money goes. Whether the self-correction loop is cost-effective (does $0.50 of extra verification save $3 of failed-generation retries?).</p>
+<p><strong>What we might discover</strong>: Some task types are dramatically more expensive than others (MANAGE INFRA with Docker verification vs DESIGN REVIEW with just text). This informs pricing, prioritization, and where to invest in cost optimization (cheaper models, better prompts, or fewer retries).</p>
+<h3 id="dspy-optimization-readiness">DSPy Optimization Readiness</h3>
+<p><strong>Milestone, not experiment</strong>: When we have 50+ human-rated tasks per task type, run DSPy optimization. Compare optimized prompts against hand-crafted guidelines.</p>
+<p><strong>What we'll learn</strong>: Whether systematic prompt optimization outperforms our hand-crafted knowledge. How much quality improvement is possible through optimization alone.</p>
+<p><strong>What we might discover</strong>: DSPy might find that our guidelines are already near-optimal (diminishing returns). Or it might find a completely different prompting strategy that works better — which would reshape how we think about domain knowledge encoding.</p>
+<hr />
+<h3 id="context-engineering-fundamentals">Context Engineering: Fundamentals</h3>
+<p>Context engineering is the discipline of deciding <strong>what information goes into the LLM's context window, when, and in what form.</strong> It's the difference between dumping everything you have into a prompt and deliberately curating what the model sees.</p>
+<p><strong>Why it matters</strong>: An LLM's output is a function of its input. Same model, same temperature, different context → different quality output. Most &quot;prompt engineering&quot; failures are actually context engineering failures — the model had the wrong information, or too much information, or the right information buried under noise.</p>
+<p><strong>The core mental framework: Every token in context should earn its place.</strong></p>
+<p>Think of context like a meeting agenda. You wouldn't invite 50 people to a meeting because &quot;they might be relevant.&quot; You invite the people who need to be there, with a clear agenda, and the right pre-reads sent in advance. Context engineering is the same discipline applied to LLM inputs.</p>
+<p><strong>The five questions for every LLM call:</strong></p>
+<ol>
+<li><strong>What does this agent need to know to do its job?</strong> (Not &quot;what COULD be relevant&quot; — what MUST it know?)</li>
+<li><strong>What would actively hurt if included?</strong> (Contradictory information, outdated context, irrelevant examples that steer the model wrong)</li>
+<li><strong>What's the right level of detail?</strong> (The agent generating a task needs competency scope details. It doesn't need the full org billing history.)</li>
+<li><strong>What order should information appear?</strong> (Models pay more attention to the beginning and end of context. Put critical instructions first, reference material in the middle, the specific task last.)</li>
+<li><strong>What can be retrieved on-demand vs pre-loaded?</strong> (Static guidelines can be pre-loaded. Customer-specific context should be fetched by a tool when the agent decides it's relevant.)</li>
+</ol>
+<p><strong>Three categories of context for our system:</strong></p>
+<pre><code class="lang-">
+<span style="color:#323232;">┌───────────────────────────────────────────────────────────┐
+</span><span style="color:#323232;">│                    CONTEXT WINDOW                          │
+</span><span style="color:#323232;">│                                                           │
+</span><span style="color:#323232;">│  ┌─────────────────────────────────────────────────────┐ │
+</span><span style="color:#323232;">│  │  STATIC CONTEXT (loaded once, same every run)        │ │
+</span><span style="color:#323232;">│  │  • Agent behavioral instructions                     │ │
+</span><span style="color:#323232;">│  │  • Task type guidelines                              │ │
+</span><span style="color:#323232;">│  │  • Proficiency level definitions                     │ │
+</span><span style="color:#323232;">│  │  • Output schema requirements                        │ │
+</span><span style="color:#323232;">│  │  • Verification checklist                            │ │
+</span><span style="color:#323232;">│  └─────────────────────────────────────────────────────┘ │
+</span><span style="color:#323232;">│  ┌─────────────────────────────────────────────────────┐ │
+</span><span style="color:#323232;">│  │  PER-REQUEST CONTEXT (assembled before generation)   │ │
+</span><span style="color:#323232;">│  │  • Competency scope (from Supabase)                  │ │
+</span><span style="color:#323232;">│  │  • Org preferences (from Supabase, if available)     │ │
+</span><span style="color:#323232;">│  │  • Selected scenario                                 │ │
+</span><span style="color:#323232;">│  │  • User&#39;s specific requirements &amp; constraints        │ │
+</span><span style="color:#323232;">│  │  • Feedback from previous failed attempt (if retry)  │ │
+</span><span style="color:#323232;">│  └─────────────────────────────────────────────────────┘ │
+</span><span style="color:#323232;">│  ┌─────────────────────────────────────────────────────┐ │
+</span><span style="color:#323232;">│  │  EMERGENT CONTEXT (created during the run)           │ │
+</span><span style="color:#323232;">│  │  • Generated task artifacts                          │ │
+</span><span style="color:#323232;">│  │  • Tool results (verify_code output, test results)   │ │
+</span><span style="color:#323232;">│  │  • Agent&#39;s self-correction reasoning                 │ │
+</span><span style="color:#323232;">│  │  • &quot;I tried X, it failed because Y, now trying Z&quot;   │ │
+</span><span style="color:#323232;">│  └─────────────────────────────────────────────────────┘ │
+</span><span style="color:#323232;">│                                                           │
+</span><span style="color:#323232;">│  Phase 1 total: ~15-25K tokens (well within any window)  │
+</span><span style="color:#323232;">│  Phase 4 (with customer context + feedback): ~30-50K     │
+</span><span style="color:#323232;">└───────────────────────────────────────────────────────────┘</span></code></pre>
+<p><strong>Static context</strong> — Doesn't change between runs. Loaded once.</p>
+<ul>
+<li>Task type guidelines (&quot;what makes a good DEBUG task&quot;)</li>
+<li>Proficiency level definitions (&quot;INTERMEDIATE means 3-5 years experience, expects multi-file solutions&quot;)</li>
+<li>Output schema requirements</li>
+<li>Verification checklist</li>
+<li>The agent's behavioral instructions</li>
+</ul>
+<p><strong>Per-request context</strong> — Changes every run. Assembled by the orchestrator or by agent tools.</p>
+<ul>
+<li>Competency scope (from Supabase)</li>
+<li>Customer/org preferences (from Supabase)</li>
+<li>Relevant scenarios (from scenario files or generated)</li>
+<li>Specific requirements from the user (&quot;focus on observability&quot;, &quot;20 minute time constraint&quot;)</li>
+<li>Feedback from a previous failed attempt</li>
+</ul>
+<p><strong>Emergent context</strong> — Created during the run. Accumulated in the conversation.</p>
+<ul>
+<li>Tool results (verification output, test results)</li>
+<li>The agent's own reasoning and intermediate decisions</li>
+<li>Self-correction history (&quot;I tried X, it failed because Y, so I'm trying Z&quot;)</li>
+</ul>
+<p><strong>The Phase 1 approach (simple, sufficient):</strong></p>
+<p>For Phase 1, context engineering is straightforward because each agent is short-lived:</p>
+<pre><code class="lang-">
+<span style="color:#323232;">Generator agent receives:
+</span><span style="color:#323232;">  System prompt:        behavioral instructions (static, ~1K tokens)
+</span><span style="color:#323232;">  + Domain knowledge:   guidelines for this task type + tech stack (static, ~2K tokens)
+</span><span style="color:#323232;">  + Competency scope:   from Supabase (per-request, ~500 tokens)
+</span><span style="color:#323232;">  + Requirements:       user&#39;s specific asks (per-request, ~500 tokens)
+</span><span style="color:#323232;">  + Scenario:           selected or generated scenario (per-request, ~500 tokens)
+</span><span style="color:#323232;">  = ~4.5K tokens of context before the agent starts generating
+</span><span style="color:#323232;">
+</span><span style="color:#323232;">  During the run:
+</span><span style="color:#323232;">  + Generated task (~5-10K tokens)
+</span><span style="color:#323232;">  + Tool results (~1-2K tokens per tool call)
+</span><span style="color:#323232;">  + Self-correction reasoning (~1-2K per fix)
+</span><span style="color:#323232;">  = ~15-25K tokens total for a successful run with 1-2 corrections
+</span><span style="color:#323232;">
+</span><span style="color:#323232;">  Well within any context window. No management needed.</span></code></pre>
+<p>The eval agent gets even less — just the generated task + the eval rubric. Fresh context, no history from generation. It can't be biased by the generator's reasoning because it never sees it.</p>
+<p><strong>What changes at scale (Phase 3-4):</strong></p>
+<p>When we add customer context, feedback history, cross-task deduplication, and multi-step generation for complex task types, context management becomes real work:</p>
+<ul>
+<li><strong>Retrieval</strong>: Before generation, query Supabase for relevant customer feedback (&quot;their last 3 tasks were rated low because 'too many files'&quot; → inject as a constraint). Use embedding similarity to find RELEVANT feedback, not all feedback.</li>
+<li><strong>Compression</strong>: If the self-correction loop runs long (10+ turns for a complex MANAGE INFRA task), older tool results can be summarized. &quot;Previously: Docker build failed due to missing dependency, fixed. Compose up failed due to port conflict, fixed.&quot; instead of the full 5K tokens of Docker error output.</li>
+<li><strong>Selective inclusion</strong>: The agent doesn't need ALL guidelines for ALL task types. Load only the guidelines for the specific task type and tech stack being generated. This is obvious but easy to get wrong when you have 50+ guideline documents.</li>
+<li><strong>Memory across runs</strong>: If the system generates 10 tasks in a batch, later tasks should know about earlier tasks (for deduplication, for variety). This is short-term batch memory, stored in the Supabase run state.</li>
+</ul>
+<p><strong>The principle that stays constant across all phases: context is curated, not accumulated.</strong> The agent sees what it needs, when it needs it, at the right level of detail. Everything else is available via tools if the agent decides it's relevant — but not pre-loaded &quot;just in case.&quot;</p>
+<hr />
+<h3 id="the-path-from-poc-to-production">The Path from POC to Production</h3>
+<pre><code class="lang-">
+<span style="color:#323232;">Phase 1 (POC):
+</span><span style="color:#323232;">  BUILD tasks with self-correction → answers model + framework questions
+</span><span style="color:#323232;">                                          │
+</span><span style="color:#323232;">Phase 2 (Foundation):                     ▼
+</span><span style="color:#323232;">  Add DESIGN REVIEW + DEBUG    → answers task type transferability
+</span><span style="color:#323232;">  Add verification tools       → answers self-correction effectiveness
+</span><span style="color:#323232;">  Add Supabase state tracking  → answers cost economics
+</span><span style="color:#323232;">  Start human rating dataset   → builds toward DSPy + auto-approval
+</span><span style="color:#323232;">                                          │
+</span><span style="color:#323232;">Phase 3 (Scale):                          ▼
+</span><span style="color:#323232;">  Customer context injection   → answers context relevance
+</span><span style="color:#323232;">  Deduplication                → answers similarity thresholds
+</span><span style="color:#323232;">  Confidence-based auto-approve→ answers human-in-the-loop calibration
+</span><span style="color:#323232;">  100 tasks/day target         → answers deployment pipeline readiness
+</span><span style="color:#323232;">                                          │
+</span><span style="color:#323232;">Phase 4 (Customer-Facing):               ▼
+</span><span style="color:#323232;">  API for org-triggered generation → answers intake agent design
+</span><span style="color:#323232;">  Per-org preferences          → answers customer context value
+</span><span style="color:#323232;">  DSPy optimization            → answers prompt optimization ROI
+</span><span style="color:#323232;">  Feedback loop                → begins self-improvement cycle</span></code></pre>
+<p>Each phase answers the questions that unlock the next phase. We don't need to decide everything now — we need to build Phase 1 and let the experiments guide the rest.</p>
+<hr />
+<h2 id="appendix-task-type-generation-patterns">Appendix: Task Type Generation Patterns</h2>
+<table>
+<thead>
+<tr><th>Task Type</th><th>Phases</th><th>Key Artifacts</th><th>Verification Tools Needed</th></tr>
+</thead>
+<tbody>
+<tr><td><strong>BUILD</strong></td><td>Single-phase (3-turn conversation)</td><td>Starter code, answer code, README</td><td>parse_code, run_tests, check_deployability</td></tr>
+<tr><td><strong>DEBUG</strong></td><td>Two-phase (correct system → inject bugs)</td><td>Buggy code, failing tests, error logs, answer key</td><td>parse_code, run_tests (must fail on buggy, pass on fixed), check_deployability</td></tr>
+<tr><td><strong>DESIGN REVIEW</strong></td><td>Single-phase (doc with intentional gaps)</td><td>Design doc (markdown), answer key</td><td>Structure check only (no code)</td></tr>
+<tr><td><strong>PR REVIEW</strong></td><td>Two-phase (base repo → flawed PR)</td><td>Base repo, PR branch, answer key</td><td>parse_code (PR files), validate PR structure</td></tr>
+<tr><td><strong>UX / CRITICAL THINKING</strong></td><td>Template + AI scenario</td><td>Figma template, product scenario, rubric</td><td>Structure check only</td></tr>
+<tr><td><strong>MANAGE INFRA</strong></td><td>Two-phase (working configs → broken configs)</td><td>Infra configs, error logs, answer key</td><td>validate_dockerfile, docker_compose_up, validate_k8s_manifest</td></tr>
+</tbody>
+</table>
+
+  </main>
+</body>
+</html>

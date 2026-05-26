@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from evals import EvalGateError, MAX_EVAL_RETRIES
+from infra.evals import EvalGateError, MAX_EVAL_RETRIES
 
 
 def test_max_eval_retries_default() -> None:
@@ -37,7 +37,7 @@ def test_eval_gate_error_carries_last_verdicts() -> None:
 
 def test_hollow_task_detector_catches_empty_fields() -> None:
     """A task is hollow if title/question/code are missing or empty."""
-    from multiagent import _is_task_hollow
+    from generators.task import is_task_hollow
     cases = [
         {},
         {"title": ""},
@@ -46,29 +46,29 @@ def test_hollow_task_detector_catches_empty_fields() -> None:
         {"title": "X", "question": "Y"},  # missing code_files
     ]
     for case in cases:
-        hollow, reasons = _is_task_hollow(case)
+        hollow, reasons = is_task_hollow(case)
         assert hollow, f"Expected hollow for {case}; got passed-through"
         assert reasons, f"Expected reasons for {case}"
 
 
 def test_hollow_task_detector_accepts_full_task() -> None:
-    from multiagent import _is_task_hollow
+    from generators.task import is_task_hollow
     good = {
         "title": "Fix the broken parser",
         "question": "Implement parse_payment so that ...",
         "code_files": {"src/main.py": "...", "Cargo.toml": "..."},
     }
-    hollow, reasons = _is_task_hollow(good)
+    hollow, reasons = is_task_hollow(good)
     assert not hollow, f"Full task wrongly classified hollow: {reasons}"
 
 
 def test_hollow_task_detector_accepts_name_as_title_alias() -> None:
-    """multiagent.py historically uses ``name`` as a fallback for ``title``."""
-    from multiagent import _is_task_hollow
+    """task_generation historically uses ``name`` as a fallback for ``title``."""
+    from generators.task import is_task_hollow
     payload = {
         "name": "X",   # title alias
         "question": "Y",
         "code_files": {"a.py": "..."},
     }
-    hollow, _ = _is_task_hollow(payload)
+    hollow, _ = is_task_hollow(payload)
     assert not hollow

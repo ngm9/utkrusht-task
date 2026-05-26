@@ -8,7 +8,7 @@ from pathlib import Path
 
 import click
 
-from logger_config import logger
+from infra.logger_config import logger
 from task_input_parser.brief_parser import parse
 from task_input_parser.extractor import run as run_extractor
 

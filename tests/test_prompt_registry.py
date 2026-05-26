@@ -23,7 +23,7 @@ import pytest
 @pytest.fixture(scope="module")
 def registry() -> dict:
     """The prompt registry built by utils.py at import time."""
-    from utils import _PROMPT_REGISTRY
+    from infra.utils import _PROMPT_REGISTRY
     return _PROMPT_REGISTRY
 
 

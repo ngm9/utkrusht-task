@@ -1,0 +1,11 @@
+[
+    {
+        "competency_id": "902da493-c1b1-4543-bda5-67b07c31293c",
+        "created_at": "2024-12-27T06:13:38.847384+00:00",
+        "proficiency": "BASIC",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Python - Django",
+        "scope": "A person at the BASIC proficiency level, with 0-2 years of experience, knows basic Python types, loops, conditionals, and error handling, plus uses pip or conda for packages and Git/GitHub for basic version control. Familiar with Django’s structure (settings, apps, URLs, models, views, templates) and can use django-admin/manage.py to create simple projects. Also understands Django’s MTV concept, can do minimal class-based or function-based views, and run the dev server. Creates basic models with simple relationships, runs migrations, uses SQLite, and performs CRUD in the Django Admin. Comfortable with Django templates (inheritance, loops, conditionals), handles basic forms, and passes data from views to templates. Serves static files, sets up environment variables for local dev, and can attempt basic deployments on Heroku. Knows how to debug with print statements or pdb, reads Django debug pages, and fixes minor issues using GitHub or similar. Uses simple Git branching and merging, writes minimal commit messages, and can participate in lightweight Agile/Scrum practices. Overall, able to build a small end-to-end Django app with simple front-end integration and show a working prototype.",
+        "long_scope": null
+    }
+]

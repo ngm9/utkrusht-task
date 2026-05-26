@@ -25,7 +25,7 @@ import openai
 from dotenv import load_dotenv
 from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
 
-from logger_config import logger
+from infra.logger_config import logger
 from task_input_parser.brief_parser import BriefAST
 from task_input_parser.tools.emit import EmitTaskInput, LeakDetectedError, emit_task
 from task_input_parser.tools.fetch import (

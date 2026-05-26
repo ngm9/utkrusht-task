@@ -78,7 +78,7 @@ def _upload_to_drive(data: bytes, filename: str) -> tuple[str, str, str]:
     # Imports deferred so the parser still imports cleanly without Google creds
     from googleapiclient.discovery import build
     from googleapiclient.http import MediaIoBaseUpload
-    from non_tech_flow.google_utils import (
+    from flows.non_tech.google_utils import (
         get_google_credentials,
         get_or_create_task_resources_folder,
         _share_publicly,

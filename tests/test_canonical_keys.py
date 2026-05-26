@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import inspect
 
-from prompt_generator.validator import (
+from generators.prompts.validator import (
     REQUIRED_JSON_SCHEMA_KEYS,
     TITLE_KEY_ALTERNATIVES,
     _missing_json_schema_keys,
@@ -90,7 +90,7 @@ def test_title_alternatives_constant() -> None:
 
 def test_generate_task_with_code_accepts_feedback_param() -> None:
     """The retry loop passes feedback= into the generator."""
-    from utils import generate_task_with_code
+    from infra.utils import generate_task_with_code
     params = inspect.signature(generate_task_with_code).parameters
     assert "feedback" in params
     # default empty so existing callers are unaffected
@@ -98,7 +98,7 @@ def test_generate_task_with_code_accepts_feedback_param() -> None:
 
 
 def test_build_retry_feedback_hollow_includes_canonical_reminder() -> None:
-    from multiagent import _build_retry_feedback
+    from generators.task import build_retry_feedback as _build_retry_feedback
     fb = _build_retry_feedback(["title is empty", "code_files is empty"], None)
     assert "hollow" in fb.lower()
     # must spell out the canonical keys so the LLM corrects the synonym mistake
@@ -107,7 +107,7 @@ def test_build_retry_feedback_hollow_includes_canonical_reminder() -> None:
 
 
 def test_build_retry_feedback_eval_failure_includes_issues() -> None:
-    from multiagent import _build_retry_feedback
+    from generators.task import build_retry_feedback as _build_retry_feedback
     eval_info = {
         "task_eval": {"pass": False, "issues": ["scenario unrealistic", "too hard"]},
         "code_eval": {"pass": True},
@@ -120,7 +120,7 @@ def test_build_retry_feedback_eval_failure_includes_issues() -> None:
 
 def test_build_retry_feedback_falls_back_to_feedback_string() -> None:
     """When issues[] is empty, use the free-text feedback field."""
-    from multiagent import _build_retry_feedback
+    from generators.task import build_retry_feedback as _build_retry_feedback
     eval_info = {
         "task_eval": {"pass": False, "issues": [], "feedback": "needs more depth"},
         "code_eval": {"pass": True},

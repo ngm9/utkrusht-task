@@ -379,14 +379,15 @@ ssh -i $SSH_KEY -o StrictHostKeyChecking=no root@$DROPLET_IP \
 
 Expected: no containers, no images, `/root/task` removed.
 
-### Via multiagent.py (updates Supabase `is_deployed` status)
+### Via the E2B CLI (live path — updates Supabase `is_deployed` status)
 
 ```bash
-$PYEXE multiagent.py reset_task \
-  --task-id <uuid> \
-  --droplet-ip 159.65.53.87 \
-  --script-path /root/task/kill.sh
+$PYEXE -m e2b_flow reset-task --task-id <uuid> --env dev
 ```
+
+This kills the sandbox associated with the task and clears
+`deployment_info`. The legacy `multiagent.py reset_task` (droplet + SSH) was
+removed on 2026-05-25 — droplets are no longer the active deploy target.
 
 ---
 
@@ -474,22 +475,27 @@ Failed scenarios are auto-regenerated (up to 2 retry attempts).
 
 ---
 
-## Deploy via multiagent.py (with Supabase update)
+## Deploy via the E2B CLI (with Supabase update)
 
-For deploying tasks with automatic Supabase status update:
+E2B is the live deploy target. Each command provisions a sandbox and
+writes `deployment_info` (with `deployment_method = "e2b_sandbox"`) back
+to Supabase.
 
 ```bash
-# Deploy by task ID
-$PYEXE multiagent.py deploy_task --task-id <uuid> --droplet-ip 159.65.53.87
+# Deploy by task ID (default template: utkrusht-python-sql-dev)
+$PYEXE -m e2b_flow deploy-task --task-id <uuid> --env dev
 
-# Deploy all undeployed tasks for a competency
-$PYEXE multiagent.py deploy_task --competency-id <competency-uuid>
+# Pick a different template
+$PYEXE -m e2b_flow deploy-task --task-id <uuid> --template utkrusht-python --env dev
 
-# Auto-select droplet from AVAILABLE_IPS
-$PYEXE multiagent.py deploy_task --task-id <uuid>
+# Inspect / cleanup
+$PYEXE -m e2b_flow list-sandboxes
+$PYEXE -m e2b_flow kill-sandbox --sandbox-id <sandbox-id>
 ```
 
-> **Preferred deploy method for testing is direct SSH** (see Step 3) — it gives more control and doesn't require Supabase to be updated.
+> **Removed on 2026-05-25:** the legacy `multiagent.py deploy_task` (droplet
+> + paramiko + SSH) and its `--droplet-ip`/`--competency-id` flags. DigitalOcean
+> droplets are no longer the active deploy target.
 
 ---
 

@@ -1,0 +1,18 @@
+[render]
+theme = "default"
+layout = "doc"
+inline_assets = true
+print_css = true
+
+[markdown]
+github_admonitions = true
+syntax_highlighting = true
+mermaid_passthrough = true
+
+[visuals]
+diagram_engine = "mermaid"
+default_grid_cols = 3
+callout_icons = true
+
+[output]
+output_dir = "."

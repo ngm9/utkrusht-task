@@ -23,15 +23,18 @@ python multiagent.py generate-tasks \
   -s path/to/task_scenarios.json
 ```
 
-### Deploy a task to a droplet
+### Deploy a task to an E2B sandbox
 ```bash
-python multiagent.py deploy-task --task-id <UUID> --droplet-ip <IP>
+python -m e2b_flow deploy-task --task-id <UUID> --env dev
 ```
 
 ### Reset/undeploy a task
 ```bash
-python multiagent.py reset-task --task-id <UUID> --droplet-ip <IP> --script-path /root/task/kill.sh
+python -m e2b_flow reset-task --task-id <UUID> --env dev
 ```
+
+> The legacy `multiagent.py deploy-task` / `reset-task` (DigitalOcean droplets
+> + SSH) were removed on 2026-05-25. E2B is the only live deploy path.
 
 ### Unified pipeline (generate input files + scenarios in one step)
 ```bash
@@ -83,30 +86,35 @@ python gist_manager.py sync-is-enabled
 
 ## Architecture
 
-### Core Flow: `multiagent.py`
+### Core Flow: `task_generation/` (called via the `multiagent.py` shim)
 
-The main orchestrator. Three Click CLI commands: `generate-tasks`, `deploy-task`, `reset-task`.
+The main orchestrator lives in `task_generation/` (refactored from
+`multiagent.py` on 2026-05-25). The shim `multiagent.py` only registers
+the `generate_tasks` Click command; deploy + reset live in `e2b_flow/`.
 
 **Task generation pipeline:**
 1. Read competency + background + scenario JSON inputs
 2. Select tech-specific prompt from `task_generation_prompts/{level}/`
 3. Call OpenAI (via Portkey) to generate task description + code files
 4. Run LLM evaluations (`evals.py`) — task eval + code eval with retry loop
-5. Create GitHub template repo + answer repo (`github_utils.py`)
-6. Create GitHub Gist for task distribution
-7. Store metadata in Supabase (dev or prod)
-8. Optionally deploy to DigitalOcean droplet (`droplet_utils.py`)
+5. Run the E2B build/test gate (`e2b_flow/sandbox_eval.py`)
+6. Create GitHub template repo + answer repo (`github_utils.py`)
+7. Create GitHub Gist for task distribution
+8. Store metadata in Supabase (dev or prod)
+9. Live deploy (separate step): `python -m e2b_flow deploy-task`
 
 ### Module Responsibilities
 
 | Module | Purpose |
 |--------|---------|
-| `multiagent.py` | Main CLI orchestrator — generate, deploy, reset tasks |
+| `multiagent.py` | Thin shim — registers only the `generate_tasks` Click command (backward-compat for run_pipeline.py + docs) |
+| `task_generation/` | Task creation pipeline: creator, evaluator, gate, runtime_resolver, persistence |
+| `cli/` | Click commands (`generate_tasks` only) |
+| `e2b_flow/` | E2B deploy + reset CLI + sandbox manager + build/test gate |
 | `utils.py` | Task generation helpers: prompt formatting, JSON parsing, file I/O, gist creation |
 | `evals.py` | LLM-based evaluation of generated tasks and code quality |
 | `schemas.py` | JSON schemas for OpenAI structured outputs |
 | `github_utils.py` | GitHub repo creation, template repos, batch file uploads |
-| `droplet_utils.py` | DigitalOcean SSH/SFTP operations, droplet management |
 | `gist_manager.py` | Standalone CLI for GitHub Gist lifecycle (sync, create, enable) |
 | `logger_config.py` | Centralized logging |
 
@@ -122,6 +130,7 @@ The main orchestrator. Three Click CLI commands: `generate-tasks`, `deploy-task`
 | `non_tech_flow/` | Separate pipeline for non-technical AI/ML assessment challenges |
 | `task_generation_prompts/` | Technology-specific prompt templates organized by level (Beginner/Basic/Intermediate) |
 | `task_input_files/` | Input JSON files per technology (competencies, backgrounds, scenarios) |
+| `task_builder/` | Conversational web front-end (FastAPI) that interviews for pipeline inputs and runs the pipeline with live progress |
 
 ### External Services
 
@@ -146,3 +155,12 @@ Required in `.env` — see `TASK_MANAGEMENT_GUIDE.md` for full list. Key ones:
 - Task generation prompts are Python files exporting prompt strings, organized by `{level}/{tech_stack}_prompt.py`.
 - Two Supabase environments (dev/prod) controlled by `--env` flags throughout.
 - LLM evaluations have a retry loop (`MAX_EVAL_RETRIES` in `evals.py`) — tasks that fail eval are regenerated.
+
+## illuminate: required pre-write step
+
+Before writing or modifying any source file in this repository, invoke the
+`illuminate_audit` MCP tool with your plan, the files you intend to modify,
+and your rationale. Surface the response to the user before proceeding.
+
+If `status` is `block`, do not proceed without explicit user approval.
+If `status` is `warn`, surface the warnings to the user before writing.
