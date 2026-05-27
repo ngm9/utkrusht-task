@@ -5,9 +5,59 @@ The generated ``template.py`` from ``e2b template migrate`` is rewritten
 here as one ``run_cmd`` per logical step — both for readability and to
 sidestep a Python-level quoting bug in the migration output (the
 ``echo "deb [...]"`` apt-source line had unescaped double quotes).
+
+Two module-level exports:
+
+* ``template``  — the imperative :class:`AsyncTemplate` build pipeline.
+* ``manifest``  — the declarative capability sheet read by the LLM
+  classifier and the future ``templates`` SQL table. Phase 0 of
+  ``docs/plans/2026-05-27-unified-classifier-template-schema.md``.
+
+The manifest is intentionally hand-aligned with what ``template``
+installs — keep them in sync.
 """
 
 from e2b import AsyncTemplate
+
+# Capability sheet — the "menu" of what this template offers. Frameworks
+# and datastores listed here are not all pre-installed; they are the
+# universe the LLM classifier may match candidate tasks against, given
+# that the base image + Python toolchain + DinD can stand them up.
+manifest = {
+    "template_id": "utkrusht-python",
+    "status": "built",
+    "primary_runtime": "python",
+    "personas": ["backend", "data", "mle"],
+    "eval_methods": ["test_suite"],
+    "capabilities": {
+        "language_versions": {"python": "3.13"},
+        "frameworks": ["fastapi", "django", "flask", "sqlalchemy"],
+        "datastores": ["postgres", "mysql", "mongo", "redis"],
+        "protocols": ["rest", "websocket"],
+        "tools": [
+            "pytest",
+            "docker",
+            "docker-compose",
+            "git",
+            "jq",
+            "psycopg2-binary",
+            "pandas",
+        ],
+        "requires": {"browser": False, "gpu": False},
+        "tags": [],
+    },
+    "build_cmd": "pip install --break-system-packages -r requirements.txt",
+    "test_cmd": "python -m pytest -q --tb=short",
+    "compile_cmd": "python -m compileall -q .",
+    "install_cmd": "apt-get install -y python3 python3-pip",
+    "install_verify": "python3 --version",
+    "install_seconds": 15,
+    "description": (
+        "Python 3.13 base. Pre-installed: psycopg2-binary, sqlalchemy, "
+        "pandas. Browser tools: ttyd, code-server, adminer. DinD via "
+        "docker-ce."
+    ),
+}
 
 template = (
     AsyncTemplate()

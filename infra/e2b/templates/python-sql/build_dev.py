@@ -12,7 +12,9 @@ load_dotenv()
 async def main():
     await AsyncTemplate.build(
         template,
-        "utkrusht-python-sql-dev",
+        # NOTE: re-run `python build_dev.py` after the rename — the new
+        # template id only takes effect on E2B once a fresh build is pushed.
+        "utkrusht-python-dev",
         cpu_count=2,
         memory_mb=2048,
         on_build_logs=default_build_logger(),

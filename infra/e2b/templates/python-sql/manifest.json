@@ -1,0 +1,55 @@
+{
+  "build_cmd": "pip install --break-system-packages -r requirements.txt",
+  "capabilities": {
+    "datastores": [
+      "postgres",
+      "mysql",
+      "mongo",
+      "redis"
+    ],
+    "frameworks": [
+      "fastapi",
+      "django",
+      "flask",
+      "sqlalchemy"
+    ],
+    "language_versions": {
+      "python": "3.13"
+    },
+    "protocols": [
+      "rest",
+      "websocket"
+    ],
+    "requires": {
+      "browser": false,
+      "gpu": false
+    },
+    "tags": [],
+    "tools": [
+      "pytest",
+      "docker",
+      "docker-compose",
+      "git",
+      "jq",
+      "psycopg2-binary",
+      "pandas"
+    ]
+  },
+  "compile_cmd": "python -m compileall -q .",
+  "description": "Python 3.13 base. Pre-installed: psycopg2-binary, sqlalchemy, pandas. Browser tools: ttyd, code-server, adminer. DinD via docker-ce.",
+  "eval_methods": [
+    "test_suite"
+  ],
+  "install_cmd": "apt-get install -y python3 python3-pip",
+  "install_seconds": 15,
+  "install_verify": "python3 --version",
+  "personas": [
+    "backend",
+    "data",
+    "mle"
+  ],
+  "primary_runtime": "python",
+  "status": "built",
+  "template_id": "utkrusht-python",
+  "test_cmd": "python -m pytest -q --tb=short"
+}
