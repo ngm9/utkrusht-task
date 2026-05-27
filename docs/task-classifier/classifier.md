@@ -211,7 +211,7 @@ ALTER TABLE template_registry
   ADD COLUMN registry_version  integer NOT NULL DEFAULT 1;
 ```
 
-Backfill the `utkrusht-python` row with its current sheet (extracted from `e2b_flow/templates/python-sql/template.py`).
+Backfill the `utkrusht-python` row with its current sheet (extracted from `infra/e2b/templates/python/template.py`).
 
 ### Step 2 — switch the PK from `runtime` to `template_id`
 
@@ -227,7 +227,7 @@ ALTER TABLE template_registry ADD PRIMARY KEY (template_id);
 
 Without this step, capability sheets drift from reality within months; the LLM picks based on stale info; the merged design rots. With it, sheets cannot lie. This is the single load-bearing investment.
 
-- Each `e2b_flow/templates/<name>/template.py` emits a `manifest.json` at build time (apt packages, pip packages, language versions, exposed ports, `start.sh` commands).
+- Each `infra/e2b/templates/<name>/template.py` emits a `manifest.json` at build time (apt packages, pip packages, language versions, exposed ports, `start.sh` commands).
 - The build pipeline hashes the manifest and writes it to `template_registry.manifest_hash` for that row.
 - CI gate: if the template's source changed but the row's `manifest_hash` doesn't match the freshly built manifest, the build fails.
 - Bumping `manifest_hash` also bumps `registry_version`, invalidating the classification cache.

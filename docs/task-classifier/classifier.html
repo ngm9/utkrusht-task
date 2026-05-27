@@ -458,7 +458,7 @@ CREATE TABLE task_template_match (
     <div class="num">1</div>
     <div class="body">
       <h4>Extend <code>template_registry</code> (additive, reversible)</h4>
-      <p>Add <code>personas</code>, <code>frameworks</code>, <code>datastores</code>, <code>tools</code>, <code>needs_gpu</code>, <code>language_versions</code>, <code>capabilities_note</code>, <code>manifest_hash</code>, <code>generated_at</code>, <code>registry_version</code>. Backfill the <code>utkrusht-python</code> row with its current sheet (extracted from <code>e2b_flow/templates/python-sql/template.py</code>).</p>
+      <p>Add <code>personas</code>, <code>frameworks</code>, <code>datastores</code>, <code>tools</code>, <code>needs_gpu</code>, <code>language_versions</code>, <code>capabilities_note</code>, <code>manifest_hash</code>, <code>generated_at</code>, <code>registry_version</code>. Backfill the <code>utkrusht-python</code> row with its current sheet (extracted from <code>infra/e2b/templates/python/template.py</code>).</p>
     </div>
   </div>
   <div class="step">
@@ -472,7 +472,7 @@ CREATE TABLE task_template_match (
     <div class="num">3</div>
     <div class="body">
       <h4>Manifest-hash CI gate — <strong>the durability decision</strong></h4>
-      <p>Each <code>e2b_flow/templates/&lt;name&gt;/template.py</code> emits a <code>manifest.json</code> at build time (apt packages, pip packages, language versions, exposed ports, <code>start.sh</code> commands). CI hashes the manifest and compares to <code>template_registry.manifest_hash</code> for that row. If the template's source changed but the row's hash doesn't match, the build fails. Bumping the hash also bumps <code>registry_version</code>, invalidating the classification cache.</p>
+      <p>Each <code>infra/e2b/templates/&lt;name&gt;/template.py</code> emits a <code>manifest.json</code> at build time (apt packages, pip packages, language versions, exposed ports, <code>start.sh</code> commands). CI hashes the manifest and compares to <code>template_registry.manifest_hash</code> for that row. If the template's source changed but the row's hash doesn't match, the build fails. Bumping the hash also bumps <code>registry_version</code>, invalidating the classification cache.</p>
       <p><strong>If the team isn't ready to invest in this, stop at Step 2 and stay on the two-layer model.</strong> The rule-based picker survives lying data better than an LLM does.</p>
     </div>
   </div>

@@ -11,6 +11,7 @@
     :root {
       --bg: #ffffff;
       --panel: #f7f7f8;
+      --panel-2: #f0f0f2;
       --border: #e4e4e7;
       --text: #0a0a0a;
       --muted: #71717a;
@@ -20,57 +21,24 @@
       --bad: #dc2626;
       --code-bg: #fafafa;
       --table-row: #fcfcfc;
+      --pill-ok-bg: #ecfdf5;
+      --pill-warn-bg: #fffbeb;
+      --pill-bad-bg: #fef2f2;
+      --pill-info-bg: #eef2ff;
+      --pill-info-fg: #4338ca;
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
-    body {
-      font: 15px/1.65 "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-      letter-spacing: -0.005em;
-    }
-    .layout {
-      display: grid;
-      grid-template-columns: 260px 1fr;
-      gap: 56px;
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 64px 28px 120px;
-    }
-    .sidebar {
-      position: sticky;
-      top: 32px;
-      align-self: start;
-      max-height: calc(100vh - 64px);
-      overflow-y: auto;
-      padding-right: 8px;
-    }
+    body { font: 15px/1.65 "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: -0.005em; }
+    .layout { display: grid; grid-template-columns: 260px 1fr; gap: 56px; max-width: 1200px; margin: 0 auto; padding: 64px 28px 120px; }
+    .sidebar { position: sticky; top: 32px; align-self: start; max-height: calc(100vh - 64px); overflow-y: auto; padding-right: 8px; }
     .sidebar h1 { font-size: 24px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 8px; line-height: 1.2; }
-    .sidebar .subtitle {
-      font-size: 13.5px; color: var(--muted); line-height: 1.55;
-      margin: 0 0 18px; padding-bottom: 18px;
-      border-bottom: 1px solid var(--border);
-    }
-    .toc {
-      display: flex; flex-direction: column; gap: 4px;
-      margin: 18px 0 24px;
-    }
-    .toc a {
-      font-size: 13px; color: var(--muted);
-      text-decoration: none; padding: 3px 0;
-      border-left: 2px solid transparent;
-      padding-left: 8px;
-      transition: color 120ms, border-color 120ms;
-    }
+    .sidebar .subtitle { font-size: 13.5px; color: var(--muted); line-height: 1.55; margin: 0 0 18px; padding-bottom: 18px; border-bottom: 1px solid var(--border); }
+    .toc { display: flex; flex-direction: column; gap: 4px; margin: 18px 0 24px; }
+    .toc a { font-size: 13px; color: var(--muted); text-decoration: none; padding: 3px 0; border-left: 2px solid transparent; padding-left: 8px; transition: color 120ms, border-color 120ms; }
     .toc a:hover { color: var(--text); border-left-color: var(--accent); }
-    .toc a.active {
-      color: var(--text);
-      border-left-color: var(--accent);
-      font-weight: 500;
-    }
-    .sister {
-      font-size: 12.5px; color: var(--muted);
-      margin: 24px 0 0; padding-top: 16px;
-      border-top: 1px solid var(--border);
-    }
+    .toc a.active { color: var(--text); border-left-color: var(--accent); font-weight: 500; }
+    .sister { font-size: 12.5px; color: var(--muted); margin: 24px 0 0; padding-top: 16px; border-top: 1px solid var(--border); }
     main { max-width: 820px; min-width: 0; }
     @media (max-width: 960px) {
       .layout { grid-template-columns: 1fr; gap: 32px; padding: 48px 22px 80px; }
@@ -78,560 +46,491 @@
       .toc { display: none; }
     }
     h1 { font-size: 34px; font-weight: 700; letter-spacing: -0.02em; margin: 0 0 6px; }
-    h2 {
-      font-size: 22px; font-weight: 600; letter-spacing: -0.015em;
-      margin: 56px 0 14px;
-      border-bottom: 1px solid var(--border);
-      padding-bottom: 10px;
-    }
+    h2 { font-size: 22px; font-weight: 600; letter-spacing: -0.015em; margin: 56px 0 14px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
     h3 { font-size: 17px; font-weight: 600; margin: 32px 0 10px; }
     h4 { font-size: 15px; font-weight: 600; margin: 22px 0 8px; color: var(--accent); }
     p { margin: 0 0 14px; }
-    .meta { color: var(--muted); font-size: 13px; margin: 0 0 32px; padding: 12px 0 0; }
-    .meta a { color: var(--muted); }
-    .status {
-      display: inline-block;
-      background: var(--panel); border: 1px solid var(--border);
-      border-radius: 6px; padding: 2px 9px;
-      font-size: 12px; font-weight: 500; color: var(--muted);
-      margin-right: 6px;
-    }
-    blockquote {
-      margin: 0 0 22px; padding: 12px 16px;
-      background: var(--panel); border-left: 3px solid var(--border);
-      border-radius: 4px; color: var(--muted); font-size: 14px;
-    }
+    .status { display: inline-block; background: var(--panel); border: 1px solid var(--border); border-radius: 6px; padding: 2px 9px; font-size: 12px; font-weight: 500; color: var(--muted); margin-right: 6px; }
+    blockquote { margin: 0 0 22px; padding: 12px 16px; background: var(--panel); border-left: 3px solid var(--border); border-radius: 4px; color: var(--muted); font-size: 14px; }
     blockquote p { margin: 0; }
-    blockquote p + p { margin-top: 8px; }
     a { color: var(--text); text-decoration: underline; text-underline-offset: 2px; }
     a:hover { color: var(--muted); }
-    code {
-      font: 13px/1.5 "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-      background: var(--code-bg); border: 1px solid var(--border);
-      border-radius: 4px; padding: 1px 5px;
-    }
-    pre {
-      background: var(--code-bg); border: 1px solid var(--border);
-      border-radius: 8px; padding: 14px 16px; overflow-x: auto;
-      margin: 0 0 20px;
-    }
+    code { font: 13px/1.5 "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code-bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+    pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; overflow-x: auto; margin: 0 0 20px; }
     pre code { background: none; border: 0; padding: 0; font-size: 12.5px; line-height: 1.55; }
     ul, ol { margin: 0 0 16px; padding-left: 26px; }
     li { margin: 4px 0; }
     li > p { margin: 0; }
     table { border-collapse: collapse; width: 100%; font-size: 13.5px; margin: 0 0 22px; }
-    th, td {
-      text-align: left; padding: 8px 10px;
-      border-bottom: 1px solid var(--border); vertical-align: top;
-    }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--border); vertical-align: top; }
     th { font-weight: 600; color: var(--accent); background: var(--panel); }
     tr:nth-child(even) td { background: var(--table-row); }
-    .ok   { color: var(--ok); }
+    .ok { color: var(--ok); }
     .warn { color: var(--warn); }
-    .bad  { color: var(--bad); }
-    .ascii {
-      font: 12.5px/1.5 "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-      background: var(--code-bg); border: 1px solid var(--border);
-      border-radius: 8px; padding: 14px 16px; overflow-x: auto;
-      white-space: pre; margin: 0 0 22px;
-    }
+    .bad { color: var(--bad); }
+    .ascii { font: 12.5px/1.5 "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; overflow-x: auto; white-space: pre; margin: 0 0 22px; }
     hr { border: 0; border-top: 1px solid var(--border); margin: 48px 0; }
+
+    /* Pills */
+    .pill { display: inline-block; padding: 2px 8px; font-size: 12px; font-weight: 500; border-radius: 999px; border: 1px solid var(--border); background: var(--panel); color: var(--muted); white-space: nowrap; }
+    .pill-ok { background: var(--pill-ok-bg); color: var(--ok); border-color: #bbf7d0; }
+    .pill-warn { background: var(--pill-warn-bg); color: var(--warn); border-color: #fde68a; }
+    .pill-bad { background: var(--pill-bad-bg); color: var(--bad); border-color: #fecaca; }
+    .pill-info { background: var(--pill-info-bg); color: var(--pill-info-fg); border-color: #c7d2fe; }
+
+    /* Two-up cards */
+    .twoup { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 0 0 22px; }
+    .twoup .card { border: 1px solid var(--border); border-radius: 8px; padding: 16px; background: var(--panel); }
+    .twoup .card h4 { margin: 0 0 8px; font-size: 13px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+    .twoup .card.legacy { background: var(--panel-2); }
+    .twoup .card.active { background: #fefce8; border-color: #fde68a; }
+    @media (max-width: 700px) { .twoup { grid-template-columns: 1fr; } }
+
+    /* Capability-sheet axis grid */
+    .axes { display: grid; grid-template-columns: 160px 1fr 1fr; gap: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; margin: 0 0 22px; font-size: 13.5px; }
+    .axes > div { padding: 10px 12px; border-top: 1px solid var(--border); background: var(--bg); }
+    .axes > div:nth-child(-n+3) { border-top: 0; background: var(--panel); font-weight: 600; color: var(--accent); font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .axes .label { font-weight: 600; }
+
+    /* Step cards */
+    .steps { display: flex; flex-direction: column; gap: 12px; margin: 0 0 22px; }
+    .step { display: grid; grid-template-columns: 36px 1fr; gap: 14px; border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px; background: var(--panel); }
+    .step .num { width: 32px; height: 32px; border-radius: 999px; background: var(--accent); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 600; font-size: 13px; }
+    .step.gate { border-color: #fde68a; background: #fffbeb; }
+    .step.gate .num { background: var(--warn); }
+    .step .body h4 { margin: 0 0 6px; font-size: 14.5px; color: var(--text); }
+    .step .body p:last-child { margin-bottom: 0; }
+
+    /* Two-options side-by-side (Option A / Option B) */
+    .options { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 0 0 22px; }
+    .options .opt { border: 1px solid var(--border); border-radius: 8px; padding: 16px; background: var(--bg); }
+    .options .opt h4 { margin: 0 0 10px; font-size: 14px; }
+    .options .opt.preferred { border-color: #bbf7d0; background: #f0fdf4; }
+    .options .opt .verdict { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
+    .options .opt.preferred .verdict { color: var(--ok); }
+    @media (max-width: 700px) { .options { grid-template-columns: 1fr; } }
   </style>
 </head>
 <body>
 <div class="layout">
 <aside class="sidebar">
   <h1>E2B Templates &amp; Registry</h1>
-  <p class="subtitle">Pre-built microVM snapshots per runtime+lane, the <code>template_registry</code> table, and why <code>build_cmd</code> belongs to the runtime — not the task. Sister doc to the <a href="./classifier.html">task classifier</a>, which owns the design; this registry's rows ARE the capability sheets the classifier reads.</p>
+  <p class="subtitle">Each <code>template_registry</code> row IS the capability sheet the <a href="./classifier.html">classifier</a> reads to pick a template. This doc covers what's currently in the templates and what we need to change to make the registry merged-model-ready.</p>
   <nav class="toc">
-    <a href="#problem">What is an E2B template?</a>
-    <a href="#registry">Why a template_registry?</a>
-    <a href="#fat-vs-composition">Fat vs composition</a>
-    <a href="#hierarchy">Template hierarchy</a>
+    <a href="#concept">The concept</a>
+    <a href="#what-is-template">What is an E2B template</a>
+    <a href="#today">What's in the registry today</a>
+    <a href="#gate">How it feeds the gate today</a>
+    <a href="#runsh-vs-build">run.sh vs build_cmd</a>
+    <a href="#gaps">Gaps vs. the merged model</a>
+    <a href="#merge-work">What it takes to get there</a>
+    <a href="#fat-vs-comp">Fat vs. composition</a>
+    <a href="#lineage">One template lineage</a>
     <a href="#sdk">E2B SDK capabilities</a>
-    <a href="#picker">Template picker</a>
-    <a href="#task-content">Generated run.sh / kill.sh</a>
     <a href="#examples">Worked examples</a>
     <a href="#status">Implementation status</a>
     <a href="#next">What we should do next</a>
     <a href="#out-of-scope">Out of scope</a>
   </nav>
+  <p class="sister">
+    <span class="status">Status</span> Registry table shipped. Capability-sheet evolution ahead.<br /><br />
+    <span class="status">Sister doc</span> <a href="./classifier.html">Task Classifier</a> — owns the design.
+  </p>
 </aside>
 <main>
 
-<h2 id="problem">Problem statement — what is an E2B template, and why one per runtime?</h2>
-<p>An <strong>E2B template</strong> is a pre-built Firecracker microVM snapshot, registered with E2B by name (e.g. <code>utkrusht-python</code>). A sandbox boots from it in ~150 ms with <strong>nothing installed at boot</strong> — every dependency the task needs is already baked into the image.</p>
+<h2 id="concept">The concept — each row is the template's capability sheet</h2>
 
-<p><code>e2b_flow/templates/python-sql/template.py</code>:</p>
-<pre><code>from e2b import AsyncTemplate
+<p>The <code>template_registry</code> table looks superficially like a build-command lookup ("here's the <code>pip install</code> line for Python tasks"). In the <a href="./classifier.html#design">merged design</a>, it's something stronger: <strong>each row is the capability sheet the classifier reads to decide which template a task should boot.</strong></p>
 
-template = (
-    AsyncTemplate()
-    .from_image("e2bdev/code-interpreter:latest")
-    .run_cmd("apt-get install -y postgresql-client netcat-openbsd ...")
-    .run_cmd("install docker-ce docker-compose-plugin ...")  # DinD
-    .run_cmd("pip install psycopg2-binary sqlalchemy pandas")
-    .run_cmd("install ttyd ...")                              # browser terminal
-    .run_cmd("dpkg -i code-server_4.96.4_amd64.deb")          # browser VS Code
-    .run_cmd("install adminer ...")                           # DB GUI
-    .copy("start.sh", "/usr/local/bin/start.sh")
-    .set_start_cmd("sudo /usr/local/bin/start.sh", "sleep 20")
-)</code></pre>
-<p>Built once via <code>python build_prod.py</code> → registered with E2B → boots as a snapshot. <strong>Pip/npm/apt at runtime is exactly the wrong pattern.</strong> The candidate gets a sandbox where <code>import fastapi</code> just works because FastAPI is already there.</p>
+<p>The row describes:</p>
 
-<h3>The intuitive plan that doesn't scale</h3>
-<p>A naive approach would be "one template per task type." The math kills it:</p>
-<pre><code>8 runtimes × 5 frameworks × 4 datastores × 3 messaging × … ≈ 480+ templates</code></pre>
-<p>That's a maintenance disaster. Every new framework or DB combination becomes a new template to build, ship, and update.</p>
+<div class="axes">
+  <div>Axis</div>
+  <div>Field</div>
+  <div>What it tells the classifier</div>
 
-<h3>The actual shape</h3>
-<p>A template carries <strong>runtime + lane</strong> (e.g. Python + web frameworks, Node + mobile, Python + LLM libs). Service containers (Postgres, Redis, Mongo, Kafka) are NOT in the template — they come from the <strong>task's own <code>docker-compose.yml</code></strong>, started by <code>docker compose up</code> inside the sandbox via Docker-in-Docker.</p>
+  <div class="label">Identity</div>
+  <div><code>template_id</code>, <code>status</code></div>
+  <div>Is this template real and currently picked-able?</div>
 
-<div class="ascii">┌──────────────────────────────┬──────────────────────────────┐
-│ Owner: Platform              │ Owner: Each task             │
-├──────────────────────────────┼──────────────────────────────┤
-│ E2B template                 │ docker-compose.yml           │
-│  • Runtime SDK (Python, JDK) │  • postgres-server           │
-│  • Lane libraries (fastapi,  │  • redis-server              │
-│    spring-boot, ...)         │  • mongo-server              │
-│  • DinD (Docker daemon)      │  • kafka-broker              │
-│  • Browser tools             │ run.sh / kill.sh             │
-│  • ~11 templates total       │  • compose up / compose down │
-└──────────────────────────────┴──────────────────────────────┘</div>
+  <div class="label">Image content</div>
+  <div><code>runtime</code>, <code>language_versions</code>, <code>frameworks</code>, <code>datastores</code>, <code>tools</code>, <code>needs_browser</code>, <code>needs_gpu</code>, <code>capabilities_note</code></div>
+  <div>What's already baked in — so the task's <code>run.sh</code> doesn't need to install it</div>
 
-<p>Template count is bounded by <strong>runtime × framework-lane</strong>, NOT by databases × messaging × everything else. That's the design trick that makes the maintenance surface tractable.</p>
+  <div class="label">Who grades it</div>
+  <div><code>personas[]</code></div>
+  <div>Which reviewer persona this template can host (one row → many personas)</div>
 
-<p>This is confirmed by <code>DEFAULT_PROBE_PORTS</code> in <code>e2b_flow/sandbox_manager.py</code>:</p>
+  <div class="label">How to run</div>
+  <div><code>build_cmd</code>, <code>test_cmd</code>, <code>compile_cmd</code></div>
+  <div>The platform's pre-flight commands, idiomatic for this stack</div>
+
+  <div class="label">Provenance</div>
+  <div><code>manifest_hash</code>, <code>generated_at</code>, <code>registry_version</code></div>
+  <div>Proof the row matches the actual image — see "Drift control" below</div>
+</div>
+
+<p>The classifier picks a template by reading every row where <code>status='built'</code> and matching the task's competency combo against these sheets. Adding a new template = adding a row. Removing a runtime we never built = deleting a row. <strong>The registry is the deployable set; there is no other catalog.</strong></p>
+
+<h2 id="what-is-template">What is an E2B template</h2>
+
+<p>An E2B template is a pre-built Firecracker microVM snapshot, registered with E2B under a name like <code>utkrusht-python</code>. A sandbox boots from it in ~150 ms with <strong>nothing installed at boot</strong> — every dependency the task needs is already baked into the image.</p>
+
+<p>Templates are defined as Python (E2B v2 SDK), built via <code>python build_prod.py</code> (or <code>build_dev.py</code>) from the template's directory, and uploaded to the E2B registry. A <code>template_registry</code> row points at one (<code>template_id</code> matches the E2B-side name).</p>
+
+<div class="ascii">template.py  (Python — declares apt/pip/curl steps via AsyncTemplate chain)
+     │
+     │  python build_prod.py
+     ▼
+E2B builds a Firecracker snapshot, registers it as `utkrusht-python`
+     │
+     ▼
+template_registry row exists / is updated to point at it
+     │
+     ▼
+sandbox_eval (gate) and deploy both call Sandbox.create("utkrusht-python")</div>
+
+<p>The classifier reads the row; the gate boots the image; the candidate later gets a sandbox from the same template. <strong>One image lineage</strong> — see <a href="#lineage">below</a>.</p>
+
+<h2 id="today">What's in the registry today</h2>
+
+<p>Two template directories live in <a href="../../infra/e2b/templates/"><code>infra/e2b/templates/</code></a>. They are not equally important.</p>
+
+<div class="twoup">
+  <div class="card active">
+    <h4>utkrusht-python — active <span class="pill pill-ok">built</span></h4>
+    <p style="margin: 0 0 8px; font-size: 13px;"><code>infra/e2b/templates/python/template.py</code><br/>Base: <code>from_python_image("3.12")</code> (lean Python; no Jupyter)</p>
+  </div>
+  <div class="card legacy">
+    <h4>utkrusht-python-sql — legacy <span class="pill pill-warn">to deprecate</span></h4>
+    <p style="margin: 0 0 8px; font-size: 13px;"><code>infra/e2b/templates/python-sql/template.py</code><br/>Base: <code>e2bdev/code-interpreter:latest</code> (heavier — ships Jupyter we don't need)</p>
+  </div>
+</div>
+
+<h3>What's baked into <code>utkrusht-python</code></h3>
+
 <table>
-  <thead><tr><th>Ports baked into the template</th><th>Ports the task brings via compose</th></tr></thead>
+  <thead><tr><th>Layer</th><th>What's installed</th></tr></thead>
   <tbody>
-    <tr><td>7681 (ttyd), 8443 (code-server), 8080 (Adminer)<br>Plus 8000/3000/5000 — the candidate's app dev server</td><td>5432 (Postgres), 6379 (Redis), 27017 (Mongo)</td></tr>
+    <tr><td>System</td><td><code>ca-certificates curl gnupg lsb-release git jq postgresql-client default-mysql-client netcat-openbsd</code></td></tr>
+    <tr><td>Docker</td><td>Full DinD — <code>docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin</code></td></tr>
+    <tr><td>Python — web</td><td><code>fastapi flask django uvicorn[standard] gunicorn httpx requests</code></td></tr>
+    <tr><td>Python — ORM / DB clients</td><td><code>sqlalchemy psycopg2-binary pymongo redis</code></td></tr>
+    <tr><td>Python — LLM</td><td><code>langchain llama-index openai anthropic pinecone chromadb</code></td></tr>
+    <tr><td>Python — data</td><td><code>pandas numpy</code></td></tr>
+    <tr><td>Python — test</td><td><code>pytest pytest-asyncio</code></td></tr>
+    <tr><td>Compat shim</td><td><code>/usr/local/bin/docker-compose</code> → <code>docker compose</code> (v1→v2 alias)</td></tr>
+    <tr><td>Browser surfaces</td><td><code>ttyd</code> :7681, <code>code-server</code> :8443, <code>adminer</code> :8080, <code>php-cli php-pgsql php-mysql</code></td></tr>
   </tbody>
 </table>
 
-<h2 id="registry">Why do we need a <code>template_registry</code> table?</h2>
-<p>This is the <strong>real architectural question</strong>, and it deserves an honest answer.</p>
-
-<h3>Your intuition is half right</h3>
-<p>"Why is <code>build_cmd</code> / <code>test_cmd</code> / <code>compile_cmd</code> in a runtime-level table? Each task is different — each task has its own <code>requirements.txt</code>, its own tests, its own code."</p>
-<p><strong>True. But there are two different things going on:</strong></p>
-<table>
-  <thead><tr><th>What's task-specific</th><th>What's runtime-specific</th></tr></thead>
-  <tbody>
-    <tr><td>The <strong>content</strong> to operate on: <code>requirements.txt</code>, the test files, the source code</td><td>The <strong>command shape</strong> for that runtime's tooling</td></tr>
-    <tr><td><code>requirements.txt</code> (different per task)</td><td><code>pip install -r requirements.txt</code> (same for every Python task)</td></tr>
-    <tr><td>Test files (different per task)</td><td><code>python -m pytest -q --tb=short</code> (same for every Python task)</td></tr>
-    <tr><td>Source code</td><td><code>python -m compileall -q .</code> (same for every Python task)</td></tr>
-  </tbody>
-</table>
-<p>Different Python tasks use different libraries, but they all install them the same way: <code>pip install -r requirements.txt</code>. Different Java tasks use different Maven dependencies, but they all build the same way: <code>mvn package</code>. The <strong>command</strong> is a property of the language's tooling — not of any individual task.</p>
-<p>So <code>template_registry</code> stores the <em>runtime's idiomatic build/test recipe</em>, and the task's <code>requirements.txt</code> (or <code>pom.xml</code>, or <code>package.json</code>) is the input that recipe operates on. They're orthogonal.</p>
-
-<h3>What <code>template_registry</code> actually does</h3>
-<p>Schema:</p>
-<table>
-  <thead><tr><th>column</th><th>type</th><th>role</th></tr></thead>
-  <tbody>
-    <tr><td><code>runtime</code></td><td><code>text</code> PK</td><td><code>python</code>, <code>node</code>, <code>java</code>, <code>go</code>, …</td></tr>
-    <tr><td><code>template_name</code></td><td><code>text</code></td><td>E2B template id, e.g. <code>utkrusht-python</code></td></tr>
-    <tr><td><code>build_cmd</code></td><td><code>text</code></td><td>e.g. <code>pip install --break-system-packages -r requirements.txt</code></td></tr>
-    <tr><td><code>test_cmd</code></td><td><code>text</code></td><td>e.g. <code>python -m pytest -q --tb=short</code></td></tr>
-    <tr><td><code>compile_cmd</code></td><td><code>text</code></td><td>e.g. <code>python -m compileall -q .</code> (optional)</td></tr>
-    <tr><td><code>needs_browser</code></td><td><code>bool</code></td><td>for Playwright lanes</td></tr>
-    <tr><td><code>description</code></td><td><code>text</code></td><td>what's baked into the image</td></tr>
-    <tr><td><code>status</code></td><td><code>text</code> (added 2026-05-26)</td><td><code>built</code> / <code>proposed</code> / <code>deprecated</code> — see "Why only one row is <code>built</code>" below</td></tr>
-  </tbody>
-</table>
-
-<h3>Current rows in the registry</h3>
-<p>After <code>2026-05-26-template-registry-add-status-and-proposed-rows.sql</code>, every runtime in the <code>TaskRuntime.runtime</code> Literal has a row:</p>
-<table>
-  <thead><tr><th>runtime</th><th>template_name</th><th>build_cmd</th><th>test_cmd</th><th>status</th></tr></thead>
-  <tbody>
-    <tr><td><code>python</code></td><td><code>utkrusht-python</code></td><td><code>pip install --break-system-packages -r requirements.txt</code></td><td><code>python -m pytest -q --tb=short</code></td><td class="ok"><b>built</b></td></tr>
-    <tr><td><code>node</code></td><td><code>utkrusht-node</code></td><td><code>npm ci</code></td><td><code>npm test</code></td><td class="warn">proposed</td></tr>
-    <tr><td><code>java</code></td><td><code>utkrusht-java</code></td><td><code>mvn -q -DskipTests package</code></td><td><code>mvn -q test</code></td><td class="warn">proposed</td></tr>
-    <tr><td><code>php</code></td><td><code>utkrusht-php</code></td><td><code>composer install --no-progress</code></td><td><code>vendor/bin/phpunit</code></td><td class="warn">proposed</td></tr>
-    <tr><td><code>go</code></td><td><code>utkrusht-go</code></td><td><code>go mod download</code></td><td><code>go test ./...</code></td><td class="warn">proposed</td></tr>
-    <tr><td><code>rust</code></td><td><code>utkrusht-rust</code></td><td><code>cargo build --quiet</code></td><td><code>cargo test --quiet</code></td><td class="warn">proposed</td></tr>
-    <tr><td><code>flutter</code></td><td><code>utkrusht-flutter</code></td><td><code>flutter pub get</code></td><td><code>flutter test</code></td><td class="warn">proposed</td></tr>
-    <tr><td><code>ruby</code></td><td><code>utkrusht-ruby</code></td><td><code>bundle install --quiet</code></td><td><code>bundle exec rspec</code></td><td class="warn">proposed</td></tr>
-    <tr><td><code>scala</code></td><td><code>utkrusht-scala</code></td><td><code>sbt -batch compile</code></td><td><code>sbt -batch test</code></td><td class="warn">proposed</td></tr>
-    <tr><td><code>none</code></td><td colspan="3">—</td><td>(no row — db_only / non_code tasks always skip the gate)</td></tr>
-  </tbody>
-</table>
-
-<h3>Why only one row is <code>built</code></h3>
-<p>An E2B template isn't a database row — it's a <strong>microVM snapshot built with <code>python build_prod.py</code>, uploaded to E2B's registry, and given a name</strong> (e.g. <code>utkrusht-python</code>). Inserting a <code>template_registry</code> row for <code>utkrusht-java</code> doesn't conjure the template into existence; the gate would still fail with "template not registered" when it tries to boot.</p>
-<p>So the <code>status</code> column carries the truth:</p>
+<p>What's <strong>not</strong> baked in (intentionally):</p>
 <ul>
-  <li><strong><code>built</code></strong> — there's a real E2B template registered with this name. <code>_get_template</code> returns the row, <code>sandbox_eval</code> boots successfully.</li>
-  <li><strong><code>proposed</code></strong> — the row documents intent (recipe captured, template_name reserved) but no E2B template exists yet. <code>_db_load_template</code> filters these out with <code>.eq("status", "built")</code> so the gate cleanly skips with <code>no_template</code> — same behaviour as before this migration, just now backed by visible SQL data.</li>
-  <li><strong><code>deprecated</code></strong> — for templates we've removed; same filter behaviour as <code>proposed</code>.</li>
-</ul>
-<p>The proposed rows pay off when each template gets built:</p>
-<ol>
-  <li>Build the E2B template (<code>python build_prod.py</code>, ~1 hour per template).</li>
-  <li>Verify it boots and runs tests for a sample task.</li>
-  <li><strong>One SQL line</strong>: <code>UPDATE template_registry SET status='built' WHERE runtime='node'</code>. Done — the gate now boots it for every Node task without a code change.</li>
-</ol>
-
-<h3>Composition caveat — the 11-template hierarchy isn't in here yet</h3>
-<p>The "Template hierarchy" section below proposes ~11 templates including composition leaves like <code>utkrusht-python-sql</code> / <code>utkrusht-python-web</code> / <code>utkrusht-python-llm</code> — three templates sharing <code>runtime="python"</code>. <strong>The current schema can't hold this.</strong> <code>runtime</code> is the primary key, so only one row per language is allowed.</p>
-<p>Storing the full leaf hierarchy requires schema evolution:</p>
-<ul>
-  <li>Drop <code>runtime</code> as PK, use <code>template_name</code> as PK</li>
-  <li>Keep <code>runtime</code> as a non-unique FK column</li>
-  <li>Add a <code>lane</code> column (e.g. <code>sql</code> / <code>web</code> / <code>llm</code> / <code>base</code>) to disambiguate leaves</li>
-  <li>Update <code>_get_template</code> from a single-key lookup to a (runtime, lane) lookup driven by the picker function</li>
-</ul>
-<p>That's a follow-up migration. For now the registry holds <strong>one row per language</strong>, the picker function in <code>template_name_for_runtime</code> is what it is, and the composition-leaf design is captured in this doc as the target architecture.</p>
-
-<h2 id="fat-vs-composition">Fat templates vs composition — what should we actually do?</h2>
-<p>This is a real design question and the doc's original answer (~11 composition leaves) is probably the wrong one at our scale. Let me lay out the trade-off honestly.</p>
-
-<h3>What "fat templates" means</h3>
-<p>One template per runtime, baking <strong>everything common for that runtime</strong>:</p>
-<div class="ascii">utkrusht-python      Python + all common DB drivers (psycopg2, pymongo, redis-py, mysqlclient)
-                     + all common frameworks (fastapi, flask, django, uvicorn, sqlalchemy)
-                     + all common LLM libs (langchain, llama-index, openai, anthropic)
-                     + pandas, numpy, pytest, +DinD, +browser tools
-                     → ONE image, ANY Python task.
-
-utkrusht-node        Node + all common frameworks (express, next, react, jest, vitest)
-                     + react-native CLI, expo
-                     + +DinD, +browser tools
-                     → ONE image, ANY Node task.
-
-utkrusht-java        JDK 17 + maven + gradle + spring-boot starters + hibernate + JUnit
-                     → ONE image, ANY Java task.
-
-…</div>
-<p>This is exactly what <code>utkrusht-python</code> already <strong>is</strong> today. Look at the row in <code>template_registry</code>: "Fat base: fastapi, flask, django, sqlalchemy, redis, pymongo, langchain, llama-index, pandas, numpy, pytest." The doc proposed splitting it into 3 leaves (<code>python-sql</code>, <code>python-web</code>, <code>python-llm</code>) — but the deployed version is one fat template.</p>
-
-<h3>What "composition" means</h3>
-<p>A base template per runtime, plus leaves per framework lane, glued together with E2B's <code>from_template()</code>:</p>
-<div class="ascii">utkrusht-python-base    Python + DinD + browser tools + common runtime deps
-   ├── utkrusht-python-sql       +postgres tooling
-   ├── utkrusht-python-web       +fastapi/flask/django
-   └── utkrusht-python-llm       +langchain/llama-index
-…</div>
-<p>Smaller leaves, layer-cache shared. The doc's aspirational design.</p>
-
-<h3>Head-to-head</h3>
-<table>
-  <thead><tr><th>Concern</th><th>Fat templates</th><th>Composition</th></tr></thead>
-  <tbody>
-    <tr><td><strong>Number of templates</strong></td><td>~8 (one per runtime, plus playwright + infra special-cases)</td><td>~13 (7 roots + 6 leaves)</td></tr>
-    <tr><td><strong>Image size per template</strong></td><td>~3–4 GiB</td><td>~1.5 GiB base + ~200 MiB per leaf</td></tr>
-    <tr><td><strong>Total storage on E2B</strong></td><td>~25 GiB (Pro tier: 20 GiB — slightly over, may need bump)</td><td>~12 GiB (comfortable)</td></tr>
-    <tr><td><strong>Cold-start latency</strong></td><td>~150 ms (snapshot size doesn't matter — Firecracker boots from a memory-mapped snapshot in constant time)</td><td>~150 ms (same)</td></tr>
-    <tr><td><strong>Start-cmd latency</strong></td><td>~3–8 s (dockerd + ttyd + code-server start)</td><td>~3–8 s (same — independent of image size)</td></tr>
-    <tr><td><strong>Picker function complexity</strong></td><td>Trivial: <code>runtime → template_name</code>. Done.</td><td>Multi-axis: <code>(runtime, kind, frameworks, datastores, needs_browser) → template_name</code>. Half the existing <code>pick_template()</code> function is disambiguating leaves.</td></tr>
-    <tr><td><strong>Schema fit</strong></td><td>One row per runtime. Current schema fits today, no migration needed.</td><td>Needs PK change + <code>lane</code> column + picker rewrite.</td></tr>
-    <tr><td><strong>Adding a new framework</strong></td><td>Either: do nothing (task ships its own pip install in the unlikely case the lib isn't preinstalled), or rebuild the fat template once to add it.</td><td>Either: rebuild a leaf, or build a new leaf, or push it down into the base.</td></tr>
-    <tr><td><strong>Dependency-conflict risk</strong></td><td>Higher — everything coexists in one venv. LangChain + Django + Pinecone in one image can have transitive conflicts.</td><td>Lower — each leaf only carries its lane's libs.</td></tr>
-    <tr><td><strong>Security surface</strong></td><td>Higher — more installed packages = larger CVE surface.</td><td>Lower — each leaf carries less.</td></tr>
-    <tr><td><strong>"Missing template" failure mode</strong></td><td>Doesn't exist — any Python task can use <code>utkrusht-python</code>.</td><td>A task whose specific framework/DB combo wasn't anticipated as a leaf has no template. Either pick the closest base (lose pre-installed libs) or fail.</td></tr>
-  </tbody>
-</table>
-
-<h3>The size argument is weaker than it looks</h3>
-<p>At our scale, the headline "composition saves disk" argument doesn't survive scrutiny:</p>
-<ul>
-  <li><strong>E2B Pro tier ships 20 GiB storage.</strong> 8 fat templates × ~3 GiB ≈ 24 GiB. Slightly over — needs a tier bump or some pruning. Not a blocker.</li>
-  <li><strong>Cold-start latency is constant regardless of image size.</strong> Firecracker boots from a snapshot in ~78–180 ms whether the image is 500 MiB or 5 GiB. We verified this in the SDK section below.</li>
-  <li><strong>Start-cmd latency is also independent.</strong> The 3–8 s before a sandbox is "ready" is dockerd + ttyd + code-server warming up — not loading the image off disk. Same number either way.</li>
-  <li><strong>User-perceived latency: zero difference between fat and composition.</strong></li>
+  <li>Service containers (Postgres, Redis, Mongo, MySQL servers). Each task brings its own <code>docker-compose.yml</code>; DinD runs it inside the sandbox.</li>
+  <li>Versions on most pip packages (<code>pip install fastapi flask django ...</code> floats to latest at build time — see <a href="#gaps">gaps</a>).</li>
 </ul>
 
-<h3>What we should actually do — recommendation</h3>
-<p><strong>Fat templates, with two special-case branches.</strong> Concretely:</p>
+<h3>How <code>utkrusht-python-sql</code> differs (and why it's legacy)</h3>
 
 <table>
-  <thead><tr><th>Template</th><th>Runtime</th><th>Bakes in</th><th>Notes</th></tr></thead>
+  <thead><tr><th></th><th><code>python-sql</code> (legacy)</th><th><code>python</code> (active)</th></tr></thead>
   <tbody>
-    <tr><td><code>utkrusht-python</code> <span class="ok">(built)</span></td><td>python</td><td>All common DB drivers, frameworks, LLM libs, pandas, pytest</td><td>What's deployed today.</td></tr>
-    <tr><td><code>utkrusht-node</code></td><td>node</td><td>express, react, next, ts, jest, vitest, react-native, expo</td><td>Fat — covers web AND mobile.</td></tr>
-    <tr><td><code>utkrusht-java</code></td><td>java</td><td>JDK 17, maven, gradle, spring-boot, hibernate, JUnit</td><td>Fat.</td></tr>
-    <tr><td><code>utkrusht-php</code></td><td>php</td><td>php-fpm, composer, laravel, phpunit</td><td>Fat.</td></tr>
-    <tr><td><code>utkrusht-go</code></td><td>go</td><td>Go toolchain + common libs (gin, chi, sqlx)</td><td>Static binaries — toolchain is tiny anyway.</td></tr>
-    <tr><td><code>utkrusht-rust</code></td><td>rust</td><td>cargo + tokio, serde, sqlx, axum</td><td>Fat by Rust standards but still small (no JIT).</td></tr>
-    <tr><td><code>utkrusht-flutter</code></td><td>flutter</td><td>Dart SDK + flutter + emulator</td><td>Standalone. Mobile tasks have no compose, so no DinD.</td></tr>
-    <tr><td><code>utkrusht-playwright</code> <em>(special-case)</em></td><td>node</td><td>node base + chromium-headless + playwright</td><td>Chromium adds ~300 MiB; worth a separate image rather than bloating <code>utkrusht-node</code> for every Node task.</td></tr>
-    <tr><td><code>utkrusht-infra</code> <em>(proposed)</em></td><td>(none)</td><td>kubectl + helm + terraform + kind/k3d</td><td>For <code>kind="infra"</code> tasks (K8s, IaC) — see classifier doc's shape/specialty split.</td></tr>
+    <tr><td>Base image</td><td><code>e2bdev/code-interpreter:latest</code></td><td><code>from_python_image("3.12")</code></td></tr>
+    <tr><td>Python lib set</td><td><code>psycopg2-binary sqlalchemy pandas</code></td><td>Fat — fastapi/flask/django + LLM + data + test</td></tr>
+    <tr><td>MySQL client</td><td><span class="bad">✗</span></td><td><span class="ok">✓</span></td></tr>
+    <tr><td>Intended life</td><td>Replaced by <code>python</code></td><td>Active</td></tr>
   </tbody>
 </table>
 
-<p><strong>~9 templates total.</strong> The schema fits today (one row per runtime, plus playwright and infra as additional rows whose <code>runtime</code> overlaps but with distinct keys — would need the schema evolution noted above, but only for those two special-cases, not for the whole hierarchy).</p>
+<p>These two templates have ~80% overlap. Keeping them both alive is exactly the <a href="./classifier.html#fragmentation">sprawl failure mode</a> the merged design warns about — the classifier can't reliably distinguish them, and CVE patches double. Once <code>utkrusht-python</code> is verified end-to-end, <code>utkrusht-python-sql</code> should be marked <code>deprecated</code> in the registry and the directory removed.</p>
 
-<h3>Why this is the right default</h3>
-<ol>
-  <li><strong>It's what already works.</strong> <code>utkrusht-python</code> is fat, ships everything Python, runs every Python task today without issue. Compose-aware leaves were aspirational; fat is operational.</li>
-  <li><strong>Picker function shrinks dramatically.</strong> Today <code>pick_template()</code> has 11 lines disambiguating leaves. With fat templates: 8 lines, one per runtime, no overlap logic. Easier to read, easier to extend.</li>
-  <li><strong>The dependency-conflict risk is real but manageable.</strong> When LangChain + Django + Pinecone actually conflict, that's the day you split <code>python-llm</code> as a leaf. Don't pre-split before the conflict exists.</li>
-  <li><strong>Cold-start is constant.</strong> The biggest perceived-cost argument against fat is wrong: image size doesn't affect boot time.</li>
-  <li><strong>"Missing template" is a worse failure mode than "slightly large template."</strong> When a candidate's combo doesn't match any leaf, the gate skips with <code>no_template</code> and a real task ships unverified. With fat templates, this can't happen as long as the runtime has a template at all.</li>
-</ol>
+<h3>Other rows in <code>template_registry</code></h3>
 
-<h3>When you'd actually split (the right reasons)</h3>
-<ul>
-  <li><strong>Genuine dependency conflict.</strong> If LangChain pins <code>pydantic&lt;2</code> and FastAPI requires <code>pydantic&gt;=2</code>, you can't put both in one image. Split into <code>python-llm</code> + <code>python-web</code>.</li>
-  <li><strong>Heavy outlier libs.</strong> Chromium for Playwright (~300 MiB). CUDA for ML training (~1 GiB). These genuinely justify a special-case template.</li>
-  <li><strong>Security boundary.</strong> If a customer needs a no-LLM template for compliance reasons, split it.</li>
-  <li><strong>Image-size headroom exhausted.</strong> If E2B Pro hits its limit and a tier bump isn't acceptable.</li>
-</ul>
+<p>Per <a href="../../migrations/2026-05-26-template-registry-add-status-and-proposed-rows.sql">the 2026-05-26 migration</a>, every runtime in the current <code>Runtime</code> Literal has a row, but only <code>python</code> is built:</p>
 
-<p>None of these apply today. <strong>Default to fat. Split when forced.</strong></p>
+<table>
+  <thead><tr><th>runtime</th><th>template_name</th><th>status</th></tr></thead>
+  <tbody>
+    <tr><td><code>python</code></td><td><code>utkrusht-python</code></td><td><span class="pill pill-ok">built</span></td></tr>
+    <tr><td><code>node</code>, <code>java</code>, <code>php</code>, <code>go</code>, <code>rust</code>, <code>flutter</code>, <code>ruby</code>, <code>scala</code></td><td><code>utkrusht-&lt;lang&gt;</code></td><td><span class="pill pill-info">proposed</span></td></tr>
+  </tbody>
+</table>
 
-<h3>What this means for the doc below</h3>
-<p>The "Template hierarchy" section below shows the composition design. <strong>Treat it as historical aspiration, not current direction.</strong> The recommendation above is what the registry should actually look like. The doc will get rewritten to lead with fat templates once you've decided to commit (this section is the proposal that triggers that rewrite).</p>
+<p>The <code>proposed</code> rows document intent (recipe captured, template name reserved) but no E2B-side template exists yet — the gate filters them via <code>.eq("status","built")</code> and skips with <code>no_template</code>.</p>
 
-<h3>The honest case for / against</h3>
-<p><strong>For</strong> — three real reasons:</p>
-<ol>
-  <li><strong>Update safety.</strong> When (not if) Python's idiomatic test command evolves — new pytest flag, new test runner — it's a one-row <code>UPDATE</code> in <code>template_registry</code>. The alternative (the build/test command stored on every classification-registry row) requires updating N rows and risks drift between them.</li>
-  <li><strong>Adding a runtime is data, not code.</strong> Want Java support? Insert one row into <code>template_registry</code>. No edit to <code>sandbox_eval.py</code> to fork on <code>runtime == "java"</code>. Especially valuable as Node/Java/Go support lands.</li>
-  <li><strong>One source of truth for "what command runs this runtime?"</strong> Today only <code>sandbox_eval</code> reads this. Tomorrow when E2B-based deploy ships, the deploy path reads the same row. The gate and deploy can't drift.</li>
-</ol>
+<h2 id="gate">How the registry feeds the gate today</h2>
 
-<p><strong>Against</strong> — be honest:</p>
-<ol>
-  <li><strong>Today, the columns aren't actually read.</strong> <code>sandbox_eval.py</code> hardcodes the same strings:
-    <pre><code>_run(sb, "pip install --break-system-packages -r requirements.txt", ...)
-_run(sb, "python -m pytest -q --tb=short", ...)
-_run(sb, "python -m compileall -q .", ...)</code></pre>
-    These match the seeded <code>template_registry.python</code> row by construction, but nothing in code re-reads them at runtime. So today the registry is <strong>forward scaffolding</strong> — it pays off when the multi-runtime gate refactor lands, not before.</li>
-  <li><strong>Only one consumer today.</strong> Just <code>sandbox_eval</code> (via <code>template_name_for_runtime</code>). Deploy doesn't read it yet. So the "single source of truth across consumers" benefit is theoretical until deploy lands.</li>
-  <li><strong>Drift risk while the columns are unused.</strong> Someone could change the Python build command in <code>sandbox_eval.py</code> and forget to update the seeded row. Nothing would break, because the row isn't read — but you've now got two sources documenting different things.</li>
-</ol>
+<p><code>infra/e2b/sandbox_eval.py</code> boots a sandbox from the template that matches the classifier's <code>runtime</code>, copies code in, and runs build → test → optional compile. Today most of this is implicit:</p>
 
-<h3>So what should we do?</h3>
-<p>Three options, in order of how I'd recommend them:</p>
-<ol>
-  <li><strong>Wire <code>sandbox_eval</code> to read from the registry.</strong> ~15 LOC change. Eliminates the drift risk <em>and</em> validates the registry pattern now instead of when you're under pressure adding Java/Node. The change:
-    <pre><code># in sandbox_eval.py, where _TEMPLATES is read today
-from generators.task.runtime_resolver import _get_template
+<pre><code>spec = _get_template(runtime)              # registry lookup
+sb = await Sandbox.create(spec.template_name)
+_run(sb, "pip install --break-system-packages -r requirements.txt", ...)   # ← hardcoded
+_run(sb, "python -m pytest -q --tb=short", ...)                            # ← hardcoded
+if exit_code == 5:
+    _run(sb, "python -m compileall -q .", ...)                             # ← hardcoded</code></pre>
 
-def run_sandbox_eval(code_files, task_runtime):
-    spec = _get_template(task_runtime.runtime)
-    if not spec:
-        return _finish(skipped, "no_template")
-    _run(sb, spec.build_cmd, ...)
-    _run(sb, spec.test_cmd, ...)
-    if exit_code == 5 and spec.compile_cmd:
-        _run(sb, spec.compile_cmd, ...)</code></pre>
-    <strong>Recommended.</strong> Small change, real consolidation, validates the design.</li>
-  <li><strong>Keep the columns as scaffolding (current state).</strong> No code change. Risk: drift between the seed row and hardcoded literals. Pay off later when adding Java.</li>
-  <li><strong>Drop the columns until they're needed.</strong> Pure YAGNI. Migration is trivial. Re-add when wiring Node/Java. Honest, but loses the "one INSERT to add a runtime" benefit you've already paid for.</li>
-</ol>
+<p>The registry <strong>stores</strong> <code>build_cmd</code> / <code>test_cmd</code> / <code>compile_cmd</code>, but <code>sandbox_eval</code> doesn't yet read them — the strings are hardcoded in Python. This is the cheapest first step toward "registry as source of truth" (see <a href="#next">What we should do next</a>).</p>
 
-<h3>Why not put <code>build_cmd</code> on the combo row instead?</h3>
-<p>That was the <em>first</em> design instinct ("classify and store everything together"). It's wrong:</p>
-<ul>
-  <li>50+ combos × identical Python build command = 50+ copies of <code>"pip install --break-system-packages -r requirements.txt"</code>. Update once → fan-out across all rows.</li>
-  <li>Adding a new combo doesn't change the build command — but you'd be writing the value anew on every classification-registry insert.</li>
-  <li>The <code>build_cmd</code> is a function of <code>runtime</code>, not of <code>combo_key</code>. That's the textbook case for normalization (3NF).</li>
-</ul>
-<p>Storing build_cmd on the combo row would be denormalisation that propagates the same value redundantly. The two-table split with FK is the right normalised shape.</p>
+<h2 id="runsh-vs-build"><code>run.sh</code> vs <code>build_cmd</code> — who runs what, when</h2>
 
-<h3 id="runsh-vs-buildcmd"><code>run.sh</code> vs <code>build_cmd</code> — who runs what, when</h3>
-<p>Natural follow-up: each task already ships a <code>run.sh</code>. Why does the eval gate need separate <code>build_cmd</code> / <code>test_cmd</code> columns instead of just executing it?</p>
-<p>Because they serve different consumers at different points in the lifecycle.</p>
+<p>A natural question: each task already ships a <code>run.sh</code>. Why does the registry carry separate <code>build_cmd</code> / <code>test_cmd</code> columns instead of just executing it?</p>
+
 <table>
   <thead><tr><th></th><th><code>run.sh</code> (task-owned)</th><th><code>build_cmd</code> / <code>test_cmd</code> (registry-owned)</th></tr></thead>
   <tbody>
     <tr><td><strong>Runs when</strong></td><td>Candidate's session starts</td><td>Eval gate, before the task ships</td></tr>
     <tr><td><strong>Process shape</strong></td><td>Long-running — <code>docker compose up</code>, seed DB, start dev server</td><td>Short-lived — install deps, run pytest, exit</td></tr>
     <tr><td><strong>Exit semantics</strong></td><td>"Server is up" — no exit code to grade against</td><td><code>0</code> = pass, <code>1</code> = test failure, <code>5</code> = no tests</td></tr>
-    <tr><td><strong>Scope</strong></td><td>Per task (different services, seeds, dev-server invocation)</td><td>Per runtime (every Python task installs the same way)</td></tr>
-    <tr><td><strong>Consumer</strong></td><td>The candidate, in their IDE / terminal</td><td>The platform's pre-flight quality gate</td></tr>
+    <tr><td><strong>Scope</strong></td><td>Per task (different services, seeds, dev-server invocation)</td><td>Per template (every Python task installs the same way)</td></tr>
+    <tr><td><strong>Consumer</strong></td><td>Candidate, in their IDE / terminal</td><td>The platform's pre-flight quality gate</td></tr>
   </tbody>
 </table>
+
 <p>Three concrete reasons the gate can't just execute <code>run.sh</code>:</p>
 <ol>
-  <li><strong><code>run.sh</code> doesn't exit.</strong> It runs <code>docker compose up &amp;&amp; python app/main.py</code> — the dev server runs forever. The gate needs a process that ends so it can read an exit code. Wrapping the script in a timeout and parsing stdout for "did pytest pass?" is fragile in a way that <code>pytest; echo $?</code> isn't.</li>
-  <li><strong>The test command is a property of the runtime, not the task.</strong> Every Python task runs <code>pytest</code>; every Node task runs <code>npm test</code>. Embedding that in each task's <code>run.sh</code> means every prompt-generator output has to remember the right invocation — drift (<code>pytest</code> vs <code>python -m pytest</code>, <code>--tb=short</code> vs not) becomes per-task instead of fixed by the platform.</li>
-  <li><strong>The orchestration is opposite.</strong> The gate wants: copy code in → install deps → run tests → kill. The candidate wants: bring up services → keep the dev server running → expose ports to a browser. Same template, opposite lifecycle.</li>
+  <li><strong><code>run.sh</code> doesn't exit.</strong> It runs <code>docker compose up && python app/main.py</code> — the dev server runs forever. The gate needs a process that ends so it can read an exit code.</li>
+  <li><strong>The test command is a property of the runtime, not the task.</strong> Every Python task runs <code>pytest</code>; every Node task runs <code>npm test</code>. Embedding that in each task's <code>run.sh</code> means every prompt-generator output has to remember the right invocation — drift becomes per-task instead of fixed by the platform.</li>
+  <li><strong>The orchestration is opposite.</strong> Gate wants: copy code in → install deps → run tests → kill. Candidate wants: bring up services → keep the dev server running → expose ports.</li>
 </ol>
-<p>So the registry columns aren't a duplicate of <code>run.sh</code> — they're the platform's pre-flight checklist that runs <strong>before</strong> any candidate ever sees <code>run.sh</code>, and they're never invoked at candidate runtime.</p>
+<p>So registry columns aren't a duplicate of <code>run.sh</code> — they're the platform's pre-flight checklist that runs <strong>before</strong> any candidate ever sees <code>run.sh</code>.</p>
 
-<h2 id="hierarchy">Template hierarchy — composition-aware</h2>
-<p>Final shape, based on E2B SDK capabilities verified against the v2 SDK:</p>
-<div class="ascii">utkrusht-python-base   from_python_image()
-                       + DinD, ttyd, code-server, adminer, compose-shim, common deps
-   ├── utkrusht-python-sql       from_template("utkrusht-python-base") + psycopg2, sqlalchemy, postgresql-client
-   ├── utkrusht-python-web       from_template("utkrusht-python-base") + fastapi, flask, django, uvicorn
-   └── utkrusht-python-llm       from_template("utkrusht-python-base") + langchain, llama-index, openai, anthropic
+<h2 id="gaps">Gaps vs. the merged model</h2>
 
-utkrusht-node-base     from_node_image()
-                       + DinD, ttyd, code-server, adminer, compose-shim
-   ├── utkrusht-node-web         from_template("utkrusht-node-base") + express, react, next, typescript, jest
-   ├── utkrusht-node-mobile      from_template("utkrusht-node-base") + react-native, expo
-   └── utkrusht-playwright       from_template("utkrusht-node-base") + chromium-headless, playwright
+<p>The merged design expects each row to be a <em>capability sheet that cannot lie about its image</em>. The current registry is closer to a build-command lookup. The gap:</p>
 
-utkrusht-java-base     from_debian_image() + JDK 17 + maven + gradle + DinD + browser tools
-   └── utkrusht-java-spring      from_template("utkrusht-java-base") + spring-boot starters
-
-# stand-alone (no leaves yet):
-utkrusht-php-laravel   from_debian_image() + php-fpm + composer + laravel + DinD + browser tools
-utkrusht-go-base       from_debian_image() + go toolchain + DinD + browser tools
-utkrusht-rust-base     from_debian_image() + cargo + common crates + DinD + browser tools
-utkrusht-flutter       from_debian_image() + dart SDK + flutter + browser tools  (no DinD)</div>
-<p><strong>Effective maintenance surface:</strong> 7 roots + ~6 leaves = ~13 template files. Each leaf is ~20 LOC because of <code>from_template()</code> composition.</p>
-
-<h3>Common boilerplate baked into every template</h3>
-<ul>
-  <li>Docker daemon (DinD) so tasks can <code>docker compose up</code> against their own compose file</li>
-  <li><code>ttyd</code> browser terminal on port 7681</li>
-  <li><code>code-server</code> browser VS Code on port 8443</li>
-  <li>Adminer browser DB GUI on port 8080 (any SQL DB task uses this)</li>
-  <li>Compose v1→v2 shim, <code>netcat-openbsd</code>, <code>git</code>, <code>jq</code></li>
-</ul>
-
-<h3>One template lineage, used for both eval and deployment</h3>
-<p>We do <strong>not</strong> maintain "eval templates" and "deploy templates" as separate sets:</p>
 <table>
-  <thead><tr><th>Why not</th><th>Detail</th></tr></thead>
+  <thead><tr><th>Gap</th><th>Where it shows up</th></tr></thead>
   <tbody>
-    <tr><td><strong>Production parity</strong></td><td>Anything that passes eval must run on the template the candidate actually gets. A split would re-introduce F12-class bugs at the template layer ("eval template was fine, deploy template missing a library").</td></tr>
-    <tr><td><strong>Single source of truth</strong></td><td>Adding a Python package means updating one template, not two.</td></tr>
-    <tr><td><strong>"Dead weight" cost is negligible</strong></td><td>Browser tools running during automated eval are background processes on a microVM. They cost nothing observable.</td></tr>
-    <tr><td><strong>Boot time is fine for eval</strong></td><td>Even 5–10 s per eval is acceptable — eval runs at task-generation time, not per candidate request.</td></tr>
+    <tr><td>Most pip packages are unpinned (<code>pip install fastapi flask django ...</code>)</td><td>Two builds of the "same" template can install different versions; reproducibility broken</td></tr>
+    <tr><td>No <code>personas</code> column</td><td><code>kind</code> on the classification row carries persona — conflated with shape, single-valued</td></tr>
+    <tr><td>No <code>frameworks</code> / <code>datastores</code> / <code>tools</code> columns</td><td>Capability info lives only in <code>template.py</code> shell strings — extractable only by reading source</td></tr>
+    <tr><td>No <code>manifest_hash</code> / <code>generated_at</code> / <code>registry_version</code> columns</td><td>Nothing detects "Dockerfile changed, row didn't"; sheet vs. image drift goes unnoticed</td></tr>
+    <tr><td>No manifest emitted by the build pipeline</td><td><code>build_prod.py</code> calls <code>AsyncTemplate.build()</code> and exits — never writes a structured record</td></tr>
+    <tr><td>No CI check tying <code>template.py</code> to the row's hash</td><td>Drift surfaces in eval failure weeks later, not at build time</td></tr>
+    <tr><td><code>runtime</code> is the PK — only one template per language</td><td><code>utkrusht-python-llm</code> and <code>utkrusht-python-web</code> can't coexist</td></tr>
+    <tr><td><code>utkrusht-python-sql</code> overlaps <code>utkrusht-python</code> ~80%</td><td>The "sheet ambiguity" failure mode in flesh — LLM matcher can't reliably distinguish them</td></tr>
   </tbody>
 </table>
-<p>The eval gate boots a sandbox from the same template the candidate would receive, copies the task code in, runs the test suite, captures pass/fail + stderr/stdout, then kills the sandbox. Candidates get the same template, with a longer idle timeout and the browser URLs exposed.</p>
+
+<h2 id="merge-work">What it takes to get to the merged model</h2>
+
+<p>Five template-side changes; they sequence with the classifier doc's <a href="./classifier.html#migration">migration path</a>.</p>
+
+<div class="steps">
+  <div class="step">
+    <div class="num">1</div>
+    <div class="body">
+      <h4>Pin pip versions</h4>
+      <p><code>pip install fastapi==0.115.4 flask==3.0.3 ...</code> — every package gets a version. Either inline in <code>template.py</code> or via a <code>requirements-template.txt</code> the build copies in.</p>
+      <p>Reproducibility is the surface reason. The deeper reason: an honest capability sheet says "this template provides fastapi 0.115.4," not "fastapi, whatever was latest at build time." Pins also surface dep conflicts at build time rather than weeks later in eval.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="num">2</div>
+    <div class="body">
+      <h4>Choose how the capability sheet is authored</h4>
+      <div class="options">
+        <div class="opt">
+          <div class="verdict">Option A — manifest.yaml</div>
+          <h4>Hand-authored alongside <code>template.py</code></h4>
+          <p style="font-size:13px;">Easy to start; reviewable in PR. Two sources of truth — they will drift between rebuilds.</p>
+        </div>
+        <div class="opt preferred">
+          <div class="verdict">Option B — single source of truth in template.py ✓</div>
+          <h4>Python constants drive both image + manifest</h4>
+          <p style="font-size:13px;">Image and sheet cannot diverge by construction. Refactoring once is cheaper now (one template) than later (five).</p>
+        </div>
+      </div>
+      <p>Option B in shape:</p>
+      <pre><code>APT_PACKAGES = ["ca-certificates", "curl", ..., "default-mysql-client"]
+PIP_PACKAGES = {"fastapi": "0.115.4", "flask": "3.0.3", "langchain": "0.3.7", ...}
+TOOLS_BAKED  = ["ttyd@1.7.7", "code-server@4.96.4", "adminer@4.8.1", "docker", "psql", "mysql"]
+PERSONAS     = ["backend", "data", "mle", "llm"]
+
+template = (
+    AsyncTemplate()
+    .from_python_image("3.12")
+    .run_cmd(f"apt-get install -y {' '.join(APT_PACKAGES)}")
+    .run_cmd(f"pip install {' '.join(f'{k}=={v}' for k, v in PIP_PACKAGES.items())}")
+    ...
+)
+
+MANIFEST = {
+    "template_id":       "utkrusht-python",
+    "runtime":           "python3.12",
+    "language_versions": {"python": "3.12"},
+    "frameworks":        [k for k in PIP_PACKAGES if k in WEB_OR_ORM_OR_LLM_KEYS],
+    "tools":             TOOLS_BAKED + ["pytest", "docker"],
+    "personas":          PERSONAS,
+    "apt":               APT_PACKAGES,
+    "pip":               PIP_PACKAGES,
+}</code></pre>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="num">3</div>
+    <div class="body">
+      <h4>Emit manifest + hash at build time</h4>
+      <p><code>build_prod.py</code> writes <code>MANIFEST</code> to <code>manifest.json</code>, hashes it, and updates the row:</p>
+      <pre><code>manifest_json = json.dumps(MANIFEST, sort_keys=True, indent=2)
+manifest_hash = hashlib.sha256(manifest_json.encode()).hexdigest()
+
+supabase.table("template_registry").update({
+    **MANIFEST,                                       # capability sheet columns
+    "manifest_hash":    manifest_hash,
+    "generated_at":     datetime.utcnow().isoformat(),
+    "registry_version": current_version + 1,
+}).eq("template_id", "utkrusht-python").execute()</code></pre>
+      <p>Bumping <code>registry_version</code> invalidates cached classifications — see <a href="./classifier.html#choices">cache invalidation</a>.</p>
+    </div>
+  </div>
+
+  <div class="step gate">
+    <div class="num">4</div>
+    <div class="body">
+      <h4>CI gate — <strong>the durability investment</strong></h4>
+      <p>A check that runs on every PR touching <code>infra/e2b/templates/&lt;name&gt;/</code>:</p>
+      <ol>
+        <li>Import <code>MANIFEST</code> from the template's <code>template.py</code>.</li>
+        <li>Compute its hash.</li>
+        <li>Compare to <code>template_registry.manifest_hash</code> for that row.</li>
+        <li>If different → fail the build with "rebuild and re-upload the template, then update the registry row."</li>
+      </ol>
+      <p><strong>This is the single load-bearing investment</strong> for the merged design's durability. Without it, capability sheets drift from reality within months; the LLM picks based on stale info; the merged design rots. With it, sheets cannot lie.</p>
+    </div>
+  </div>
+
+  <div class="step">
+    <div class="num">5</div>
+    <div class="body">
+      <h4>Deduplicate <code>python-sql</code> and <code>python</code></h4>
+      <p>Once <code>utkrusht-python</code> is verified end-to-end:</p>
+      <pre><code>UPDATE template_registry SET status = 'deprecated' WHERE template_id = 'utkrusht-python-sql';</code></pre>
+      <p>Then remove <code>infra/e2b/templates/python-sql/</code>. The row stays for cache validity but the LLM stops picking it. Two templates with 90% overlap aren't two templates, they're one template and one CVE-patch overhead.</p>
+    </div>
+  </div>
+</div>
+
+<h2 id="fat-vs-comp">Fat vs. composition — what the merged design resolves</h2>
+
+<p>A previous draft of this doc went deep on "should we ship one fat template per runtime, or compose smaller leaves via E2B's <code>from_template()</code>?" The merged design dissolves this question into a different one: <strong>how many distinct rows do we maintain in the registry?</strong></p>
+
+<ul>
+  <li><strong>Today:</strong> one fat row (<code>utkrusht-python</code>) handles every Python task. The classifier doesn't need to distinguish <code>python-llm</code> from <code>python-web</code> because there's nothing to distinguish.</li>
+  <li><strong>Later:</strong> if signal demands (<a href="./classifier.html#fragmentation">base bloat, over-serving, <code>no_match</code> clustering</a>), <code>utkrusht-python</code> splits into siblings (<code>utkrusht-python-llm</code>, <code>utkrusht-python-web</code>, <code>utkrusht-python-nlp</code>). Each is a separate row with a distinctive capability sheet.</li>
+</ul>
+
+<p>The sibling pattern is preferred over E2B <code>from_template()</code> inheritance — see the classifier doc's <a href="./classifier.html#choices">sibling vs inheritance</a> note. Inheritance feels DRY but makes rebuild graphs ugly and CVE patching cascades; siblings are independently buildable / patchable.</p>
+
+<p><strong>Don't pre-split.</strong> Three signals to wait for, before fragmenting:</p>
+<ol>
+  <li>Build time on the base past ~60 s, or image size past some MB ceiling.</li>
+  <li>Most tasks routed to the base also <code>pip install &lt;heavy lib&gt;</code> at sandbox boot.</li>
+  <li>≥5 <code>no_match</code> rows / month sharing the same <code>missing_capabilities</code>.</li>
+</ol>
+<p>Until then, one fat row is honest about what we deploy.</p>
+
+<h2 id="lineage">One template lineage — eval + deploy use the same image</h2>
+
+<p>There is no separate "eval template" and "candidate template." The same image boots both contexts; the only difference is what gets run against it.</p>
+
+<table>
+  <thead><tr><th>Why one lineage</th><th>Detail</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Production parity</strong></td><td>Anything that passes eval must run on what the candidate actually gets. A split re-introduces "eval template was fine, deploy template missing a library" bugs at the template layer.</td></tr>
+    <tr><td><strong>Single source of truth</strong></td><td>Adding a Python package means updating one template, not two.</td></tr>
+    <tr><td><strong>"Dead weight" cost is negligible</strong></td><td>Browser tools running during automated eval are background processes on a microVM — cost nothing observable.</td></tr>
+    <tr><td><strong>Eval-gate boot time is fine</strong></td><td>Even 5–10 s per eval is acceptable; eval runs at task-generation time, not per candidate request.</td></tr>
+  </tbody>
+</table>
+
+<p>The eval gate boots a sandbox from the same template the candidate would receive, copies the task code in, runs <code>build_cmd</code> → <code>test_cmd</code>, captures pass/fail, then kills the sandbox. Candidates get the same template with a longer idle timeout and the browser URLs exposed.</p>
 
 <h2 id="sdk">E2B SDK capabilities — verified</h2>
+
 <table>
   <thead><tr><th>Finding</th><th>Detail</th></tr></thead>
   <tbody>
-    <tr><td><strong>Template composition / inheritance</strong> — YES</td><td><code>AsyncTemplate().from_template("utkrusht-python-base")</code> chains from a parent. Plus layer-level cache sharing across templates within a team.</td></tr>
-    <tr><td><strong>Multi-container natively</strong> — NO</td><td>No first-class sidecar primitive. Documented pattern: Docker-in-Docker + the task's own compose. This is exactly what <code>python-sql</code> already does.</td></tr>
-    <tr><td><strong>Account-level limits</strong> — not a constraint</td><td>Pro tier: 100 concurrent sandboxes (expandable to 1100), 24-hour sessions, 20 GiB storage. 13 templates × ~1.5 GB fits comfortably.</td></tr>
-    <tr><td><strong>Cold-start latency</strong> — ~78–180 ms</td><td>Firecracker microVM snapshot boot. The "5–10 s" earlier drafts worried about is <strong>start-cmd execution</strong> (dockerd + ttyd + code-server initialising), not the snapshot itself.</td></tr>
-    <tr><td><strong>Best-practice base image</strong></td><td>Use language-specific convenience methods (<code>from_python_image()</code>, <code>from_node_image()</code>, etc.), not the heavier <code>e2bdev/code-interpreter</code>.</td></tr>
+    <tr><td><strong><code>from_template()</code> inheritance</strong></td><td>Supported; chains from a parent template. <strong>Sibling rows are still the recommended split shape</strong> for the reasons in the classifier doc.</td></tr>
+    <tr><td><strong>Multi-container natively</strong></td><td>No first-class sidecar primitive. Documented pattern: DinD + the task's own compose.</td></tr>
+    <tr><td><strong>Account limits</strong></td><td>Pro tier: 100 concurrent sandboxes, 24-hour sessions, 20 GiB storage. ~12 templates × ~1.5–3 GiB fits.</td></tr>
+    <tr><td><strong>Cold-start latency</strong></td><td>~78–180 ms (Firecracker snapshot). The 3–8 s before "ready" is start-cmd (dockerd + ttyd + code-server) — independent of image size.</td></tr>
+    <tr><td><strong>Base image</strong></td><td>Prefer language-specific convenience methods (<code>from_python_image()</code>, <code>from_node_image()</code>) over the heavier <code>e2bdev/code-interpreter</code>. <code>python/</code> already does this; <code>python-sql/</code> doesn't.</td></tr>
   </tbody>
 </table>
 
-<h3>Design consequences</h3>
-<ol>
-  <li><strong>Use language-specific base methods</strong>, not <code>e2bdev/code-interpreter</code>. Leaner.</li>
-  <li><strong>Embrace <code>from_template()</code> for composition.</strong> Build base templates once, derive leaves with ~20 LOC each.</li>
-  <li><strong>DinD stays.</strong> No design change; the task's own <code>docker-compose.yml</code> brings up its services.</li>
-  <li><strong>Don't pre-optimise image size.</strong> 20 GiB of headroom on Pro covers any reasonable shape.</li>
-  <li><strong>Cold-start is dominated by start-cmd, not snapshot.</strong> If eval-gate latency ever matters, profile <code>start.sh</code>; the VM boot itself is ~150 ms.</li>
-</ol>
+<h2 id="examples">Worked examples — TaskRuntime → template (under the merged model)</h2>
 
-<h2 id="picker">Template picker — <code>TaskRuntime</code> → template name</h2>
-<p>Mechanical mapping (lives in <code>generators/task/runtime_resolver.py</code> via <code>template_name_for_runtime</code>):</p>
-<pre><code>def pick_template(rt: TaskRuntime) -&gt; str:
-    if rt.kind == "mobile" and rt.runtime == "flutter": return "utkrusht-flutter"
-    if rt.kind == "mobile" and rt.runtime == "node":    return "utkrusht-node-mobile"
-    if rt.kind == "testing" and rt.needs_browser:       return "utkrusht-playwright"
-    if rt.kind == "llm":                                return "utkrusht-python-llm"
-    if rt.runtime == "python" and "postgres" in rt.datastores:
-                                                        return "utkrusht-python-sql"
-    if rt.runtime == "python" and rt.frameworks:        return "utkrusht-python-web"
-    if rt.runtime == "node":                            return "utkrusht-node-web"
-    if rt.runtime == "java":                            return "utkrusht-java-spring"
-    if rt.runtime == "php":                             return "utkrusht-php-laravel"
-    if rt.runtime == "go":                              return "utkrusht-go-base"
-    if rt.runtime == "rust":                            return "utkrusht-rust-base"
-    raise ValueError(f"no template for {rt}")</code></pre>
-<p>Service containers are NOT a picker concern — they're brought by the task's compose file.</p>
+<p>After Step 4 of the migration the classifier returns <code>template_id</code> + <code>persona</code> directly. Sample matches:</p>
 
-<h2 id="task-content">What changes in generated task content</h2>
-<p>The prompt generator used to instruct the LLM to produce <code>run.sh</code> and <code>kill.sh</code> that install Docker, install the language runtime, install system packages, then bring up services. That made sense for the droplet target (bare VM). For the E2B target, <strong>most of that boilerplate is already in the template</strong> and should be stripped.</p>
-<p><code>run.sh</code> and <code>kill.sh</code> themselves <strong>stay</strong> — they remain the contract between task and platform. What goes inside them changes.</p>
-
-<h4>Before (droplet-shaped)</h4>
-<pre><code># run.sh
-apt-get update
-apt-get install -y python3 python3-pip postgresql-client docker.io
-pip install -r requirements.txt
-docker compose up -d
-psql -h localhost -U postgres &lt; seed.sql
-python app/main.py</code></pre>
-
-<h4>After (sandbox-aware — template provides infra)</h4>
-<pre><code># run.sh
-docker compose up -d              # task's own compose for postgres-server
-psql -h localhost -U postgres &lt; seed.sql
-python app/main.py</code></pre>
-<p>Same shape for <code>kill.sh</code> — drop the uninstall steps; keep <code>docker compose down</code>.</p>
-
-<h3>Where this lands in the prompt-generator</h3>
-<p>The HARD CONSTRAINT block in <code>generators/prompts/agent.py</code> now reads:</p>
-<pre><code>The TaskRuntime fields determine the generated content:
-  • runtime, frameworks, libraries — already pre-installed by the E2B template.
-    Do NOT include apt-get install, pip install, or npm install for these in run.sh.
-  • datastores — generate a docker-compose.yml that brings up these service
-    containers (Postgres, Redis, Mongo, …). run.sh does `docker compose up`,
-    kill.sh does `docker compose down`.
-  • kind="mobile" — no Dockerfile, no compose; the template ships the SDK.
-    run.sh runs the runtime's native test command (e.g. `flutter test`).
-  • needs_browser — the template (utkrusht-playwright) already ships chromium;
-    do NOT install it in run.sh.</code></pre>
-<p>The classifier output drives this.</p>
-
-<h2 id="examples">Worked examples — TaskRuntime → Template</h2>
 <table>
-  <thead><tr><th>Task</th><th>TaskRuntime</th><th>Template</th><th>Task's compose</th></tr></thead>
+  <thead><tr><th>Task</th><th>template_id</th><th>persona</th><th>Task's compose</th></tr></thead>
   <tbody>
-    <tr><td><code>Python - FastAPI</code></td><td>runtime=python, frameworks=(fastapi,), kind=app</td><td><code>utkrusht-python-web</code></td><td>(none)</td></tr>
-    <tr><td><code>Python - FastAPI + Postgres</code></td><td>runtime=python, frameworks=(fastapi,), datastores=(postgres,), kind=app</td><td><code>utkrusht-python-sql</code></td><td>postgres-server</td></tr>
-    <tr><td><code>Flutter</code></td><td>runtime=flutter, kind=mobile</td><td><code>utkrusht-flutter</code></td><td>(none)</td></tr>
-    <tr><td><code>Golang, Redis</code></td><td>runtime=go, datastores=(redis,), kind=app</td><td><code>utkrusht-go-base</code></td><td>redis-server</td></tr>
-    <tr><td><code>Playwright</code></td><td>runtime=node, kind=testing, needs_browser=True</td><td><code>utkrusht-playwright</code></td><td>(none)</td></tr>
-    <tr><td><code>Python + LlamaIndex</code></td><td>runtime=python, frameworks=(llama-index,), kind=llm</td><td><code>utkrusht-python-llm</code></td><td>(none)</td></tr>
-    <tr><td><code>Java + Spring Boot + Postgres</code></td><td>runtime=java, frameworks=(spring-boot,), datastores=(postgres,), kind=app</td><td><code>utkrusht-java-spring</code></td><td>postgres-server</td></tr>
-    <tr><td><code>MySQL</code> (alone)</td><td>runtime=none, datastores=(mysql,), kind=db_only</td><td><code>utkrusht-python-sql</code> (reused; has psql client + Adminer)</td><td>mysql-server</td></tr>
-    <tr><td><code>MERN Stack</code></td><td>runtime=node, frameworks=(express, react), datastores=(mongo,), kind=app</td><td><code>utkrusht-node-web</code></td><td>mongo-server</td></tr>
-    <tr><td><code>Firebase + React Native</code></td><td>runtime=node, frameworks=(react-native, firebase), kind=mobile</td><td><code>utkrusht-node-mobile</code></td><td>(none)</td></tr>
+    <tr><td><code>Python - FastAPI</code></td><td><code>utkrusht-python</code></td><td><code>backend</code></td><td>(none)</td></tr>
+    <tr><td><code>Python - FastAPI + Postgres</code></td><td><code>utkrusht-python</code></td><td><code>backend</code></td><td>postgres-server</td></tr>
+    <tr><td><code>Python + LlamaIndex</code></td><td><code>utkrusht-python</code></td><td><code>llm</code></td><td>(none)</td></tr>
+    <tr><td><code>MySQL</code> (alone)</td><td><code>utkrusht-python</code></td><td><code>dba</code></td><td>mysql-server</td></tr>
+    <tr><td>Helm chart for a microservice</td><td colspan="2"><span class="pill pill-bad">no_match</span> <code>suggested: utkrusht-infra</code><br/><code>missing: ["helm","kubectl"]</code></td><td>n/a</td></tr>
+    <tr><td>Flutter mobile app</td><td colspan="2"><span class="pill pill-bad">no_match</span> <code>suggested: utkrusht-flutter</code><br/><code>missing: ["dart","flutter-sdk"]</code></td><td>n/a</td></tr>
   </tbody>
 </table>
-<p>Ten wildly different tasks, all assembled from <strong>~11 templates + each task's own compose</strong>.</p>
 
-<h2 id="status">Implementation status (2026-05-26)</h2>
+<p>The first four pick the same template, different personas — that's the <a href="./classifier.html#choices">personas-as-list</a> decision in action. The last two surface as structured <code>no_match</code> rows — those are the <a href="./classifier.html#migration">template roadmap signal</a>.</p>
+
+<h2 id="status">Implementation status (2026-05-27)</h2>
+
 <table>
-  <thead><tr><th>Component</th><th>Status</th><th>Where</th></tr></thead>
+  <thead><tr><th>Component</th><th>Status</th></tr></thead>
   <tbody>
-    <tr><td><code>template_registry</code> table (B6)</td><td class="ok">Shipped</td><td>migration + python seed row</td></tr>
-    <tr><td><code>template_registry.status</code> column + rows for every runtime</td><td class="ok">Shipped (2026-05-26)</td><td>python=built, others=proposed (one row per Runtime literal)</td></tr>
-    <tr><td><code>template_name_for_runtime</code> helper</td><td class="ok">Shipped</td><td><code>generators/task/runtime_resolver.py</code></td></tr>
-    <tr><td><code>e2b_flow/sandbox_eval.py</code> reads template name from registry</td><td class="ok">Shipped</td><td>—</td></tr>
-    <tr><td><code>e2b_flow/sandbox_eval.py</code> reads <code>build_cmd</code>/<code>test_cmd</code>/<code>compile_cmd</code> from registry</td><td class="warn">Proposed</td><td>today hardcoded — see "What we should do"</td></tr>
-    <tr><td>E2B build/test gate (Python only — <code>utkrusht-python</code>)</td><td class="ok">Shipped</td><td><code>e2b_flow/sandbox_eval.py</code></td></tr>
-    <tr><td>Additional templates (node-web / node-mobile / java-spring / php-laravel / go-base / rust-base / flutter / playwright / python-llm)</td><td class="warn">Proposed</td><td>design only</td></tr>
-    <tr><td><code>from_template()</code> composition (base + leaves)</td><td class="warn">Proposed</td><td>depends on building the templates</td></tr>
-    <tr><td><code>from_python_image()</code> etc. base-method migration</td><td class="warn">Proposed</td><td>replace <code>e2bdev/code-interpreter</code> in <code>python-sql</code></td></tr>
+    <tr><td><code>template_registry</code> table — <code>runtime</code> PK, build/test/compile columns</td><td><span class="pill pill-ok">Shipped</span></td></tr>
+    <tr><td><code>template_registry.status</code> column + <code>proposed</code> rows for all runtimes</td><td><span class="pill pill-ok">Shipped</span></td></tr>
+    <tr><td><code>utkrusht-python</code> template (fat Python, only <code>built</code> row)</td><td><span class="pill pill-ok">Shipped</span></td></tr>
+    <tr><td><code>utkrusht-python-sql</code> template (legacy, narrow lib set)</td><td><span class="pill pill-ok">Shipped</span> <span class="pill pill-warn">to be deprecated</span> once <code>utkrusht-python</code> verified</td></tr>
+    <tr><td><code>sandbox_eval</code> reads <code>template_name</code> from registry</td><td><span class="pill pill-ok">Shipped</span></td></tr>
+    <tr><td><code>sandbox_eval</code> reads <code>build_cmd</code> / <code>test_cmd</code> from registry</td><td><span class="pill pill-info">Proposed</span> (~15 LOC; first step)</td></tr>
+    <tr><td>Capability sheet columns on <code>template_registry</code> (<code>personas</code>, <code>frameworks</code>, <code>datastores</code>, <code>tools</code>, …)</td><td><span class="pill pill-info">Proposed — classifier Step 1</span></td></tr>
+    <tr><td><code>manifest_hash</code> / <code>generated_at</code> / <code>registry_version</code> columns</td><td><span class="pill pill-info">Proposed — classifier Step 1</span></td></tr>
+    <tr><td>Pip version pinning in <code>template.py</code></td><td><span class="pill pill-info">Proposed</span></td></tr>
+    <tr><td><code>MANIFEST</code> const in <code>template.py</code> (single source of truth — Option B)</td><td><span class="pill pill-info">Proposed</span></td></tr>
+    <tr><td>Manifest emission in <code>build_prod.py</code></td><td><span class="pill pill-info">Proposed</span></td></tr>
+    <tr><td>CI gate (manifest hash matches row)</td><td><span class="pill pill-warn">Proposed — durability gate</span></td></tr>
+    <tr><td>Switch PK from <code>runtime</code> to <code>template_id</code></td><td><span class="pill pill-info">Proposed — classifier Step 2</span></td></tr>
+    <tr><td>Deprecate <code>utkrusht-python-sql</code></td><td><span class="pill pill-info">Proposed</span> — once <code>utkrusht-python</code> verified</td></tr>
+    <tr><td>Additional templates (node, java, php, go, rust, flutter, infra, playwright)</td><td><span class="pill pill-info">Proposed</span> — build only when <code>no_match</code> clusters justify</td></tr>
   </tbody>
 </table>
 
 <h2 id="next">What we should do next</h2>
+
+<p>The sequence below is the template-side prerequisites for the classifier doc's <a href="./classifier.html#migration">migration path</a>. Order matters; Step 4 is the gate without which the design rots.</p>
+
 <ol>
-  <li><strong>Wire <code>sandbox_eval</code> to read commands from <code>template_registry</code></strong> (~15 LOC). Turns the registry from "stored but unused" into "actively consumed." Validates the pattern before the schema evolution (Steps 1–2 in the <a href="./classifier.html#migration">classifier doc's migration path</a>) lands.</li>
-  <li><strong>Build the second template (<code>utkrusht-node-base</code>) with the new schema from day one</strong> — <code>personas: text[]</code> populated, <code>manifest_hash</code> generated by the build pipeline. Retrofitting these onto a growing template set is harder than starting with them. This step exercises both the multi-runtime path and the capability-sheet shape end-to-end.</li>
-  <li><strong>Defer the full ~11-template buildout</strong> until <code>no_match</code> clusters (see the classifier doc's <a href="./classifier.html#fragmentation">fragmentation policy</a>) actually tell you which to build next. The current single-template setup handles the largest task chunk (Python).</li>
-  <li><strong>Profile <code>start.sh</code> if eval-gate latency becomes a problem.</strong> The microVM boot is ~150 ms; everything above that is start-cmd (dockerd warm-up, etc.). Don't pre-optimise image size — 20 GiB headroom on Pro covers anything reasonable.</li>
-  <li><strong>Once a <code>no_match</code> cluster points at K8s / Helm / Terraform</strong> (or you have a customer asking), build a <code>utkrusht-infra</code> template with <code>kubectl</code>, <code>helm</code>, <code>terraform</code>, and a fake/lightweight cluster (kind / k3d) for validation. The gate runs <code>helm lint</code> / <code>kubectl --dry-run</code> / <code>terraform validate</code> instead of pytest. With the merged design, this template's row is literally what a <code>no_match</code> row's <code>suggested_template</code> field will name.</li>
+  <li><strong>Wire <code>sandbox_eval</code> to read <code>build_cmd</code> / <code>test_cmd</code> from <code>template_registry</code></strong> (~15 LOC). Turns the registry from "stored but unused" into "actively consumed." Cheapest validation of the pattern.</li>
+  <li><strong>Pin pip versions</strong> in <code>infra/e2b/templates/python/template.py</code>. Honest capability sheet starts here. Rebuilds <code>utkrusht-python</code> once.</li>
+  <li><strong>Refactor <code>template.py</code> to Option B</strong> (single-source-of-truth Python with <code>APT_PACKAGES</code>, <code>PIP_PACKAGES</code>, <code>MANIFEST</code> constants). Half a day with one template; harder with five.</li>
+  <li><strong>Add manifest emission to <code>build_prod.py</code></strong> — writes <code>manifest.json</code>, hashes it, updates <code>template_registry.manifest_hash</code> and the capability sheet columns. Lands together with the schema ALTER in the classifier doc's Step 1.</li>
+  <li><strong>Build the CI gate</strong> that fails on <code>template.py</code> ↔ row hash mismatch. <strong>This is the durability investment.</strong> Without it, no second template should land.</li>
+  <li><strong>Deprecate <code>utkrusht-python-sql</code></strong> once <code>utkrusht-python</code> is verified end-to-end. Then remove the directory.</li>
+  <li><strong>Build the second template (<code>utkrusht-node-base</code>) with the new shape from day one</strong> — pinned versions, MANIFEST const, generated <code>manifest_hash</code>. Retrofitting these onto a growing set is harder than starting with them.</li>
 </ol>
+
+<p>Steps 4–7 of the classifier doc's migration (LLM emits <code>template_id</code>, <code>task_template_match</code> table, <code>no_match</code> wiring, dropping <code>Runtime</code> Literal) land after the registry can carry honest capability sheets — i.e., after this doc's steps 1–5.</p>
 
 <h2 id="out-of-scope">Out of scope (for now)</h2>
 <ul>
-  <li>E2B SDK capability verification beyond what's listed above — separate spike if anything new in the SDK surfaces.</li>
-  <li>Building the ~10 additional templates — separate epic, designs above.</li>
-  <li>The droplet → E2B deploy migration for tasks already running on droplets — outside this doc's concern.</li>
-  <li>v2 multi-tenancy on templates (per-org template forks) — not on the roadmap, would only make sense if a customer needed an org-specific lib set.</li>
+  <li>E2B SDK capability verification beyond what's listed above — separate spike if anything new surfaces.</li>
+  <li>Building the proposed-but-not-built rows (<code>utkrusht-node</code>, etc.) — let <code>no_match</code> clusters drive the order.</li>
+  <li>The droplet → E2B deploy migration for tasks already running on droplets — outside this doc's concern (droplet path was retired 2026-05-25).</li>
+  <li>v2 multi-tenancy on templates (per-org template forks) — not on the roadmap; would only make sense if a customer needed an org-specific lib set.</li>
 </ul>
 
 </main>
 </div>
 
 <script>
-// Scrollspy — highlight the TOC link for the section currently near the top
-// of the viewport. Updates on scroll via requestAnimationFrame throttling.
 (function () {
   const sections = Array.from(document.querySelectorAll('main h2[id]'));
   const links = new Map();
@@ -650,8 +549,6 @@ python app/main.py</code></pre>
   }
 
   function update() {
-    // The active section is the LAST one whose top has crossed the
-    // threshold (i.e. the deepest one that has scrolled into the upper zone).
     const threshold = 120;
     let activeId = sections[0].id;
     for (const sec of sections) {
