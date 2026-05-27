@@ -19,10 +19,26 @@ installs — keep them in sync.
 
 from e2b import AsyncTemplate
 
-# Capability sheet — the "menu" of what this template offers. Frameworks
-# and datastores listed here are not all pre-installed; they are the
-# universe the LLM classifier may match candidate tasks against, given
-# that the base image + Python toolchain + DinD can stand them up.
+# Capability sheet — the "menu" of what this template offers.
+#
+# SYNC NOTE — Two categories have DIFFERENT semantics:
+#   capabilities.tools: packages PRE-INSTALLED in the image. Adding a pip
+#     package to the run_cmd chain (around line 99) requires a matching
+#     addition here, and vice versa. The presence in this list is a contract.
+#   capabilities.frameworks / datastores / protocols: the UNIVERSE the LLM
+#     classifier may match against — NOT all pre-installed; many are stood
+#     up at task boot by the task's own run.sh + docker-compose. No run_cmd
+#     change is required for these.
+#
+# Nothing in CI enforces this alignment today (CI gate is deferred — see
+# docs/plans/2026-05-27-unified-classifier-template-schema.md §Phase 0).
+# Drift between this dict and the run_cmd chain is currently honor-system.
+#
+# install_cmd / install_verify / install_seconds describe how to install
+# THIS template's primary runtime as a SECONDARY in another sandbox (the
+# polyglot install-at-boot mechanism from e2b-templates.md#polyglot). They
+# do NOT describe what THIS template's build pipeline does — that's the
+# run_cmd chain below.
 manifest = {
     "template_id": "utkrusht-python",
     "status": "built",

@@ -42,9 +42,11 @@ async def main() -> None:
         f"manifest written: {info['manifest_path']} "
         f"(sha256={info['manifest_hash']})"
     )
+    # Derive template id from the manifest so renaming is a one-line change
+    # in template.py (manifest["template_id"]) — never edit the literal here.
     await AsyncTemplate.build(
         template,
-        "utkrusht-python",
+        manifest["template_id"],
         cpu_count=2,
         memory_mb=2048,
         on_build_logs=default_build_logger(),
