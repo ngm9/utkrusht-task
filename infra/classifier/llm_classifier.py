@@ -1,8 +1,16 @@
-"""Single-call LLM classifier that emits a validated TaskRuntime.
+"""Single-call LLM classifier.
 
-This module owns ONE concern: take a list of competencies, ask an LLM, parse
-the response, return a (TaskRuntime, confidence) pair. It does NOT know about
-caching or persistence — that's runtime_cache.py's job.
+Two entry points live here during Phase 2 of
+``docs/plans/2026-05-27-unified-classifier-template-schema.md``:
+
+* ``classify_with_llm`` (LEGACY) — emits ``TaskRuntime`` from competencies
+  alone. Used by today's ``resolve_plan``. Phase 4 deletes it.
+* ``classify_match_v2`` (NEW) — emits ``TaskTemplateMatch`` by picking
+  one template_id from the active set's capability sheets. Used by
+  ``resolve_plan_v2`` (Phase 2 next task).
+
+Neither function knows about caching or persistence — that's
+``runtime_resolver.py``'s job.
 """
 from __future__ import annotations
 
@@ -14,7 +22,7 @@ import openai
 from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
 from pydantic import ValidationError
 
-from infra.classifier.runtime import Competency, TaskRuntime
+from infra.classifier.runtime import Competency, TaskRuntime, TaskTemplateMatch
 
 _MODEL = "claude-sonnet-4-6"
 
@@ -138,3 +146,185 @@ def classify_with_llm(
         return _parse(raw)
     except (ValueError, ValidationError, json.JSONDecodeError) as exc:
         raise ValueError(f"invalid JSON after retry: {exc}") from exc
+
+
+# ─────────────────────────────────────────────────────────────────────
+# v2: classify against capability sheets, emit TaskTemplateMatch.
+# Phase 2 of unified-classifier-template-schema.
+# ─────────────────────────────────────────────────────────────────────
+
+
+@dataclass(frozen=True)
+class ActiveTemplate:
+    """One built template's capability sheet, as the LLM sees it.
+
+    Hydrated by ``runtime_resolver._load_active_templates`` from rows
+    where ``templates.status = 'built'``.
+    """
+
+    template_id: str
+    primary_runtime: str
+    personas: list[str]
+    eval_methods: list[str]
+    capabilities: dict
+    description: str | None = None
+
+
+_SYSTEM_PROMPT_V2 = """You match a list of technical competencies to a \
+deployable E2B template from the active set below.
+
+ACTIVE TEMPLATES:
+{templates_block}
+
+YOUR JOB:
+1. Read the competencies the user sends.
+2. Pick the template_id (from the active set above) whose capabilities \
+best match what these competencies imply the task will need.
+3. Pick exactly ONE persona from that template's personas list — the \
+reviewer specialty most appropriate for this combo.
+4. Set confidence: a float in [0.0, 1.0]. Use < 0.7 when ambiguous so a \
+human can review.
+
+WHEN TO RETURN no_match:
+- No active template's capabilities cover what the competencies need \
+(e.g. "Kubernetes + Helm + Terraform" when no utkrusht-infra exists).
+- DO NOT pick a template just because it shares one capability — if the \
+core need isn't covered, return no_match.
+
+When no_match: omit template_id and persona (use null), set \
+no_match_reason (one short sentence explaining why nothing fits), set \
+missing_capabilities (array of canonical names: \
+["helm","kubectl","terraform"] etc.), and optionally suggest a future \
+template name in suggested_template (e.g. "utkrusht-infra").
+
+OUTPUT FORMAT: ONLY a JSON object with EXACTLY these fields. No prose, no \
+markdown fences:
+
+  • template_id: string (one of the active IDs) OR null
+  • persona: string (one of the chosen template's personas) OR null
+  • confidence: float in [0.0, 1.0]
+  • no_match_reason: string (null if template_id is set)
+  • missing_capabilities: array of strings (empty if template_id is set)
+  • suggested_template: string (null if template_id is set)
+"""
+
+
+def _render_templates_block(active: list[ActiveTemplate]) -> str:
+    """Format active templates as a numbered list of capability sheets."""
+    if not active:
+        return "  (no built templates available — every classification " \
+               "must be no_match)"
+    lines = []
+    for tmpl in active:
+        lines.append(f"\n- template_id: {tmpl.template_id}")
+        lines.append(f"  primary_runtime: {tmpl.primary_runtime}")
+        lines.append(f"  personas: {tmpl.personas}")
+        lines.append(f"  eval_methods: {tmpl.eval_methods}")
+        lines.append(f"  capabilities: {json.dumps(tmpl.capabilities, sort_keys=True)}")
+        if tmpl.description:
+            lines.append(f"  description: {tmpl.description}")
+    return "\n".join(lines)
+
+
+def _user_message_v2(competencies: list[Competency]) -> str:
+    lines = "\n".join(f"- {c.name} ({c.proficiency})" for c in competencies)
+    return f"Classify these competencies:\n\n{lines}"
+
+
+def _validate_match_against_templates(
+    match: TaskTemplateMatch,
+    active_templates: list[ActiveTemplate],
+) -> None:
+    """Enforce the match references only known template_id + persona.
+
+    Raises ``ValueError`` with a message suitable for feeding back to the
+    model on retry.
+    """
+    if match.template_id is not None:
+        active_by_id = {t.template_id: t for t in active_templates}
+        if match.template_id not in active_by_id:
+            raise ValueError(
+                f"template_id {match.template_id!r} is not in the active "
+                f"templates list. Allowed: {sorted(active_by_id)}"
+            )
+        tmpl = active_by_id[match.template_id]
+        if match.persona is None:
+            raise ValueError(
+                f"template_id is set ({match.template_id!r}) but persona is "
+                f"null. Pick one of {tmpl.personas}."
+            )
+        if match.persona not in tmpl.personas:
+            raise ValueError(
+                f"persona {match.persona!r} is not in template "
+                f"{tmpl.template_id!r}'s personas. Allowed: {tmpl.personas}."
+            )
+    else:
+        if not match.no_match_reason:
+            raise ValueError(
+                "template_id is null but no_match_reason is empty. Either "
+                "pick a template_id or explain in no_match_reason."
+            )
+
+
+def _parse_match(raw: str) -> TaskTemplateMatch:
+    """Parse raw LLM text into a TaskTemplateMatch."""
+    data = _extract_json(raw)
+    return TaskTemplateMatch.model_validate(data)
+
+
+def classify_match_v2(
+    competencies: list[Competency],
+    active_templates: list[ActiveTemplate],
+    *,
+    client: openai.OpenAI | None = None,
+) -> TaskTemplateMatch:
+    """Pick a template_id + persona for a competency combo.
+
+    Inputs:
+      - competencies: the sorted, proficiency-suffixed competency list
+      - active_templates: rows from ``templates WHERE status = 'built'``
+
+    Output: a validated ``TaskTemplateMatch``. Either ``template_id`` is
+    set (and persona is one of that template's personas), or
+    ``no_match_reason`` is set.
+
+    No scenario / background input — those go to the content-generation
+    LLM, which separately emits ``TaskIntent`` per task.
+
+    Raises ``ValueError`` if the LLM produces invalid JSON or references
+    a non-existent template/persona, after one retry with feedback.
+    """
+    if not competencies:
+        raise ValueError("classify_match_v2 requires at least one competency")
+
+    client = client or build_client()
+    system_prompt = _SYSTEM_PROMPT_V2.format(
+        templates_block=_render_templates_block(active_templates),
+    )
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": _user_message_v2(competencies)},
+    ]
+
+    def _try_one(msgs: list[dict]) -> TaskTemplateMatch:
+        resp = client.chat.completions.create(model=_MODEL, messages=msgs)
+        raw = resp.choices[0].message.content or ""
+        match = _parse_match(raw)
+        _validate_match_against_templates(match, active_templates)
+        return match
+
+    try:
+        return _try_one(messages)
+    except (ValueError, ValidationError, json.JSONDecodeError) as first_err:
+        error_detail = _format_parse_error(first_err)
+
+    # Retry once with the specific error fed back to the model
+    nudge_msg = f"{_RETRY_NUDGE_PREFIX} Specific errors: {error_detail}"
+    nudge = messages + [
+        {"role": "assistant", "content": "(previous reply was invalid)"},
+        {"role": "user", "content": nudge_msg},
+    ]
+    try:
+        return _try_one(nudge)
+    except (ValueError, ValidationError, json.JSONDecodeError) as exc:
+        raise ValueError(f"invalid match after retry: {exc}") from exc

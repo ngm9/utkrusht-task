@@ -118,10 +118,17 @@ def template_name_for_runtime(runtime: str | None, *, supabase=None) -> Optional
 
 
 def _db_load_template(supabase, runtime: str) -> Optional[TemplateSpec]:
-    """Read one row from ``template_registry`` by runtime. ``None`` when absent."""
+    """Read one row from ``template_registry`` by runtime. ``None`` when absent.
+
+    Filters on ``status='built'`` so rows that document a designed-but-not-yet-
+    shipped template (e.g. ``utkrusht-java`` with status='proposed') don't
+    cause the gate to try booting a missing E2B template. Proposed rows are
+    visible in the SQL registry for design/analytics purposes only.
+    """
     resp = (supabase.table(_TEMPLATE_TABLE)
             .select("template_name,build_cmd,test_cmd,compile_cmd,needs_browser")
             .eq("runtime", runtime)
+            .eq("status", "built")
             .limit(1)
             .execute())
     rows = resp.data or []
@@ -199,11 +206,6 @@ def make_combo_key(competencies: Iterable[Competency]) -> str:
     return ", ".join(parts)
 
 
-def _utkrusht_org_id() -> Optional[str]:
-    """Read the Utkrusht UUID from env. None if unset (caller treats as no cache)."""
-    return os.getenv("UTKRUSHT_ORG_ID")
-
-
 def _build_supabase_client():
     """Lazy import + init the Supabase dev client. Tests inject via the
     ``supabase`` kwarg on ``resolve_plan``; production paths get None and
@@ -216,12 +218,16 @@ def _build_supabase_client():
     return create_client(url, key)
 
 
-def _cache_lookup(supabase, combo_key: str, org_id: str) -> Optional[TaskRuntime]:
-    """Return the cached TaskRuntime for this combo, or None on miss."""
+def _cache_lookup(supabase, combo_key: str) -> Optional[TaskRuntime]:
+    """Return the cached TaskRuntime for this combo, or None on miss.
+
+    Classifications are platform-global — the classifier output for a given
+    competency set is identical regardless of which org generated the task,
+    so no organization_id is in the key.
+    """
     resp = (supabase.table(_COMBO_TABLE)
             .select("runtime,kind,frameworks,datastores,messaging,needs_browser")
             .eq("combo_key", combo_key)
-            .eq("organization_id", org_id)
             .limit(1)
             .execute())
     rows = resp.data or []
@@ -238,7 +244,7 @@ def _cache_lookup(supabase, combo_key: str, org_id: str) -> Optional[TaskRuntime
     )
 
 
-def _cache_write(supabase, combo_key: str, org_id: str,
+def _cache_write(supabase, combo_key: str,
                  runtime: TaskRuntime, confidence: float) -> None:
     """Upsert a freshly classified TaskRuntime into the cache table."""
     # Only set template_runtime FK when a template row actually exists for
@@ -250,7 +256,6 @@ def _cache_write(supabase, combo_key: str, org_id: str,
     )
     supabase.table(_COMBO_TABLE).upsert({
         "combo_key": combo_key,
-        "organization_id": org_id,
         "runtime": runtime.runtime,
         "kind": runtime.kind,
         "frameworks": list(runtime.frameworks),
@@ -281,11 +286,12 @@ def resolve_plan(
     """
     competencies = list(competencies)
     combo_key = make_combo_key(competencies)
-    org_id = _utkrusht_org_id()
 
     # ── Step 1: try the cache ──────────────────────────────────────────
+    # Cache availability is purely a function of whether we can reach
+    # Supabase; classifications are not tenant-scoped.
     client = supabase
-    if client is None and org_id is not None:
+    if client is None:
         try:
             client = _build_supabase_client()
         except Exception as exc:   # noqa: BLE001
@@ -295,9 +301,9 @@ def resolve_plan(
             )
             client = None
 
-    if client is not None and org_id is not None:
+    if client is not None:
         try:
-            cached = _cache_lookup(client, combo_key, org_id)
+            cached = _cache_lookup(client, combo_key)
         except Exception as exc:   # noqa: BLE001
             logger.warning(
                 f"resolve_plan: cache lookup failed for {combo_key!r}: {exc} — "
@@ -328,9 +334,9 @@ def resolve_plan(
         return ResolvedPlan(combo_key=combo_key, task_runtime=None, template=None)
 
     # ── Step 3: best-effort write-through to cache ─────────────────────
-    if client is not None and org_id is not None:
+    if client is not None:
         try:
-            _cache_write(client, combo_key, org_id, task_runtime, confidence)
+            _cache_write(client, combo_key, task_runtime, confidence)
             logger.info(
                 f"resolve_plan: combo={combo_key!r} cache MISS — wrote new row "
                 f"runtime={task_runtime.runtime} kind={task_runtime.kind} "
@@ -350,5 +356,340 @@ def resolve_plan(
     return ResolvedPlan(
         combo_key=combo_key,
         task_runtime=task_runtime,
+        template=template,
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# v2 path — Phase 2 of unified-classifier-template-schema.
+#
+# resolve_plan_v2(competencies) → ResolvedPlanV2(match, template).
+# Cache: task_template_match keyed on combo_key (no scenario_hash).
+# Per-task intent lives on tasks.task_intent — emitted later by the
+# content-generation LLM, NOT here.
+# ─────────────────────────────────────────────────────────────────────
+
+# Cache-invalidation knob: bump when the classifier prompt OR the model
+# changes so old rows re-classify.
+_CLASSIFIER_MODEL_V2 = "claude-sonnet-4-6"
+
+# v2 table names (mirrors `templates` + `task_template_match` migrations).
+_TEMPLATES_TABLE_V2 = "templates"
+_MATCH_TABLE_V2 = "task_template_match"
+
+
+@dataclass(frozen=True)
+class TemplateSpecV2:
+    """Hydrated row from ``templates`` (v2 schema).
+
+    Used by the eval gate (template_name + build/test/compile + secondary
+    install) and the prompt generator (capabilities + personas + eval_methods).
+    """
+
+    template_id: str
+    primary_runtime: str
+    personas: list[str]
+    eval_methods: list[str]
+    capabilities: dict
+    build_cmd: str
+    test_cmd: str
+    compile_cmd: str | None = None
+    install_cmd: str | None = None
+    install_verify: str | None = None
+    install_seconds: int | None = None
+    manifest_hash: str = ""
+    registry_version: int = 1
+    description: str | None = None
+
+
+@dataclass(frozen=True)
+class ResolvedPlanV2:
+    """The single bundle every downstream consumer reads in v2.
+
+    Carries the match decision (cached per combo) + the hydrated template
+    spec. Does NOT carry ``task_intent`` — that's emitted later by the
+    content-generation LLM and lives on ``tasks.task_intent``.
+
+    On classifier failure, ``match`` is None — callers skip persona
+    routing and skip the gate (same fail-safe contract as v1).
+    On no_match, ``template`` is None but ``match.no_match_reason`` is
+    set — callers can inspect ``match.missing_capabilities``.
+    """
+
+    combo_key: str
+    match: "TaskTemplateMatch | None"
+    template: TemplateSpecV2 | None
+
+
+def _row_to_template_v2(row: dict) -> TemplateSpecV2:
+    """Convert one ``templates`` row dict into a ``TemplateSpecV2``."""
+    return TemplateSpecV2(
+        template_id=row["template_id"],
+        primary_runtime=row["primary_runtime"],
+        personas=row.get("personas") or [],
+        eval_methods=row.get("eval_methods") or ["test_suite"],
+        capabilities=row.get("capabilities") or {},
+        build_cmd=row["build_cmd"],
+        test_cmd=row["test_cmd"],
+        compile_cmd=row.get("compile_cmd"),
+        install_cmd=row.get("install_cmd"),
+        install_verify=row.get("install_verify"),
+        install_seconds=row.get("install_seconds"),
+        manifest_hash=row.get("manifest_hash") or "",
+        registry_version=int(row.get("registry_version") or 1),
+        description=row.get("description"),
+    )
+
+
+def _load_active_templates_v2(supabase) -> list[TemplateSpecV2]:
+    """SELECT every ``built`` template row, hydrated as ``TemplateSpecV2``.
+
+    The LLM classifier reads these capability sheets to match a competency
+    combo to one of the deployable templates.
+    """
+    resp = (supabase.table(_TEMPLATES_TABLE_V2)
+            .select("*")
+            .eq("status", "built")
+            .execute())
+    return [_row_to_template_v2(r) for r in (resp.data or [])]
+
+
+def _get_template_v2(supabase, template_id: str) -> TemplateSpecV2 | None:
+    """Fetch one ``templates`` row by id. Returns None if absent or not built."""
+    resp = (supabase.table(_TEMPLATES_TABLE_V2)
+            .select("*")
+            .eq("template_id", template_id)
+            .eq("status", "built")
+            .limit(1)
+            .execute())
+    rows = resp.data or []
+    if not rows:
+        return None
+    return _row_to_template_v2(rows[0])
+
+
+def _match_lookup_v2(supabase, combo_key: str) -> tuple["TaskTemplateMatch | None", int | None, str | None]:
+    """Return (match, cached_registry_version, classifier_model) for combo_key.
+
+    ``(None, None, None)`` on miss. The registry_version + classifier_model
+    are returned so the caller can validate freshness before trusting the
+    cached match.
+    """
+    # Local import to keep this module importable without pydantic when
+    # someone is poking only the template-helpers.
+    from infra.classifier.runtime import TaskTemplateMatch  # noqa: WPS433
+
+    resp = (supabase.table(_MATCH_TABLE_V2)
+            .select("template_id,persona,confidence,no_match_reason,"
+                    "missing_capabilities,suggested_template,"
+                    "classifier_model,registry_version")
+            .eq("combo_key", combo_key)
+            .limit(1)
+            .execute())
+    rows = resp.data or []
+    if not rows:
+        return None, None, None
+    r = rows[0]
+    match = TaskTemplateMatch(
+        template_id=r.get("template_id"),
+        persona=r.get("persona"),
+        confidence=float(r.get("confidence") or 0.0),
+        no_match_reason=r.get("no_match_reason"),
+        missing_capabilities=r.get("missing_capabilities") or [],
+        suggested_template=r.get("suggested_template"),
+    )
+    return match, int(r.get("registry_version") or 1), r.get("classifier_model")
+
+
+def _match_write_v2(
+    supabase,
+    combo_key: str,
+    match: "TaskTemplateMatch",
+    *,
+    registry_version: int,
+) -> None:
+    """Upsert one task_template_match row.
+
+    ``registry_version`` is the snapshot of the matched template's
+    registry_version at classify time. For no_match rows we still write
+    a registry_version (1) so the CHECK on the table is satisfied; the
+    next model upgrade triggers re-evaluation.
+    """
+    payload = {
+        "combo_key": combo_key,
+        "template_id": match.template_id,
+        "persona": match.persona,
+        "confidence": round(float(match.confidence), 2),
+        "no_match_reason": match.no_match_reason,
+        "missing_capabilities": list(match.missing_capabilities),
+        "suggested_template": match.suggested_template,
+        "classifier_model": _CLASSIFIER_MODEL_V2,
+        "registry_version": registry_version,
+    }
+    supabase.table(_MATCH_TABLE_V2).upsert(payload).execute()
+
+
+def _is_match_fresh_v2(
+    cached_model: str | None,
+    cached_version: int | None,
+    template: TemplateSpecV2 | None,
+) -> bool:
+    """Stale rows auto-re-classify when the model or template registry changes.
+
+    Rules:
+      * Model mismatch → stale (the prompt may have changed semantics).
+      * If the cache pointed at a real template and that template's
+        registry_version has bumped → stale.
+      * no_match rows survive registry bumps (a new template might
+        un-block them, but that's only worth re-evaluating on a model
+        change; otherwise we'd re-call the LLM on every template insert).
+    """
+    if cached_model != _CLASSIFIER_MODEL_V2:
+        return False
+    if template is not None and cached_version != template.registry_version:
+        return False
+    return True
+
+
+def resolve_plan_v2(
+    competencies: Iterable[Competency],
+    *,
+    supabase=None,
+) -> ResolvedPlanV2:
+    """Resolve a competency combo into a v2 plan.
+
+    Lookup order:
+      1. ``task_template_match`` cache hit for combo_key (+ freshness check).
+      2. Cache miss → call ``classify_match_v2`` with the active templates
+         → upsert the new match row → return.
+      3. Cache unreachable → direct LLM call without persistence.
+      4. LLM failure → return an empty plan (callers skip persona + gate).
+
+    Never raises. Scenario / background are NOT inputs — those go to the
+    content-generation LLM, which emits ``TaskIntent`` per task.
+    """
+    # Local imports so the module is importable without supabase / pydantic
+    # in environments that only use the helpers.
+    from infra.classifier.llm_classifier import classify_match_v2  # noqa: WPS433
+
+    competencies = list(competencies)
+    combo_key = make_combo_key(competencies)
+
+    # ── Step 1: try the cache ──────────────────────────────────────────
+    client = supabase
+    if client is None:
+        try:
+            client = _build_supabase_client()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                f"resolve_plan_v2: supabase init failed for {combo_key!r}: {exc} — "
+                "falling through to direct LLM call (no caching)"
+            )
+            client = None
+
+    if client is not None:
+        try:
+            cached, cached_version, cached_model = _match_lookup_v2(client, combo_key)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                f"resolve_plan_v2: cache lookup failed for {combo_key!r}: {exc} — "
+                "falling through to direct LLM call"
+            )
+            cached, cached_version, cached_model = None, None, None
+
+        if cached is not None:
+            template = (_get_template_v2(client, cached.template_id)
+                        if cached.template_id else None)
+            if _is_match_fresh_v2(cached_model, cached_version, template):
+                logger.info(
+                    f"resolve_plan_v2: combo={combo_key!r} cache HIT "
+                    f"template_id={cached.template_id} persona={cached.persona}"
+                )
+                return ResolvedPlanV2(
+                    combo_key=combo_key,
+                    match=cached,
+                    template=template,
+                )
+            logger.info(
+                f"resolve_plan_v2: combo={combo_key!r} cache STALE "
+                f"(model={cached_model!r} vs {_CLASSIFIER_MODEL_V2!r}, "
+                f"version={cached_version} vs "
+                f"{template.registry_version if template else 'n/a'}) — re-classifying"
+            )
+
+    # ── Step 2: cache miss / stale → LLM classify against active templates
+    if client is not None:
+        try:
+            active = _load_active_templates_v2(client)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                f"resolve_plan_v2: failed to load active templates: {exc} — "
+                "classifier will see an empty set (every output will be no_match)"
+            )
+            active = []
+    else:
+        active = []  # offline / no DB — empty set forces no_match
+
+    # The classifier needs ActiveTemplate wrappers, not TemplateSpecV2.
+    from infra.classifier.llm_classifier import ActiveTemplate  # noqa: WPS433
+    active_for_llm = [
+        ActiveTemplate(
+            template_id=t.template_id,
+            primary_runtime=t.primary_runtime,
+            personas=t.personas,
+            eval_methods=t.eval_methods,
+            capabilities=t.capabilities,
+            description=t.description,
+        )
+        for t in active
+    ]
+
+    try:
+        match = classify_match_v2(competencies, active_for_llm)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning(
+            f"resolve_plan_v2: classifier failed for {combo_key!r}: {exc} — "
+            "returning empty plan (no persona, no gate)"
+        )
+        return ResolvedPlanV2(combo_key=combo_key, match=None, template=None)
+
+    # Hydrate the template spec for the matched id (if any).
+    template = None
+    registry_version = 1
+    if match.template_id is not None and client is not None:
+        try:
+            template = _get_template_v2(client, match.template_id)
+            if template is not None:
+                registry_version = template.registry_version
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                f"resolve_plan_v2: template fetch failed for "
+                f"{match.template_id!r}: {exc}"
+            )
+
+    # ── Step 3: best-effort write-through to cache ─────────────────────
+    if client is not None:
+        try:
+            _match_write_v2(client, combo_key, match,
+                            registry_version=registry_version)
+            logger.info(
+                f"resolve_plan_v2: combo={combo_key!r} cache WRITE — "
+                f"template_id={match.template_id} persona={match.persona} "
+                f"confidence={match.confidence:.2f}"
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                f"resolve_plan_v2: cache write failed for {combo_key!r}: {exc}"
+            )
+
+    if template is None and match.template_id is not None:
+        logger.info(
+            f"resolve_plan_v2: combo={combo_key!r} matched "
+            f"template_id={match.template_id!r} but no built template row "
+            f"could be hydrated — gate will skip"
+        )
+    return ResolvedPlanV2(
+        combo_key=combo_key,
+        match=match,
         template=template,
     )
