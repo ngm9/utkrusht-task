@@ -24,17 +24,20 @@ INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 
 
 CRITICAL TASK GENERATION REQUIREMENTS:
-- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
-- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
-- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
-- Ensure the candidate can realistically complete the task in the allocated time
-- Select a different real-world scenario each time to ensure variety in task generation
-- The task must reflect authentic challenges that would be encountered in the role described in the role context — DSA work framed inside a real product surface (a cache, a lookup, a validator, a pricing tier), not abstract leetcode-style puzzles disconnected from a system.
+- The scenarios above are inspiration for the TYPE of problem (which data structure / algorithmic shape to target) and a 1-2 sentence flavor wrapper. They are NOT a brief to embed the problem inside a real application, framework, route, or service module.
+- **IGNORE any LEGACY language-specific file paths, extensions, framework names, or test-file names mentioned in the scenarios** (e.g. references like `src/cache/session_cache.py`, `coupon.*`, `fares_test.*`, `tests/test_x.py`, "pytest", "jest"). These are legacy framing artefacts from older scenarios — disregard them.
+- **READ THE LIST OF SUPPORTED LANGUAGES FROM THE SELECTED SCENARIO.** Each scenario declares which languages it supports — typically as a line like `**Supported Languages:** Python, JavaScript, Java` (or similar). The set of languages you must support is EXACTLY what the scenario declares — no more, no less. Do not add languages the scenario does not list. Do not drop languages it does list. For EACH language the scenario lists, you MUST emit a dedicated folder + a solution stub + a test file + the minimum project metadata for that language's test command to run. See the LANGUAGE SUPPORT section in the next prompt for conventional layouts per language.
+- If the scenario does NOT declare any supported languages, default to: **Python, JavaScript, Java** (three languages).
+- The task you generate MUST be a CLASSIC DSA PROBLEM: one function to implement, typed inputs, typed output, explicit constraints, 2-3 worked examples — NOT an app build, NOT a refactor inside an existing service module.
+- The task is LANGUAGE-AGNOSTIC: the candidate will pick ONE of the supported languages declared in the scenario and implement the function only in that language. The starter project ships a stub + tests in each declared language.
+- The task complexity must be appropriate for BASIC level (1-2 years of experience).
+- Ensure the candidate can realistically complete the task in the allocated time.
+- Select a different inspiration scenario each time to ensure variety.
 
 Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
-1. What will the task be about? (Describe the business domain, the data structure / algorithm involved, and the specific problem the candidate will be solving)
-2. What will the task look like? (Describe the type of implementation or fix required, the expected deliverables, and how it aligns with BASIC DSA proficiency)
+1. What will the task be about? (The data structure / algorithmic shape involved, the function the candidate will implement, and the light real-world flavor used as context)
+2. What will the task look like? (The single function deliverable, the list of language stubs that will ship — exactly as declared by the selected scenario — and how it aligns with BASIC DSA proficiency)
 
 
 Please provide a brief summary of your understanding before proceeding with the full task generation.
@@ -44,180 +47,223 @@ PROMPT_DSA_BASIC = """
 # Data Structures and Algorithms Basic Task Requirements
 
 ## GOAL
-As a technical architect super experienced in core Data Structures and Algorithms across multiple languages, you are given real-world scenarios and proficiency levels for DSA work at the BASIC level. Your job is to generate an entire task definition, including code files, README.md, expected outcomes, etc., that can be effectively used to assess a 1-2 yoe candidate's ability to recognize the right data structure / algorithm for a small product problem and implement it correctly inside an existing module — NOT to solve abstract puzzles in isolation.
+As a technical architect super experienced in core Data Structures and Algorithms, you are given inspiration scenarios and proficiency levels for DSA work at the BASIC level. Your job is to generate a CLASSIC DSA PROBLEM that can be solved in whichever languages the selected inspiration scenario declares as supported. This is NOT an app build and NOT a refactor inside an existing service module — the candidate implements ONE function (occasionally a small class) that takes typed inputs and returns a typed output. The starter project ships a solution stub + a small test file in EACH language declared by the scenario, so the candidate picks one language and codes against that language's skeleton.
 
-**LANGUAGE / RUNTIME IS DERIVED FROM THE SCENARIO.** Do NOT assume Python. The chosen scenario specifies the application stack (file extensions, module paths, runtime hints) — the generated starter code, file structure, build/run commands, and test framework MUST follow whatever language the scenario implies (e.g. Python with `pytest`, TypeScript/Node with `jest` or `vitest`, Java with JUnit + Maven/Gradle, Go with the built-in test runner, C# with xUnit). If the scenario is language-agnostic in wording, default to the most natural language for the domain described.
+## LANGUAGE SUPPORT (read from the selected inspiration scenario)
+
+**RULE 1 — The scenario decides the set.** Each scenario carries a declaration of supported languages (e.g. `**Supported Languages:** Python, JavaScript, Java`). The set of language folders you ship MUST exactly match that declaration — no extras, no omissions. If the scenario does not declare any languages, default to **Python, JavaScript, Java**.
+
+**RULE 2 — For EACH declared language, ship a self-contained folder.** Each folder must contain:
+- A solution stub file with the function signature and a placeholder return value (so the file compiles/parses but the tests fail until the candidate implements it).
+- A test file with 3-5 small assertions pinning the documented worked examples and edge cases.
+- The minimum project metadata files needed for that language's test command to run on a clean checkout.
+
+**RULE 3 — Use the conventional layout and test framework for each language.** Below are the conventions for languages most likely to appear in scenarios. If a scenario declares a language not in this list, fall back to the most idiomatic open-source convention for that language.
+
+- **Python (3.10+)** — folder `python/`. `python/solution.py` (stub), `python/test_solution.py` (pytest), optional `python/pytest.ini` (minimal config or rely on default discovery).
+- **JavaScript (Node 18+)** — folder `javascript/`. `javascript/solution.js` (stub, CommonJS `module.exports`), `javascript/solution.test.js` (jest), `javascript/package.json` declaring `jest` as a devDependency and a `"test": "jest"` script.
+- **TypeScript (Node 18+, TS 5+)** — folder `typescript/`. `typescript/solution.ts` (stub, `export function`), `typescript/solution.test.ts` (jest with `ts-jest`), `typescript/package.json`, `typescript/tsconfig.json`.
+- **Java (17+)** — folder `java/`. `java/src/main/java/Solution.java` (stub class), `java/src/test/java/SolutionTest.java` (JUnit 5), `java/pom.xml` (Maven) declaring `junit-jupiter` and `maven-surefire-plugin`.
+- **C++ (C++17)** — folder `cpp/`. `cpp/solution.h` (declaration), `cpp/solution.cpp` (stub implementation), `cpp/test_solution.cpp` (plain `main()` runner using only `<cassert>` from the standard library — prints `"All tests passed\\n"` if every assert succeeds), `cpp/Makefile` with a `test` target that compiles via `g++ -std=c++17` and runs the binary.
+- **Go (1.21+)** — folder `go/`. `go/solution.go` in `package solution` (stub), `go/solution_test.go` in `package solution` (built-in `testing`), `go/go.mod` declaring the module.
+- **Ruby (3.2+)** — folder `ruby/`. `ruby/solution.rb` (stub), `ruby/solution_test.rb` using `minitest/autorun` from the standard library; runs via `ruby ruby/solution_test.rb`.
+- **Rust (stable)** — folder `rust/`. `rust/src/lib.rs` (stub function + `#[cfg(test)] mod tests` block), `rust/Cargo.toml` declaring the crate; runs via `cargo test`.
+- **C# (.NET 8+)** — folder `csharp/`. `csharp/Solution.cs` (stub), `csharp/SolutionTest.cs` (xUnit), `csharp/Solution.csproj` declaring xUnit + `Microsoft.NET.Test.Sdk`.
+- **Kotlin (1.9+)** — folder `kotlin/`. `kotlin/src/main/kotlin/Solution.kt`, `kotlin/src/test/kotlin/SolutionTest.kt`, `kotlin/build.gradle.kts` declaring JUnit 5.
+- **PHP (8.2+)** — folder `php/`. `php/Solution.php` (stub class), `php/SolutionTest.php` (PHPUnit), `php/composer.json` declaring `phpunit/phpunit`.
+
+The PROBLEM STATEMENT (function name, inputs, outputs, constraints, examples) is identical across all declared languages — only the syntax differs.
 
 ## INSTRUCTIONS
 
 ### Nature of the Task
-- Task must ask the candidate to fix a wrong or slow data-structure choice, refactor a brute-force algorithm into a more appropriate one, or implement a small algorithmic helper inside an existing module **in the language the scenario implies**. Do NOT ask the candidate to build a project from scratch.
-- The starter project MUST include a small, runnable package (in whatever language the scenario specifies) with the buggy or slow implementation already wired in, plus at least one test file (in the language's idiomatic test framework — `pytest`, `jest`/`vitest`, JUnit, Go test, xUnit) that exercises the module. The candidate should NOT have to set up the project structure themselves.
-- The question scenario must be clear, with realistic facts, figures, company names, and numbers (e.g. row counts, latency budgets, list sizes) that are consistent with the chosen domain.
-- DO NOT GIVE AWAY THE SOLUTION IN THE STARTER CODE. The wrong/slow behavior described in the scenario MUST actually be present in the starter implementation.
-- The task must surface real DSA judgment — picking the right structure (hash map vs. list scan, stack vs. counter, binary search vs. linear scan, heap vs. full sort, doubly-linked-list + hashmap for LRU), maintaining the right complexity, and writing tests that pin both correctness and the new performance contract.
+- Task must be a classic, self-contained DSA problem: ONE function (occasionally one small class with 2-3 methods, e.g. an LRU cache) to implement, with clearly typed inputs and outputs, explicit constraints on input sizes, and 2-3 worked examples.
+- The inspiration scenario may PROVIDE light real-world flavor in 1-2 sentences (e.g. "A pricing service needs to look up a customer's spend tier from a sorted threshold list"), but the deliverable is a PURE FUNCTION — not a service, route, controller, web framework handler, or module embedded in a wider application. No HTTP, no databases, no ORM models, no business-layer abstractions.
+- The candidate implements the function in their chosen language's `solution.*` file and runs that language's test command to verify.
+- DO NOT GIVE AWAY THE SOLUTION IN THE STARTER CODE. The solution stub in each declared language must return a trivial placeholder (e.g. `return []`, `return None`, `return 0`, `return null`, `return false`) so the file compiles/runs but the tests fail until the candidate implements it correctly.
 
 ### BASIC PROFICIENCY SCOPE (1-2 yoe — what the task may assess)
-Tasks MUST align with BASIC DSA. The task may assess one or more of the following; do NOT go beyond this scope into advanced topics. Examples below name common helpers across languages — the candidate uses whatever ships with the chosen language's standard library or built-in primitives:
+Tasks MUST align with BASIC DSA. The task may assess one or more of the following; do NOT go beyond this scope into advanced topics:
 
-- **Arrays, hashing, sets**: O(n) one-pass scans, frequency counting with a hash map (e.g. Python `dict`/`Counter`, JS `Map`, Java `HashMap`, Go `map`), deduplication, two-sum / pair-finding patterns, grouping by key.
+- **Arrays, hashing, sets**: O(n) one-pass scans, frequency counting with a hash map, deduplication, two-sum / pair-finding patterns, grouping by key.
 - **Stacks and queues**: balanced-brackets / nesting validation, simple undo-redo, BFS-style level traversal on small structures.
-- **Hash map + linked list (LRU)**: O(1) get/put with proper recency tracking. Either via the language's ordered-map primitive (e.g. Python `OrderedDict`, Java `LinkedHashMap`) or a hand-rolled doubly-linked-list + hash map — the candidate must understand WHY both pieces are needed.
-- **Sorting and binary search**: O(log n) lookups on sorted data using whatever binary-search helper the language provides (e.g. Python `bisect`, Java `Collections.binarySearch`, Go `sort.Search`); sort-then-scan patterns; stable sort by key.
-- **Strings**: prefix/suffix checks, simple parsing, single-pass transformations.
-- **Big-O reasoning**: justifying why the new implementation is O(n) / O(log n) / O(1) and writing a small performance test to pin it.
-- **Standard library fluency in the chosen language**: ordered collections, hash maps, sorted-search helpers, FIFO queues, basic priority-queue primitives where appropriate.
+- **Hash map + linked list (LRU)**: O(1) get/put with proper recency tracking. The candidate must understand WHY both pieces are needed.
+- **Sorting and binary search**: O(log n) lookups on sorted data and on locally monotonic data (peak-finding), sort-then-scan patterns, stable sort by key.
+- **Strings**: prefix/suffix checks, simple parsing, single-pass transformations, palindrome / anagram checks.
+- **Trivial graph algorithms on adjacency lists**: BFS / DFS on unweighted directed or undirected graphs, connected components in an undirected graph, cycle detection in a directed graph via DFS with three visit states (unvisited / in-progress / done). Sparse graphs only (~10^3-10^4 nodes, ~10^4-5*10^4 edges). The candidate must recognise that a plain `visited` set misses back-edges in diamond-shaped DAGs and reach for the three-state pattern.
+- **Tree traversal and LCA**: in / pre / post-order traversal on a binary tree, depth / height, lowest common ancestor of two nodes via a single post-order traversal (no parent pointers, no upward walk-and-intersect), BST search.
+- **Big-O reasoning**: justifying why the implementation is O(n) / O(log n) / O(1) / O(V + E).
 
-Do NOT require: graph algorithms beyond a trivial BFS/DFS, dynamic programming, advanced trees (balanced trees, segment trees, tries beyond a toy example), backtracking, or NP-hard approximations. Those are INTERMEDIATE+ topics.
+Do NOT require: weighted shortest path (Dijkstra, Bellman-Ford, A*), dynamic programming, balanced trees, segment trees, tries beyond a single toy example, heaps / priority queues for top-k, sliding-window with multiple invariants, backtracking, or NP-hard approximations. Those are INTERMEDIATE+ topics.
 
-### Task Scenario Structure (Current Implementation vs Required Changes)
-Each task MUST be defined in two clear parts:
+### Problem Statement Structure
+Each task's problem statement MUST include:
 
-**Current Implementation (what we give to the candidate):**
-- Describe precisely the wrong-structure / brute-force / buggy state that the starter code implements. Include the data sizes, latency, and observed bug as concretely as the scenario does.
-- Examples: "Cache uses a plain dict with a `pop(next(iter(...)))` eviction that does not respect recency"; "Duplicate finder runs O(n^2) and times out on the 200K-row file"; "Bracket validator counts open/close per type and accepts `([)]`"; "Tier lookup is a linear scan over 5K thresholds — p99 latency has crept to 180ms".
-- The **starter code MUST perfectly implement this current behavior** — it must run, it must produce the observed wrong output / latency, and it must NOT accidentally include the fix.
+**Context (light, 1-2 sentences):**
+- A short real-world framing so it doesn't feel like a totally abstract puzzle. Examples: "A pricing service needs to look up which spend tier a customer falls into from a sorted list of thresholds", "A session cache must evict the least-recently-used entry when it reaches capacity". Keep it to 1-2 sentences — NOT a full system description.
 
-**Required Changes (what the candidate must do):**
-- List the specific structural / algorithmic changes the candidate must apply, expressed in terms of the data structure and its target complexity (not in stdlib symbols of any particular language). Examples: "Replace the dict eviction with a proper LRU policy so get/put move keys to the MRU end"; "Replace the nested loop with a single hash-grouped pass that compares within a 60-second window"; "Replace the counters with a stack-based balanced-brackets check"; "Replace the linear scan with a binary search and validate input is sorted".
-- The candidate's job is only to apply these required changes on top of the current implementation, plus extend tests to pin the new contract.
+**Function signature(s):**
+- Name the function the candidate must implement and describe in plain English what it takes as input and what it returns (e.g. "Implement `find_pair`, which takes a list of integers and a target integer, and returns the indices of the two numbers that sum to the target — or the documented sentinel when no such pair exists").
+- Do NOT enumerate the signature in each supported language. The candidate sees the actual typed signature when they open their chosen language's `solution.*` stub file.
 
-**Final Implementation Approach:**
-- A high-level description of the correct approach, including the chosen data structure and the target complexity. Use abstract terms (ordered map / FIFO queue / stack / sorted-search helper) rather than language-specific symbols. The candidate's solution does not have to match this verbatim, but must hit the same complexity class.
+**Inputs / Outputs / Constraints:**
+- Explicit constraint ranges (e.g. `1 <= len(nums) <= 10^5`, `-10^9 <= nums[i] <= 10^9`, "the input list is sorted in ascending order").
+- Behavior on edge cases: empty input, single element, no valid answer (return what?), ties.
+
+**Worked examples (2-3 of them):**
+- Input -> Expected output with a one-line explanation. Keep examples small (~3-8 elements) so the candidate can verify mentally.
+
+**Target Complexity:**
+- A target complexity for time and space (e.g. "Your solution should run in O(n) time and O(n) extra space"). This is a soft target reinforced by tests.
 
 ### AI and External Resource Policy
-- Candidates are permitted and encouraged to use any external resources they find helpful, including Google, Stack Overflow, official language docs, and AI-powered tools or LLMs.
-- The tasks are designed to assess the candidate's ability to recognize the right data structure for a real product problem and integrate it cleanly into an existing module — not to test rote memorization of algorithm boilerplate. Therefore, the complexity should reflect basic DSA proficiency while requiring genuine judgment that goes beyond pasting a generic LeetCode template.
-- Use modern conventions for whichever language the scenario implies (Python 3.10+ / PEP 8, modern TypeScript/ESM, Java 17+, Go 1.21+, etc.). Use standard library and built-in primitives only — do NOT introduce specialized third-party DSA libraries (`numpy`, `networkx`, `sortedcontainers`, `lodash` collections, Guava, etc.) unless the scenario explicitly justifies it.
-- **Time Constraint**: Each task MUST be completable within {minutes_range} minutes by a candidate with BASIC proficiency (1-2 years).
+- Candidates are permitted and encouraged to use external resources including search, language documentation, and AI tools.
+- The task assesses whether the candidate can pick the right data structure and translate it into clean code in their chosen language under time pressure — not memorization.
+- Standard library and built-in primitives only — do NOT introduce specialized third-party DSA libraries (`numpy`, `sortedcontainers`, `lodash` collections, Guava containers, Boost) in any of the language scaffolds. The standard test framework for the language is allowed (pytest, jest, JUnit, xUnit, PHPUnit, etc.) — they are not DSA libraries.
+- **Time Constraint**: Each task MUST be completable within {minutes_range} minutes by a BASIC-level candidate (1-2 yoe) working in any one of the declared supported languages.
 
 ### Starter Code Requirements
 
-**FUNCTIONAL APPLICATION REQUIREMENTS:**
-- The starter code MUST be a complete, working project in the language implied by the scenario, runnable with the standard install + test commands for that ecosystem (e.g. Python: `pip install -r requirements.txt && pytest`; Node/TS: `npm install && npm test`; Java/Maven: `mvn test`; Go: `go test ./...`).
-- ZERO syntax errors, ZERO runtime errors. The existing tests must run; the tests that pin the wrong/slow behaviour may pass against the starter (since they describe the current state), and any new tests the candidate adds will fail until the fix is applied.
-- The candidate should NOT need to fix project setup to make tests run. Their job is the algorithmic fix and the new tests, not project plumbing.
+**EACH folder for a declared language MUST contain:**
+- A solution stub file (at the conventional path for that language — see LANGUAGE SUPPORT) with the function signature and a placeholder return value so the file compiles/parses cleanly but the tests fail.
+- A test file (at the conventional path) containing 3-5 small assertion tests pinning the documented examples and edge cases. These tests fail against the stub and pass when the candidate implements the function correctly.
+- The minimum project metadata files needed for that language's test command to run on a clean checkout (see LANGUAGE SUPPORT for the conventional set per language).
 
-**WHAT MUST BE INCLUDED:**
-- A clear source folder layout matching the language's conventions, containing the buggy/slow module at the path the scenario implies (e.g. the scenario may explicitly reference `src/cache/session_cache.py`, `src/cache/SessionCache.ts`, `internal/recon/duplicate_finder.go`, etc.).
-- A test directory using the language's idiomatic test framework, containing the minimal test file the scenario references.
-- The minimum project metadata files required for tests to run on a clean checkout (e.g. Python: `pyproject.toml` and/or `pytest.ini` and `requirements.txt`; Node/TS: `package.json` and `tsconfig.json`; Java/Maven: `pom.xml`; Go: `go.mod`). NO third-party DSA libraries.
-
-**LET THE SCENARIO DECIDE THE FILE LAYOUT.** The exact filenames, language extensions, and folder structure MUST be derived from the scenario's wording (file paths it references, technology cues like "Mongoose model", "Spring service", "Express handler") rather than imposed from a fixed template. If the scenario references `src/cache/session_cache.py`, generate Python; if it references `src/cache/SessionCache.ts`, generate TypeScript; and so on.
+**FUNCTIONAL REQUIREMENTS:**
+- All declared-language scaffolds must compile/parse/run cleanly out of the box. ZERO syntax errors. The tests are expected to FAIL against the stub (because the function isn't implemented yet) — but the test runner itself must launch and the failures must be assertion failures, not compile/import errors.
+- The candidate should NOT need to fix project plumbing in any of the declared languages to run that language's tests.
 
 **WHAT MUST NOT BE INCLUDED:**
-- DO NOT give away the solution in the starter code. The replacement structure (ordered map / hashmap+DLL / stack / sorted-search helper / hash-grouped pass) MUST NOT already appear.
-- DO NOT include `// TODO`, `// fix me`, `# hint:`, or any comments that point at the fix (use whichever comment syntax the language uses, but the rule applies regardless).
-- DO NOT include the new tests the candidate is asked to add — only the pre-existing minimal tests.
-- DO NOT scaffold unrelated modules or features that inflate scope beyond the BASIC time budget.
+- The actual algorithmic solution in any of the language files (only the stub).
+- `// TODO:`, `# hint:`, `// fix me`, or any comments that point at the fix (use whichever comment syntax the language uses, but the rule applies regardless).
+- Frameworks, services, controllers, routes, databases, ORM models, async queues, web servers. This is a single-function DSA problem.
+- Cross-language wiring — each language folder is fully self-contained; the candidate ignores all the folders they don't use.
+- Specialized third-party DSA libraries (see AI policy above).
+- Folders for languages NOT declared by the scenario. Match the scenario's declared list exactly.
 
 ### Code Generation Instructions
-Based on real-world scenarios, create a DSA task that:
-- Draws inspiration from input scenarios for business context and the specific data-structure / algorithm problem
-- Matches BASIC proficiency level (1-2 years in the language the scenario implies + core DSA)
-- Can be completed within {minutes_range} minutes — the candidate's edits should land in 1 module + 1 test file, occasionally one helper module
-- Tests practical DSA judgment: picking the right structure, hitting the right complexity, writing tests that pin BOTH correctness and the performance contract
-- Select a different real-world scenario each time to ensure variety in task generation
-- Task name: short, descriptive, under 50 characters, kebab-case, ideally incorporating the company/product name from the scenario rather than starting with `dsa-` (e.g., `sessioncache-lru-eviction-fix`, `paywise-tier-binary-lookup`)
+Generate a classic DSA task that:
+- Has a clear, narrow function-level problem statement with constraints and worked examples
+- Matches BASIC proficiency level (1-2 years + core DSA)
+- Can be completed within {minutes_range} minutes in any one of the supported languages declared by the scenario
+- Tests practical DSA judgment: picking the right data structure and hitting the right complexity
+- Task name: short, descriptive, under 50 characters, kebab-case (e.g. `two-sum-sorted`, `lru-cache-basic`, `balanced-brackets`, `tier-binary-lookup`, `group-anagrams`, `detect-build-cycle`, `team-common-manager`, `connected-components`, `tree-depth`)
 
 ## REQUIRED OUTPUT JSON STRUCTURE
 {{
   "name": "task-name-in-kebab-case",
-  "question": "Structured task description. MUST include: (1) Current Implementation — the wrong/slow data-structure or algorithmic state the starter code implements. (2) Required Changes — the specific structural / algorithmic fix the candidate must implement, including any new tests they must add to pin correctness AND the performance contract. Keep concise but unambiguous so starter code can match Current Implementation exactly and the candidate knows what done looks like.",
+  "question": "Classic DSA problem statement in plain English. MUST include: (1) Light real-world context (1-2 sentences). (2) The function name + a one-sentence plain-English description of its inputs and output (NO code blocks, NO language-specific signatures — the candidate sees the actual typed signature in their chosen language's `solution.*` stub). (3) Input / Output / Constraints with explicit ranges and edge-case behavior. (4) 2-3 worked examples with brief one-line explanations. (5) Target complexity (time + space). (6) An explicit note that the candidate must pick ONE of the supported language folders, implement the stub in `solution.*`, and ensure that language's tests pass.",
   "code_files": {{
-    "README.md": "Candidate-facing README following structure below — required for every language",
-    ".gitignore": "Standard exclusions for whichever language the scenario implies",
-    "<actual-source-path-from-scenario>": "The buggy/slow implementation matching the Current Implementation, at the file path the scenario references, in the language it implies",
-    "<actual-test-path-from-scenario>": "The existing minimal test file using the language's idiomatic test framework (pytest / jest / vitest / JUnit / go test / xUnit)",
-    "<project-metadata-files>": "The minimum metadata required for the test command to run on a clean checkout — chosen from the language's ecosystem (e.g. pyproject.toml + requirements.txt; package.json + tsconfig.json; pom.xml; go.mod; etc.)"
+    "README.md": "Candidate-facing README following the structure below — required",
+    ".gitignore": "Exclusions covering all the languages declared by the scenario. Include only what applies: Python (`__pycache__/`, `.pytest_cache/`), Node/TS (`node_modules/`, `dist/`), Java (`target/`, `*.class`), C++ (`*.o`, `*.out`, `build/`), Go (`bin/`, `vendor/`), Ruby (`*.gem`), Rust (`target/`), C# (`bin/`, `obj/`), Kotlin (`build/`), PHP (`vendor/`).",
+    "<per-language-files>": "FOR EACH LANGUAGE DECLARED BY THE SCENARIO, output the conventional set of files for that language at the top level of this code_files dict (use concrete keys, NOT a nested dict). The conventional set is: a solution stub file, a test file with 3-5 assertions, and the minimum project metadata files needed for that language's test command to run. See the LANGUAGE SUPPORT section above for the exact conventional paths and files per language. EXAMPLE: if the scenario declares Python + Java, output these keys: `python/solution.py` (stub), `python/test_solution.py` (3-5 pytest tests), `python/pytest.ini`, `java/src/main/java/Solution.java` (stub class), `java/src/test/java/SolutionTest.java` (3-5 JUnit 5 tests), `java/pom.xml`. The set of keys MUST match the scenario's declared languages exactly — no extras, no omissions."
   }},
-  "outcomes": "Bullet-point list in simple language describing the expected results after completion (e.g., the cache evicts truly old entries, the duplicate finder runs in O(n) on a 50K-row test under 2s, the bracket validator correctly fails `([)]`, the tier lookup uses binary search and validates sorted input).",
-  "short_overview": "Bullet-point list of exactly 3 short bullets (one sentence each, ~15-25 words). Bullet 1: the business context and the existing data-structure / algorithmic problem. Bullet 2: the specific structural / algorithmic change the candidate must apply. Bullet 3: the expected outcome including the complexity / latency target. Do NOT prefix bullets with bold mini-titles like '**Business context:**' — start each bullet directly with the content.",
-  "pre_requisites": "Bullet-point list of tools, libraries, environment setup, and knowledge required for the language the scenario implies (e.g. Python 3.10+ + pip + pytest; or Node 18+ + npm + jest/vitest; or JDK 17+ + Maven/Gradle + JUnit; or Go 1.21+ with the built-in test runner). Always include Git and basic DSA knowledge (hash maps, stacks, queues, sorting, binary search, big-O reasoning).",
-  "answer": "High-level solution approach — the chosen data structure and target complexity, expressed in language-neutral terms (ordered map / FIFO queue / stack / sorted-search helper) rather than language-specific stdlib symbols. Do not give the exact code.",
-  "hints": "Single line guiding the candidate toward the right structural insight (e.g. 'Think about which built-in primitive can keep both insertion order and O(1) lookup at once' or 'Look for a way to reduce the linear scan to logarithmic on already-sorted data'). Must NOT name the exact data structure or any language-specific stdlib symbol.",
+  "outcomes": "Bullet-point list in simple language describing the expected results after completion (e.g., the function returns the correct pair of indices for the worked examples, returns the documented sentinel when no pair exists, handles empty input gracefully, completes within the target complexity on a 10^5-element input).",
+  "short_overview": "Bullet-point list of exactly 3 short bullets (one sentence each, ~15-25 words). Bullet 1: the light real-world context and what the function takes / returns. Bullet 2: the input constraints and edge-case behavior. Bullet 3: the target complexity outcome plus a note that the candidate picks one of the supported language folders declared by the task. Do NOT prefix bullets with bold mini-titles like '**Context:**' — start each bullet directly with the content.",
+  "pre_requisites": "Bullet-point list of tools and knowledge required. Include one bullet for Git, ONE bullet that lists all supported-language toolchains the scenario declares (candidate only needs ONE of them working — join them with OR, e.g. `Python 3.10+ with pip and pytest, OR Node 18+ with npm, OR JDK 17+ with Maven, OR g++ with C++17 + make, OR Go 1.21+`), and ONE bullet for basic DSA knowledge (hash maps, stacks, queues, sorting, binary search, big-O reasoning).",
+  "answer": "High-level solution approach — the chosen data structure or algorithmic primitive and target complexity, expressed in language-neutral terms (hash map / stack / FIFO queue / ordered map / sorted-search helper / adjacency list with BFS or DFS / three-state DFS for cycle detection / post-order traversal for LCA) rather than language-specific stdlib symbols. Do not give the exact code.",
+  "hints": "Single line guiding the candidate toward the right structural insight (e.g. 'Think about which structure can answer membership-and-lookup in constant time' or 'Look for a way to reduce the linear scan to logarithmic on already-sorted data'). Must NOT name the exact data structure or any language-specific stdlib symbol.",
   "definitions": {{
     "terminology_1": "definition_1",
     "terminology_2": "definition_2"
   }}
 }}
 
-## README.md STRUCTURE (DSA Basic)
-- The README.md contains the following sections:
-  - Task Overview
-  - Objectives
-  - How to Verify
-  - Helpful Tips
-- The README.md file content MUST be fully populated with meaningful, specific content
-- Task Overview section MUST contain the exact business scenario from the task description
-- ALL sections must have substantial content — no empty or placeholder text allowed
-- Content must be directly relevant to the specific DSA task scenario being generated
-- Use concrete business context, not generic descriptions
+## README.md STRUCTURE (DSA Basic — LeetCode-style, 4 sections ONLY)
+The README is a LeetCode-style problem page. The candidate should be able to scan it like a LeetCode problem and know exactly what to implement. The README MUST contain EXACTLY the following four sections, in this order, and NOTHING else:
 
-### Task Overview (MANDATORY - 2-3 substantial sentences)
-**CRITICAL**: This section MUST contain 2-3 meaningful sentences describing the business scenario, the data sizes / latency budget, and the observable bug or performance pain. NEVER generate empty content - always provide substantial business context.
+1. Task Overview
+2. Examples
+3. Constraints
+4. How to Verify
 
-### Objectives
-Objectives describe the **observable end-state** the candidate must reach. They MUST NOT prescribe the implementation, name the chosen data structure, name a language-specific stdlib helper, or otherwise tell the candidate what code to write. The candidate should read the objectives and know WHAT "done" looks like, but still have to figure out HOW.
+Do NOT add any other section. NO "Objectives". NO "Helpful Tips". NO "Choose Your Language". NO separate "Problem Statement" header. NO setup instructions.
 
-**Allowed phrasing — describes outcome, hides solution:**
-- "Inserting `MAX_SIZE + 1` entries into the cache evicts the least-recently-used entry, not the first one inserted."
-- "The duplicate finder produces identical pairs to the existing fixture and completes in under 2 seconds on a 50K-row generated test."
-- "The validator rejects `([)]` and never raises on inputs containing stray closers."
-- "Looking up a spend value on a 5K-entry threshold list completes in roughly the time of a logarithmic scan, not a linear one."
+### 1. Task Overview (MANDATORY — LeetCode-style problem statement)
+Multi-paragraph prose problem statement in the style of a LeetCode problem description (e.g. https://leetcode.com/problems/clone-graph). Aim for 3-6 sentences across 1-3 short paragraphs that describe:
+  - What the function takes as input and what it returns
+  - Any semantic rules the candidate must respect (e.g. "the input list is sorted ascending", "the graph is directed and may contain unreachable components", "treat upper and lower case as the same")
+  - For non-trivial input data shapes (graph as adjacency list, binary tree node, linked-list node), include ONE small code block showing the data shape — e.g. a `class Node {{ int val; List<Node> neighbors; }}` block or a worded "Test case format:" explanation of how inputs are represented
+  - End with a single short sentence naming the function the candidate must implement, e.g. "Implement `clone_graph` in your chosen language."
 
-**FORBIDDEN phrasing — names the fix, gives the answer away:**
-- ❌ "Replace the hash map with an ordered map and move keys to the most-recently-used end on access." *(prescribes the fix shape)*
-- ❌ "Use a binary-search helper to find the tier index." *(names the algorithm)*
-- ❌ "Replace the nested loop with a hash map keyed by `(merchant_id, amount)`." *(names the structure and the key)*
-- ❌ "Use a stack of opening brackets and pop on every closer." *(prescribes the algorithm)*
+NO per-language signature enumeration. NO function-signature code blocks. Data-shape definitions (class layouts, adjacency-list format explanations) ARE allowed when the input is non-trivial.
 
-**Rule of thumb:** if a candidate could copy the objective into an LLM and get the working code back, the objective is too prescriptive. Rewrite it to describe the *behavior* the module must demonstrate, not the *code* it must contain.
+### 2. Examples (MANDATORY — 2-3 worked examples, LeetCode-style)
+Each example MUST follow this exact shape, including the BLANK LINES between the Input / Output / Explanation rows (the blank lines are required so each renders on its own line on GitHub — without them, Markdown collapses the three rows into one paragraph):
 
-Keep the rubric balanced — at most ONE objective should be a generic hygiene check ("the function never raises on user input"). The remaining objectives must be specific to the scenario's primary data-structure or complexity target.
+```
+**Example N:**
 
-**CRITICAL**: Objectives will be used to verify task completion and award points. They must be measurable end-states, never implementation prescriptions.
+[Optional small diagram block — see DIAGRAM RULES below]
 
-### How to Verify
-Verification approaches after implementation:
-- Specific checkpoints after the fix: run the language's test command (e.g. `pytest`, `npm test`, `mvn test`, `go test ./...`), the existing tests still pass, the new tests the candidate added (correctness + performance) all pass.
-- Observable behaviors: targeted edge cases (boundary recency in LRU, three-way matches in duplicate finder, interleaved brackets, exact-boundary spend), and the complexity contract (the new performance test passes within the budget).
-- Code-quality checks: standard library / built-in primitives only (no surprise third-party deps), no eviction or bracket logic baked into a single giant branch, public function signatures are stable.
-- These points help the candidate verify their own work and the assessor to award points.
+**Input:** <literal input value>
 
-**CRITICAL**: Focus on measurable, verifiable outcomes.
+**Output:** <literal output value>
 
-### Helpful Tips
-Practical guidance without revealing implementations:
-- Project context and guidance points suitable for basic-level developers (in the language the scenario implies) reasoning about data-structure choice
-- Engineering considerations framed as questions ("Which built-in primitive lets you keep both insertion order and O(1) lookup?", "What does Big-O become if the inner loop is replaced with a single hash lookup?", "Where does input validation belong if a wrong assumption silently corrupts results?")
-- Use bullet points starting with "Consider", "Think about", "Explore", "Review"
-- 3-4 concise bullets MAX
+**Explanation:** <one to three sentences explaining why this input produces this output>
+```
 
-**CRITICAL**: Guide discovery, never provide direct solutions.
+The `**Input:**`, `**Output:**`, `**Explanation:**` labels MUST be bolded (markdown `**` around the label including the colon), and there MUST be a blank line between each of the three rows. Do not collapse them onto consecutive lines.
 
-### NOT TO INCLUDE:
-- SETUP INSTRUCTIONS OR COMMANDS (any install or test command for any ecosystem — `pip install`, `pytest`, `npm install`, `npm test`, `mvn test`, `go test`, etc.)
-- Step-by-step implementation instructions
-- Exact code solutions or snippets
-- Direct solutions or hints
-- Names of specific stdlib classes in any language that point at the fix (do not say "use `OrderedDict`" — say "find a built-in primitive that can move a key to the most-recent end on access"; do not say "use `bisect`" — say "find a way to make lookup logarithmic instead of linear on sorted data")
-- Snippets that would reveal the data structure or algorithm choice
+Use 2-3 examples total. Cover the happy path, at least one edge case (empty input, single element, no-match sentinel), and a representative non-trivial input. Keep inputs small (~3-8 elements / a handful of edges) so the candidate can verify mentally.
+
+**DIAGRAM RULES:**
+- Graph problems: include a Mermaid diagram in a fenced ```mermaid``` code block. Use `graph LR` for undirected (edges `1 --- 2`) and `graph LR` with `-->` for directed (edges `1 --> 2`). Example:
+  ```mermaid
+  graph LR
+    1 --- 2
+    2 --- 3
+    3 --- 4
+    4 --- 1
+  ```
+- Tree problems: use Mermaid `graph TD` with directed parent→child edges (`1 --> 2`, `1 --> 3`, etc.).
+- Linked-list problems: use Mermaid `graph LR` with directed edges (`1 --> 2 --> 3`).
+- Array, string, numeric, or other non-visual problems: SKIP the diagram. Just Input/Output/Explanation.
+- Keep diagrams small (≤ 10 nodes). GitHub renders Mermaid natively.
+
+### 3. Constraints (MANDATORY — pure bounds list)
+Bullet list of the bounds and edge-case rules. Include:
+- Input ranges (e.g. `1 <= len(nums) <= 10^5`, `-10^9 <= nums[i] <= 10^9`, `0 <= V <= 10^4`, `0 <= E <= 5*10^4`).
+- Assumptions on input shape (e.g. "the list is sorted in ascending order", "the graph is directed and may contain unreachable components", "the tree may be empty").
+- Behavior on edge cases — what to return for empty input, single element, no valid answer (the documented sentinel — empty list, `None`/`null`/`nullopt`, `-1`, etc.), ties.
+- Target complexity (e.g. "O(n) time, O(n) space"; "O(V + E) time").
+
+NO examples sub-block in this section — Examples is its own section above. Just the bounds.
+
+### 4. How to Verify (MANDATORY — bullet points, 3-4 bullets)
+Provide verification checkpoints as a short bullet list:
+
+  - Tell the candidate which stub to edit (the `solution.*` file inside their chosen language folder) and which test command to run for that language
+  - Include the relevant test commands inline as compact code spans (e.g. `pytest`, `npm test`, `mvn test`, `make test`, `go test ./...`)
+  - Specify that all committed tests in the chosen folder must pass
+  - Note that only the standard library / built-in primitives may be used — no third-party DSA libraries
+  - **CRITICAL**: Bullet points only. No paragraphs. No troubleshooting or setup instructions.
+
+### NOT TO INCLUDE (anywhere in the README):
+- An "Objectives" section, a "Helpful Tips" section, a "Choose Your Language" section, a separate "Problem Statement" header, or any other narrative section beyond the four above.
+- Setup or install instructions for any toolchain.
+- Step-by-step implementation instructions.
+- Exact code solutions or snippets.
+- Per-language function-signature code blocks (data-shape definitions are OK, function signatures are NOT).
+- Names of specific stdlib classes in any language that point at the fix.
+- Any prose that reveals the data structure or algorithm choice.
+
+**CRITICAL:** NO section may name a data structure or algorithm. NO section may reveal the solution shape. The candidate derives the structural choice themselves from the Task Overview + Examples + Constraints.
 
 ## CRITICAL REMINDERS
 
-1. **Starter project must be runnable** with the standard install + test commands of whichever language the scenario implies, with the existing tests passing AND the algorithmic problem reproducible (slow / wrong output) until the candidate applies the fix
-2. **The starter MUST exhibit the described bug or performance issue.** Do NOT accidentally include the fix or a "good enough" partial solution. If the scenario says "linear scan over 5K entries", the starter must literally do a linear scan over the supplied threshold list.
-3. **NO comments** that reveal the solution or give hints
-4. **Task must be completable within {minutes_range} minutes** with a hard cap at 30 minutes
-5. **Focus on BASIC DSA only** — hash maps, stacks/queues, simple LRU (ordered map or hashmap+DLL), sorting, binary search, simple heap usage. NO graph algorithms, NO DP, NO advanced trees.
-6. **Language is decided by the scenario, not the prompt.** Use modern conventions for that language (Python 3.10+ / PEP 8, modern TypeScript/ESM, Java 17+, Go 1.21+, etc.) and built-in primitives / standard library only unless the scenario truly justifies a third-party dep
-7. **Code files MUST NOT contain** the implementation for the core data-structure / algorithmic fix the candidate must apply
-8. **README.md MUST be fully populated** with meaningful, task-specific content, and Objectives must describe end-states without naming stdlib symbols (see "Objectives" section above for FORBIDDEN phrasings)
-9. **.gitignore** must cover standard exclusions for whichever language the scenario implies (Python: `__pycache__/`, `.pytest_cache/`, `.venv/`; Node: `node_modules/`, `dist/`; Java: `target/`, `.gradle/`; Go: `bin/`, `vendor/`; etc.)
-10. **Task name** must be short, descriptive, under 50 characters, kebab-case, and SHOULD incorporate the company/product name from the scenario rather than a generic `dsa-` prefix
-11. **Select a different real-world scenario** each time for variety
-12. **The exact set of files in `code_files` is dictated by the scenario** — match the source/test paths the scenario references and add only the minimum project-metadata files needed for the test command to run on a fresh clone. Do NOT impose a Python-shaped layout on a non-Python scenario.
+1. **This is a classic DSA problem, NOT an app build.** No frameworks, no controllers, no routes, no databases, no service classes, no business-layer abstractions. One function, typed inputs, typed output.
+2. **The set of language folders is decided by the SCENARIO, not the prompt.** Emit a folder + stub + test + metadata for EACH language declared by the scenario — no extras, no omissions. If the scenario declares no languages, default to Python + JavaScript + Java.
+3. **For each declared language folder, ALL of: solution stub, test file, project metadata must be present and runnable.** ZERO compile/import errors. Tests fail against the stub but the test runner itself launches cleanly.
+4. **The candidate picks ONE language.** The other declared folders are ignored. The problem statement is identical across all declared languages.
+5. **Solution stubs return a placeholder so tests fail** until the candidate implements the function. The starter must not contain the actual algorithmic answer.
+6. **NO comments** that reveal the solution or give hints, in any of the declared language stubs.
+7. **Task must be completable within {minutes_range} minutes** with a hard cap at 30 minutes.
+8. **Focus on BASIC DSA only** — hash maps, stacks/queues, simple LRU (ordered map or hashmap+DLL), sorting, binary search (sorted or locally monotonic), basic strings, trivial graph algorithms on adjacency lists (BFS / DFS / connected components / cycle detection via three-state DFS), binary-tree traversal and LCA via single post-order pass. NO weighted shortest path (Dijkstra), NO DP, NO balanced/segment trees, NO heaps for top-k, NO sliding-window with multiple invariants.
+9. **Standard library / built-in primitives only** in every declared language. The standard test framework per language is allowed (pytest, jest, JUnit, xUnit, PHPUnit, etc.).
+10. **README.md is language-agnostic prose** — NO per-language signature code blocks in the README. The actual typed signature lives in each language's `solution.*` stub file; the candidate sees it when they open their chosen folder.
+11. **Task name** must be short, descriptive, under 50 characters, kebab-case, and SHOULD describe the algorithmic shape (e.g. `two-sum-sorted`, `lru-cache-basic`) rather than starting with a generic `dsa-` prefix.
+12. **Select a different inspiration scenario** each time for variety, but always render the result as a classic DSA problem — not as a refactor of an existing app module.
 """
 
 PROMPT_REGISTRY = {
