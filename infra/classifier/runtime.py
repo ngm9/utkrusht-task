@@ -1,21 +1,12 @@
 """Structured runtime spec for a generated task.
 
-Two model generations coexist here during Phase 2/3 of
-``docs/plans/2026-05-27-unified-classifier-template-schema.md``:
+Three concepts, three places:
+  1. Capability sheet  → ``templates`` row (jsonb capabilities; read by LLM)
+  2. Match decision    → ``task_template_match`` row (TaskTemplateMatch)
+  3. Per-task intent   → ``tasks.task_intent`` column (TaskIntent)
 
-* **Legacy (TaskRuntime / Runtime / Kind):** Original closed-enum model
-  the existing classifier emits. Read by ``resolve_plan`` and downstream
-  consumers today. Phase 4 deletes it.
-* **Unified (TaskTemplateMatch / TaskIntent / DatastoreRef + enums):**
-  New shape backing the merged classifier↔template architecture. The
-  classifier emits ``TaskTemplateMatch`` (combo→template+persona);
-  the content-generation LLM separately emits ``TaskIntent`` (per-task
-  use of the matched template). Persisted to ``task_template_match`` and
-  ``tasks.task_intent`` respectively.
-
-Until cutover, both shapes live side-by-side. New code targets the
-unified model; the legacy types stay only because callers haven't
-migrated yet.
+See ``docs/plans/2026-05-27-unified-classifier-template-schema.md`` for
+the full architecture.
 """
 from __future__ import annotations
 
@@ -24,42 +15,6 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-# ─────────────────────────────────────────────────────────────────────
-# Legacy model (Phase 4 deletes this section)
-# ─────────────────────────────────────────────────────────────────────
-
-Runtime = Literal[
-    "python", "node", "java", "php", "go", "rust",
-    "flutter", "ruby", "scala", "none",
-]
-
-Kind = Literal[
-    "app", "script", "mobile", "frontend", "testing",
-    "db_only", "llm", "vector_db", "non_code",
-]
-
-
-class TaskRuntime(BaseModel):
-    """Multi-dimensional infrastructure spec for one task. LEGACY."""
-
-    model_config = ConfigDict(frozen=True)
-
-    runtime: Runtime
-    frameworks: list[str] = Field(default_factory=list)
-    datastores: list[str] = Field(default_factory=list)
-    messaging: list[str] = Field(default_factory=list)
-    needs_browser: bool = False
-    kind: Kind
-
-
-# ─────────────────────────────────────────────────────────────────────
-# Unified model — Phase 2+ of unified-classifier-template-schema.
-#
-# Three concepts, three places:
-#   1. Capability sheet  → templates row (jsonb capabilities; read by LLM)
-#   2. Match decision    → task_template_match row (TaskTemplateMatch)
-#   3. Per-task intent   → tasks.task_intent column (TaskIntent)
-# ─────────────────────────────────────────────────────────────────────
 
 #: Role a datastore plays in a specific task. Per-task; not a template prop.
 Role = Literal["primary", "replica", "source", "target", "cache"]

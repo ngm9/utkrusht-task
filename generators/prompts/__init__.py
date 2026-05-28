@@ -14,7 +14,7 @@ multiagent.py and runs:
         → evals.py LLM-judges the task with a retry loop
         → github_utils.py creates template + answer repos and a gist
         → Supabase (dev/prod) stores the task metadata
-        → optionally droplet_utils.py deploys to a DigitalOcean droplet
+        → optionally e2b_flow deploys to an E2B sandbox
 
 Each technology stack has a hand-tuned prompt file under
 task_generation_prompts/{Beginner,Basic,Intermediate}/ — e.g.
@@ -47,12 +47,11 @@ mismatch, structural damage, or solution leak. validator.py adds
 deterministic checks. The loop merges both feedback streams and re-generates
 until pass or max_iterations.
 
-Infrastructure shape is captured by a ``TaskRuntime`` record (runtime,
-frameworks, datastores, messaging, needs_browser, kind) emitted by
-``classifier.py``. The classifier is an LLM call wrapped by a Supabase-backed
-cache (no rule layer); see ``runtime.py``, ``llm_classifier.py``, and
-``runtime_cache.py``. Downstream code reads structured fields directly to
-decide Docker/file layout and which E2B template to use.
+Infrastructure shape comes from the matched ``templates`` row + the
+classifier's persona pick. ``generators.task.runtime_resolver.resolve_plan``
+returns a ``ResolvedPlan(match, template)`` carrying both. Downstream code
+reads the template's capabilities (frameworks, datastores, protocols) and
+the match's persona to decide Docker/file layout and reviewer routing.
 
 ------------------------------------------------------------------------------
 Usage
@@ -61,18 +60,18 @@ Usage as CLI:
     python -m prompt_generator --name "Python, SQL" --proficiency BASIC
 
 Usage as module:
-    from generators.prompts import classify_task_runtime, TaskRuntime, Competency
+    from infra.classifier.classifier import Competency, to_competencies
+    from generators.task.runtime_resolver import resolve_plan
     from generators.prompts.retriever import retrieve_references
     from generators.prompts.input_files import build_detailed_skill_signal
 
-See docs/research/prompt-generator-optimized.md for design.
+See docs/plans/2026-05-27-unified-classifier-template-schema.md for the
+unified classifier+template architecture.
 """
-from infra.classifier.classifier import classify_task_runtime, to_competencies
-from infra.classifier.runtime import Competency, TaskRuntime
+from infra.classifier.classifier import to_competencies
+from infra.classifier.runtime import Competency
 
 __all__ = [
     "Competency",
-    "TaskRuntime",
-    "classify_task_runtime",
     "to_competencies",
 ]

@@ -1,0 +1,11 @@
+[
+    {
+        "competency_id": "56410e69-708f-430a-9942-318cc5622e47",
+        "created_at": "2024-12-14T19:43:56.333206+00:00",
+        "proficiency": "INTERMEDIATE",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Python - Django",
+        "scope": "For an INTERMEDIATE proficiency level in Python-Django (3-6 years experience), the person should be proficient in core Python concepts and Django basics like models, views, templates, migrations, and ORM. They can build and consume REST APIs using Django Rest Framework, handle authentication, pagination, and filtering, and manage complex database queries and optimization. They can work with cloud platforms and deployment tools like Heroku, AWS, or DigitalOcean, and implement version control practices using Git. They are skilled at writing unit tests and debugging, familiar with performance optimizations like caching, query optimization, and applying basic security practices. They can design and implement moderate complexity applications, refactor code, and integrate third-party services. They are also able to collaborate with teams, contribute to code reviews, and mentor junior developers. They’re expected to deliver reliable and maintainable applications, optimize existing code, and handle moderately complex systems and tasks with minimal supervision.",
+        "long_scope": null
+    }
+]

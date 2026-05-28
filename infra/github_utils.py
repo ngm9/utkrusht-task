@@ -2,9 +2,11 @@ import re
 import os
 import random
 import string
+import time
 from dotenv import load_dotenv
 import logging
 from github import Github, InputGitTreeElement
+from github.GithubException import GithubException
 
 logger = logging.getLogger(__name__)
 
@@ -146,71 +148,101 @@ def remove_collaborator(base_name: str, github_username: str):
         logger.error(f"Error removing collaborator: {str(e)}")
         raise
 
+UPLOAD_RETRY_ATTEMPTS = 3
+UPLOAD_RETRY_BASE_DELAY = 2.0
+_RETRYABLE_GITHUB_STATUS = {500, 502, 503, 504}
+
+
+def _is_retryable_github_error(exc: Exception) -> bool:
+    """GitHub's git database service flakes with transient 5xx on
+    `ref.edit` (commit-ref update) and occasionally on tree/blob writes.
+    Treat those as retryable; treat 4xx (auth, validation) as fatal."""
+    if isinstance(exc, GithubException):
+        return exc.status in _RETRYABLE_GITHUB_STATUS
+    return False
+
+
 def upload_files_batch(repo_obj, files_dict: dict, commit_message: str = "Initial commit", branch: str = "main") -> bool:
     """
     Upload multiple files to a GitHub repository in a single commit.
-    
+
+    Retries up to UPLOAD_RETRY_ATTEMPTS times on transient GitHub 5xx
+    errors (the git database service occasionally returns 500 on
+    `ref.edit`). 4xx errors are not retried — they indicate
+    auth/validation problems that won't fix themselves.
+
     Args:
         repo_obj: PyGithub repository object
         files_dict: Dictionary with file paths as keys and content as values
         commit_message: Commit message for the batch upload
         branch: Branch name to commit to
-        
+
     Returns:
         True if successful, False otherwise
     """
-    try:
-        logger.info(f"Uploading {len(files_dict)} files in a single commit")
-        
-        # Get the reference to the branch
-        ref = repo_obj.get_git_ref(f"heads/{branch}")
-        base_commit = repo_obj.get_git_commit(ref.object.sha)
-        base_tree = base_commit.tree
-        
-        # Create a list of InputGitTreeElement objects for all files
-        element_list = []
-        for file_path, content in files_dict.items():
-            # Strip leading slash from file path
-            clean_file_path = file_path.lstrip('/')
-            
-            # Convert content to string if it's a dict
-            if isinstance(content, dict):
-                import json
-                content_str = json.dumps(content, indent=2, ensure_ascii=False)
-            else:
-                content_str = str(content)
-            
-            # Create blob for the file content
-            blob = repo_obj.create_git_blob(content_str, "utf-8")
-            
-            # Add to element list using InputGitTreeElement
-            element = InputGitTreeElement(
-                path=clean_file_path,
-                mode="100644",  # File mode (normal file)
-                type="blob",
-                sha=blob.sha
+    last_exc: Exception | None = None
+    for attempt in range(1, UPLOAD_RETRY_ATTEMPTS + 1):
+        try:
+            logger.info(
+                f"Uploading {len(files_dict)} files in a single commit "
+                f"(attempt {attempt}/{UPLOAD_RETRY_ATTEMPTS})"
             )
-            element_list.append(element)
-            logger.info(f"Prepared file: {clean_file_path}")
-        
-        # Create a new tree with all files
-        new_tree = repo_obj.create_git_tree(element_list, base_tree)
-        
-        # Create a new commit
-        new_commit = repo_obj.create_git_commit(
-            message=commit_message,
-            tree=new_tree,
-            parents=[base_commit]
-        )
-        
-        # Update the reference to point to the new commit
-        ref.edit(new_commit.sha)
-        
-        logger.info(f"Successfully uploaded {len(files_dict)} files in a single commit")
-        return True
-        
-    except Exception as e:
-        logger.error(f"Error uploading files in batch: {str(e)}")
-        import traceback
-        logger.error(traceback.format_exc())
-        return False
+
+            ref = repo_obj.get_git_ref(f"heads/{branch}")
+            base_commit = repo_obj.get_git_commit(ref.object.sha)
+            base_tree = base_commit.tree
+
+            element_list = []
+            for file_path, content in files_dict.items():
+                clean_file_path = file_path.lstrip('/')
+
+                if isinstance(content, dict):
+                    import json
+                    content_str = json.dumps(content, indent=2, ensure_ascii=False)
+                else:
+                    content_str = str(content)
+
+                blob = repo_obj.create_git_blob(content_str, "utf-8")
+
+                element = InputGitTreeElement(
+                    path=clean_file_path,
+                    mode="100644",
+                    type="blob",
+                    sha=blob.sha
+                )
+                element_list.append(element)
+                logger.info(f"Prepared file: {clean_file_path}")
+
+            new_tree = repo_obj.create_git_tree(element_list, base_tree)
+
+            new_commit = repo_obj.create_git_commit(
+                message=commit_message,
+                tree=new_tree,
+                parents=[base_commit]
+            )
+
+            ref.edit(new_commit.sha)
+
+            logger.info(f"Successfully uploaded {len(files_dict)} files in a single commit")
+            return True
+
+        except Exception as e:
+            last_exc = e
+            if _is_retryable_github_error(e) and attempt < UPLOAD_RETRY_ATTEMPTS:
+                delay = UPLOAD_RETRY_BASE_DELAY * (2 ** (attempt - 1))
+                logger.warning(
+                    f"GitHub transient error ({getattr(e, 'status', '?')}) on "
+                    f"attempt {attempt}/{UPLOAD_RETRY_ATTEMPTS}; "
+                    f"sleeping {delay:.1f}s and retrying"
+                )
+                time.sleep(delay)
+                continue
+
+            logger.error(f"Error uploading files in batch: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return False
+
+    if last_exc is not None:
+        logger.error(f"All {UPLOAD_RETRY_ATTEMPTS} upload attempts failed; last error: {last_exc}")
+    return False

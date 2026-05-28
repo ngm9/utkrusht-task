@@ -44,7 +44,19 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).parent.resolve()
 RUNS_DIR = REPO_ROOT / ".task_agent_runs"
 INPUT_FILES_ROOT = REPO_ROOT / "data" / "generated" / "input_files"
-SCENARIOS_FILE = REPO_ROOT / "data" / "generated" / "scenarios" / "task_scenarios.json"
+SCENARIOS_ROOT = REPO_ROOT / "data" / "generated" / "scenarios"
+
+
+def scenarios_file_for(level: str) -> Path:
+    """Return the scenarios file that stage 02 actually writes for `level`.
+
+    Mirrors generators.scenarios.generator.get_target_scenario_file —
+    INTERMEDIATE goes to its own file, everything else lands in
+    task_scenarios.json. Keep this in lockstep with the generator.
+    """
+    if level.upper() == "INTERMEDIATE":
+        return SCENARIOS_ROOT / "task_scenarios_intermediate.json"
+    return SCENARIOS_ROOT / "task_scenarios.json"
 
 
 # ----------------------------------------------------------------------
@@ -279,7 +291,8 @@ def main() -> int:
     # to `dev`, so a `--env prod` run would create the task but store it in dev.
     rec = _run_stage(combo_dir, "04_tasks", [
         py, "multiagent.py", "generate_tasks",
-        "-c", str(comp_json), "-b", str(bg_json), "-s", str(SCENARIOS_FILE),
+        "-c", str(comp_json), "-b", str(bg_json),
+        "-s", str(scenarios_file_for(level)),
         "--env", args.env,
     ])
     stages.append(rec)

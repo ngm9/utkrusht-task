@@ -24,8 +24,8 @@ from dotenv import load_dotenv
 
 logger = logging.getLogger("prompt_generator")
 
-from infra.classifier.runtime import Competency, TaskRuntime
-from generators.task.runtime_resolver import resolve_plan
+from infra.classifier.runtime import Competency
+from generators.task.runtime_resolver import TemplateSpec, resolve_plan
 from generators.prompts.db_queries import (
     TaskExample,
     fetch_competency_scope,
@@ -149,22 +149,21 @@ class GeneratePromptSignature(dspy.Signature):
     JSON example causes downstream `KeyError: '\\n  "title"'` and no task is
     ever generated.
 
-    HARD CONSTRAINT — derive structure from the TaskRuntime fields, NOT a single label:
-      • `runtime`, named `frameworks`, and their common libraries are PRE-INSTALLED by
-        the E2B template. Do NOT include `apt-get install`, `pip install`, or
-        `npm install` for the runtime or its common libs in run.sh.
+    HARD CONSTRAINT — derive structure from the matched template's capabilities, NOT a single label:
+      • `primary_runtime` and the capability `frameworks` (and their common
+        libraries) are PRE-INSTALLED by the E2B template. Do NOT include
+        `apt-get install`, `pip install`, or `npm install` for the runtime or
+        its common libs in run.sh.
       • `datastores` non-empty → emit a `docker-compose.yml` that brings up those
         service containers (postgres, redis, mongo, mysql, …). `run.sh` does
         `docker compose up -d`; `kill.sh` does `docker compose down`.
-      • `messaging` non-empty → same Compose pattern (kafka, rabbitmq, …).
-      • `needs_browser` true → the template ships Chromium; do NOT install it.
-      • `kind="mobile"` → no Dockerfile, no compose; run the runtime's native
+      • `persona="mobile"` → no Dockerfile, no compose; run the runtime's native
         test command (e.g. `flutter test`, `npx react-native test`).
-      • `kind="db_only"` → just an `init_database.sql` + Compose; no app code.
-      • `kind="non_code"` → data files only (CSV / JSON); no `run.sh`.
-      • `kind="frontend"` → `package.json`, no Docker, browser-side only.
-      • `kind="testing"` with `needs_browser` → Playwright/Selenium test suite,
-        chromium provided by the template, the task ships the spec files.
+      • `persona="dba"` → just an `init_database.sql` + Compose; no app code.
+      • `persona="pm"` → data files only (CSV / JSON); no `run.sh`.
+      • `persona="frontend"` → `package.json`, no Docker, browser-side only.
+      • `persona="sdet"` → test suite shape; the template ships the runner
+        (pytest, jest, playwright, …); the task ships the spec files.
 
     HARD CONSTRAINT — generated-task output JSON schema (CANONICAL KEYS):
     The INSTRUCTIONS prompt you produce tells a downstream LLM to emit a JSON
@@ -194,6 +193,49 @@ class GeneratePromptSignature(dspy.Signature):
       - INTERMEDIATE (3-5 yrs, 45-60 min): 4-5 concepts, optimization, architecture,
         proper testing, error handling, performance tuning.
 
+    HARD CONSTRAINT — scenario locking (the task domain MUST come from the
+    scenarios, NOT the org context):
+    Downstream task-generation LLMs see TWO competing signals — the
+    organization context (e.g. "Utkrusht builds proof-of-skills assessments")
+    AND the real-world scenarios (e.g. e-commerce dashboards, healthcare
+    APIs, logistics tools). Without an explicit lock, the LLM blends them
+    and invents tasks in the org's domain that aren't in the scenarios list
+    — e.g. generating an "AssessmentAttemptViewSet" task when every
+    scenario was about e-commerce / healthcare / real-estate.
+
+    The INSTRUCTIONS prompt you generate MUST contain a section like this,
+    verbatim or paraphrased with the same force:
+
+      ## SCENARIO LOCK (mandatory)
+      - You MUST pick EXACTLY ONE scenario from `real_world_task_scenarios`.
+      - The generated task's BUSINESS DOMAIN must match the chosen
+        scenario's domain (e-commerce, healthcare, logistics, real-estate,
+        etc.). DO NOT invent a new domain.
+      - The generated task's CURRENT IMPLEMENTATION problem and YOUR TASK
+        bullet list must be the chosen scenario's, adapted to the
+        target competency. You may rename variables and adjust minor
+        details, but the SHAPE and the DOMAIN must come from the scenario.
+      - The candidate's EMPLOYER is described in `organization_background`.
+        The EMPLOYER is who is administering the assessment — it is NOT
+        the domain of the task. The task domain comes from the scenarios.
+      - If you find yourself writing about a domain that does NOT appear
+        in `real_world_task_scenarios` (e.g. "assessments", "leaderboards",
+        "proof-of-skills platforms" when no scenario mentions those), STOP
+        — that's domain hallucination. Restart with one of the listed
+        scenarios.
+      - When `real_world_task_scenarios` is empty or "(none provided)",
+        explicitly state which generic domain you picked (e.g. "I picked
+        e-commerce because the competency is web-framework-backend") and
+        why; do not silently default to the org's domain.
+
+    Place this section near the top of the INSTRUCTIONS prompt, before
+    the technical / file-layout requirements, so it anchors the LLM
+    before it starts drafting.
+
+    Also: when drafting the INPUT_AND_ASK prompt, replace soft language
+    like "draw inspiration from" with "PICK EXACTLY ONE". Soft language
+    is the failure mode that lets the LLM drift.
+
     REFERENCE PROMPTS (knowledge base):
     Use `reference_prompts` for the structural template — section ordering, tone,
     output JSON shape, README sections. Do NOT copy reference content verbatim;
@@ -209,16 +251,17 @@ class GeneratePromptSignature(dspy.Signature):
     )
     proficiency: str = dspy.InputField(desc="Target proficiency level (BASIC/BEGINNER/INTERMEDIATE)")
     runtime: str = dspy.InputField(
-        desc="Language runtime — one of python|node|java|php|go|rust|flutter|ruby|scala|none"
+        desc="Primary language runtime of the matched template (e.g. python, node)"
     )
     frameworks: str = dspy.InputField(
-        desc="JSON list of framework strings, e.g. '[\"fastapi\"]' or '[]'"
+        desc="JSON list of framework names the template advertises in capabilities.frameworks, e.g. '[\"fastapi\"]' or '[]'"
     )
     datastores: str = dspy.InputField(
-        desc="JSON list of datastore names brought up via docker-compose, e.g. '[\"postgres\"]' or '[]'"
+        desc="JSON list of datastore names the template supports, brought up via docker-compose if used, e.g. '[\"postgres\"]' or '[]'"
     )
-    kind: str = dspy.InputField(
-        desc="High-level shape: app|script|mobile|frontend|testing|db_only|llm|vector_db|non_code"
+    persona: str = dspy.InputField(
+        desc="Reviewer persona for this combo (one of the matched template's "
+             "personas, e.g. backend|data|mle|sdet|frontend|mobile|dba|pm)"
     )
     competency_scopes: str = dspy.InputField(
         desc="AUTHORITATIVE scope text from Supabase competencies table — defines what is "
@@ -260,17 +303,36 @@ class VerifyPromptSignature(dspy.Signature):
       1. SCOPE VIOLATION: Required candidate skills exceed competency_scopes.
          Example: BASIC scope says "limited async understanding" but the prompt
          requires async/await throughout — REJECT.
-      2. STRUCTURE MISMATCH: code_files don't match the TaskRuntime fields.
-         Example: kind="script" with a Flask/FastAPI app file present — REJECT.
+      2. STRUCTURE MISMATCH: code_files don't match the template's
+         capabilities + persona.
+         Example: persona="data" / script-style task with a Flask/FastAPI app
+         file present — REJECT.
          Example: datastores=["postgres"] but no docker-compose.yml — REJECT.
-         Example: kind="mobile" with a Dockerfile present — REJECT.
+         Example: persona="mobile" with a Dockerfile present — REJECT.
       3. STRUCTURAL DAMAGE: missing PROMPT_REGISTRY, missing format vars
          ({organization_background}, {role_context}, {competencies},
          {real_world_task_scenarios}), or wrong registry key format.
       4. SOLUTION LEAK: starter code or comments give away the solution.
+      5. MISSING SCENARIO LOCK: the INSTRUCTIONS prompt does NOT contain a
+         section forcing the downstream LLM to pick exactly ONE scenario
+         from real_world_task_scenarios and stay in that scenario's
+         business domain. Concretely, reject when ANY of these are true:
+           - The prompt uses soft language ("draw inspiration from",
+             "loosely based on", "feel free to combine") instead of a
+             hard pick ("PICK EXACTLY ONE", "MUST come from", "do NOT
+             invent a new domain").
+           - The prompt does not warn the downstream LLM against using
+             the employer's domain as the task domain.
+           - The prompt has no anti-hallucination clause for the case
+             where the LLM finds itself in a domain not in the scenarios.
+         Without this lock, generated tasks drift into the org context's
+         domain (e.g. "assessments", "leaderboards") and ignore the
+         provided scenarios. The lock must be near the TOP of the
+         INSTRUCTIONS prompt so it anchors the downstream LLM before
+         it starts drafting.
 
     PASS conditions (accept even if not perfect):
-      - All four hard-fail checks above pass.
+      - All five hard-fail checks above pass.
       - INSTRUCTIONS prompt has GOAL, infrastructure spec, REQUIRED OUTPUT
         JSON STRUCTURE, and README structure sections (in some recognizable form).
       - Time constraint matches proficiency (BEGINNER: 20-30 min, BASIC: 30-45 min,
@@ -284,16 +346,16 @@ class VerifyPromptSignature(dspy.Signature):
     new_prompt_file: str = dspy.InputField(desc="The candidate prompt file source")
     competencies: str = dspy.InputField(desc="Target competencies + proficiency")
     runtime: str = dspy.InputField(
-        desc="Expected language runtime — python|node|java|php|go|rust|flutter|ruby|scala|none"
+        desc="Primary language runtime of the matched template (e.g. python, node)"
     )
     frameworks: str = dspy.InputField(
-        desc="JSON list of expected framework strings, e.g. '[\"fastapi\"]'"
+        desc="JSON list of expected framework strings (template capabilities.frameworks), e.g. '[\"fastapi\"]'"
     )
     datastores: str = dspy.InputField(
-        desc="JSON list of expected datastore names, e.g. '[\"postgres\"]'"
+        desc="JSON list of expected datastore names (template capabilities.datastores), e.g. '[\"postgres\"]'"
     )
-    kind: str = dspy.InputField(
-        desc="Expected high-level shape: app|script|mobile|frontend|testing|db_only|llm|vector_db|non_code"
+    persona: str = dspy.InputField(
+        desc="Reviewer persona for this combo (backend|data|mle|sdet|frontend|mobile|dba|pm|…)"
     )
     reference_prompts: str = dspy.InputField(desc="Source of similar reference prompts (for style calibration)")
     similar_tasks: str = dspy.InputField(desc="Summaries of tasks the prompt should produce")
@@ -382,24 +444,30 @@ class PromptGeneratorAgent(dspy.Module):
                     [c.name for c in competencies], proficiency, env)
         logger.info("=" * 72)
 
-        # ─── STEP 1: resolver (combo cache + classifier) ──────────────
-        # Routes through resolve_plan so we hit the competency_combo_classification
-        # cache instead of re-classifying on every prompt-generator run.
-        logger.info("STEP 1 / runtime_resolver.py — resolving TaskRuntime via combo cache")
+        # ─── STEP 1: resolver (task_template_match cache + classifier) ─
+        # Routes through resolve_plan so we hit the task_template_match cache
+        # instead of re-classifying on every prompt-generator run.
+        logger.info("STEP 1 / runtime_resolver.py — matching template via combo cache")
         plan = resolve_plan(competencies)
-        if plan.task_runtime is None:
+        if plan.match is None or plan.template is None:
             raise RuntimeError(
-                f"resolve_plan returned empty plan for combo={plan.combo_key!r} — "
-                "classifier failed and no cached row exists; cannot generate a prompt"
+                f"resolve_plan returned no usable match for combo={plan.combo_key!r} — "
+                f"match={plan.match!r} template={plan.template!r}; "
+                "cannot generate a prompt without a matched built template"
             )
-        runtime = plan.task_runtime
-        logger.info("  → runtime=%s kind=%s frameworks=%s datastores=%s",
-                    runtime.runtime, runtime.kind,
-                    runtime.frameworks, runtime.datastores)
+        template = plan.template
+        persona = plan.match.persona or (template.personas[0] if template.personas else "")
+        caps = template.capabilities or {}
+        cap_frameworks = list(caps.get("frameworks") or [])
+        cap_datastores = list(caps.get("datastores") or [])
+        logger.info("  → template_id=%s primary_runtime=%s persona=%s "
+                    "frameworks=%s datastores=%s",
+                    template.template_id, template.primary_runtime, persona,
+                    cap_frameworks, cap_datastores)
 
         # ─── STEP 2: retriever (5-level fallback) ─────────────────────
         logger.info("STEP 2 / retriever.py — running 5-level fallback ladder")
-        retrieval = retrieve_references(competencies, proficiency, runtime=runtime)
+        retrieval = retrieve_references(competencies, proficiency, template=template)
         logger.info("  → bootstrap_mode = %s", retrieval.bootstrap_mode)
         logger.info("  → fallback_level = %d", retrieval.fallback_level)
         logger.info("  → references found: %d", len(retrieval.references))
@@ -449,12 +517,13 @@ class PromptGeneratorAgent(dspy.Module):
         logger.info("STEP 5 — context payload sizes for the LLM call")
         logger.info("  competencies              %6d chars  %r", len(comp_str), comp_str)
         logger.info("  proficiency               %6d chars  %r", len(proficiency), proficiency)
-        frameworks_json = json.dumps(runtime.frameworks)
-        datastores_json = json.dumps(runtime.datastores)
-        logger.info("  runtime                   %6d chars  %r", len(runtime.runtime), runtime.runtime)
-        logger.info("  kind                      %6d chars  %r", len(runtime.kind), runtime.kind)
-        logger.info("  frameworks                %6d chars  %r", len(frameworks_json), runtime.frameworks)
-        logger.info("  datastores                %6d chars  %r", len(datastores_json), runtime.datastores)
+        frameworks_json = json.dumps(cap_frameworks)
+        datastores_json = json.dumps(cap_datastores)
+        logger.info("  runtime                   %6d chars  %r",
+                    len(template.primary_runtime), template.primary_runtime)
+        logger.info("  persona                   %6d chars  %r", len(persona), persona)
+        logger.info("  frameworks                %6d chars  %r", len(frameworks_json), cap_frameworks)
+        logger.info("  datastores                %6d chars  %r", len(datastores_json), cap_datastores)
         logger.info("  competency_scopes         %6d chars", len(scopes_str))
         logger.info("  reference_prompts         %6d chars", len(refs_text))
         logger.info("  similar_tasks             %6d chars", len(tasks_text))
@@ -480,10 +549,10 @@ class PromptGeneratorAgent(dspy.Module):
             gen_out = self.generate(
                 competencies=comp_str,
                 proficiency=proficiency,
-                runtime=runtime.runtime,
+                runtime=template.primary_runtime,
                 frameworks=frameworks_json,
                 datastores=datastores_json,
-                kind=runtime.kind,
+                persona=persona,
                 competency_scopes=scopes_str,
                 reference_prompts=refs_text,
                 similar_tasks=tasks_text,
@@ -504,10 +573,10 @@ class PromptGeneratorAgent(dspy.Module):
             verify_out = self.verify(
                 new_prompt_file=new_prompt,
                 competencies=comp_str,
-                runtime=runtime.runtime,
+                runtime=template.primary_runtime,
                 frameworks=frameworks_json,
                 datastores=datastores_json,
-                kind=runtime.kind,
+                persona=persona,
                 reference_prompts=refs_text,
                 similar_tasks=tasks_text,
                 competency_scopes=scopes_str,

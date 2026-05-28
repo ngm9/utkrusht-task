@@ -1,6 +1,15 @@
-# Plan: Unified Classifier ↔ Template Schema (Merge Proposal + v2 Intent)
+# Plan: Unified Classifier ↔ Template Schema
 
-> **Status:** Plan locked 2026-05-27. Not yet implemented. Supersedes the v2 TaskRuntime stress-test proposal and the standalone merge proposal in [`classifier.md`](../task-classifier/classifier.md) — this is the single source of truth for the direction.
+> **Status:** Phases 0-4 shipped on `feat/unified-classifier-template-schema`
+> (2026-05-27 → 2026-05-28). The plan is now historical reference. Supersedes
+> the standalone merge proposal in [`classifier.md`](../task-classifier/classifier.md)
+> and an earlier exploratory `v2 TaskRuntime` design.
+>
+> **Naming decision (Phase 3):** new symbols ship with their canonical names
+> (`resolve_plan`, `classify_match`, `TemplateSpec`, `ResolvedPlan`, etc.).
+> The plan text below sometimes references intermediate `*_v2` names from the
+> work in flight — the shipped code does not carry those suffixes (user
+> directive: *"nothing in prod, no v2 naming"*).
 > **Owner:** Rohan
 > **Author note:** Naman's merge proposal (PR #19, branch `docs/classifier-template-merge-proposal`) is the structural base; this plan extends it with per-task intent.
 
@@ -333,55 +342,55 @@ Build the new classification path alongside the old one. Feature-flag the consum
 
 | Step | Task | Files |
 |---|---|---|
-| 2.1 | New Pydantic models: `DatastoreRef`, `TaskTemplateMatch`, `TaskIntent` (NOT a classifier output — emitted by the content-generation LLM) | `infra/classifier/runtime.py` (additive — keep TaskRuntime for now) |
+| 2.1 | New Pydantic models: `DatastoreRef`, `TaskTemplateMatch`, `TaskIntent` (NOT a classifier output — emitted by the content-generation LLM) | `infra/classifier/runtime.py` (during the in-flight branch this was additive alongside `TaskRuntime`; Phase 3 deleted the legacy section) |
 | 2.2 | Update LLM classifier system prompt: input is competencies + `SELECT template_id, capabilities, personas, eval_methods FROM templates WHERE status='built'`. Output schema: `TaskTemplateMatch` only (template_id + persona + no_match fields). **No scenario.** | `infra/classifier/llm_classifier.py` |
 | 2.3 | Strict validation: `match.template_id` must be in the active templates list OR `match.no_match_reason` must be set. Pydantic + a custom validator | `infra/classifier/llm_classifier.py` |
-| 2.4 | New `resolve_plan_v2(competencies)` — no scenario, no background. Writes to `task_template_match` + reads from `templates`. Returns `ResolvedPlan` (match + template only). Old `resolve_plan` stays callable for backward compat | `generators/task/runtime_resolver.py` |
-| 2.5 | Tests: cache hit, miss, stale (`registry_version` bump), no_match path, template_id-doesn't-exist rejection. Polyglot test moves to Phase 3 (intent is generated there, not by resolve_plan). | `tests/test_runtime_resolver_v2.py` (new) |
+| 2.4 | New `resolve_plan(competencies)` — no scenario, no background. Writes to `task_template_match` + reads from `templates`. Returns `ResolvedPlan` (match + template only). During Phase 2 this landed as `resolve_plan_v2` alongside the legacy; Phase 3 deleted the legacy and renamed to canonical | `generators/task/runtime_resolver.py` |
+| 2.5 | Tests: cache hit, miss, stale (`registry_version` bump), no_match path, template_id-doesn't-exist rejection. Polyglot test moves to Phase 3 (intent is generated there, not by resolve_plan). | `tests/test_runtime_resolver.py` |
 
-**Definition of done:** `resolve_plan_v2(["Python (INTERMEDIATE)"])` writes one row to `task_template_match` and returns a `ResolvedPlan` with `template.template_id == "utkrusht-python"`, `match.persona == "backend"`. All new tests pass.
+**Definition of done:** `resolve_plan(["Python (INTERMEDIATE)"])` writes one row to `task_template_match` and returns a `ResolvedPlan` with `template.template_id == "utkrusht-python"`, `match.persona == "backend"`. All new tests pass.
 
 **Estimated:** 2 days.
 
 ---
 
-### Phase 3 — Consumer cutover (feature-flagged, parallelizable)
+### Phase 3 + Phase 4 — Consumer cutover + legacy delete (one swing, no feature flag)
 
-Each consumer migrates behind `USE_UNIFIED_CLASSIFICATION=true`. Per-consumer rollback if needed.
+User directive landed mid-flight: *"nothing in prod, no v2 naming"*. Phases 3
+and 4 were therefore collapsed — the legacy `TaskRuntime`/`resolve_plan` path
+was deleted in the same change-set that wired consumers onto the new shape and
+renamed `*_v2` symbols back to their canonical names.
 
 | Consumer | Change | File |
 |---|---|---|
-| **`generators/task/creator.py`** | Call `resolve_plan_v2(competencies)` for the match + template. Pass `scenario`, `background`, and the resolved template to the content-generation LLM (the existing agent in `generators/prompts/agent.py`). That LLM emits content + `task_intent`. Persist `task_intent` to `tasks.task_intent` at task-creation time. | `generators/task/creator.py` |
-| **`generators/prompts/agent.py`** (the content-generation LLM) | **This is the LLM call that sees the scenario.** Inputs: competencies, scenario, background, `plan.template` (capabilities + persona). Outputs: TWO things — (a) task content (description, files, run.sh, compose, tests) AND (b) `TaskIntent` (datastore roles, protocols used, eval_method, secondary_runtimes, optional persona_override). DSPy InputFields include `template_id`, template capabilities, default persona. | `generators/prompts/agent.py` |
-| **`infra/e2b/sandbox_eval.py`** | Read `TemplateSpec` from new resolve_plan. Look up the task's `task_intent.secondary_runtimes` from the `tasks` row. **Before** `build_cmd`, iterate the resolved install_cmds and run each + verify. Read `task_intent.eval_method` to dispatch the right runner (`test_suite` → existing path; others stubbed initially). | `infra/e2b/sandbox_eval.py` |
-| **`infra/evals.py`** | Persona routing: prefer `tasks.task_intent.persona_override` if set, else fall back to `match.persona`. (Both come from the resolved plan / task row, not from `TaskRuntime.kind`.) | `infra/evals.py` |
-| **Reference retriever** (wherever it lives) | Match on `match.template_id` (exact) + `task_intent.datastores` (name overlap) + effective persona (override → match). | TBD — find it during impl |
+| **`generators/task/creator.py`** | Call `resolve_plan(competencies)` for the match + template. Read `plan.match.persona` for eval routing. Stamp `tasks.task_intent = {}` at task-creation time (the full `TaskIntent` is emitted later by the content-generation LLM in a follow-up; the empty default keeps the column non-null until then). | `generators/task/creator.py` |
+| **`generators/prompts/agent.py`** (the content-generation LLM) | **This is the LLM call that sees the scenario.** Reads `plan.template.primary_runtime`, `plan.template.capabilities.{frameworks,datastores}`, and `plan.match.persona` as DSPy InputFields. **Future work:** also emit a `TaskIntent` alongside the task content so creator can persist it. | `generators/prompts/agent.py` |
+| **`infra/e2b/sandbox_eval.py`** | Reads `plan.template.template_id` (was `.name`) + `template.build_cmd`/`test_cmd`/`compile_cmd`. **Future work:** install secondary runtimes from `task_intent.secondary_runtimes` before `build_cmd`; dispatch on `task_intent.eval_method`. | `infra/e2b/sandbox_eval.py` |
+| **`infra/evals.py`** | Persona routing: re-keyed `PERSONA_PROMPTS` from old `Kind` values (`app`/`script`/…) to new persona names (`backend`/`data`/`mle`/`sdet`/`frontend`/`mobile`/`dba`/`vector_engineer`/`pm`). `_persona_prefix(persona)` now takes a persona string. **Future work:** prefer `task_intent.persona_override` over `match.persona` once intent is emitted. | `infra/evals.py` |
+| **`generators/prompts/retriever.py`** | `RetrievalResult.runtime: TaskRuntime` → `RetrievalResult.template: TemplateSpec`. Filename heuristics now read `template.primary_runtime` + `template.capabilities.{datastores,frameworks}` (no more `messaging`/`needs_browser` — those move to capabilities in a future template definition). | `generators/prompts/retriever.py` |
 
-**Rollback policy:** each consumer's PR ships behind the flag. Smoke-test on ≥3 representative tasks per consumer before flipping the flag. If any consumer regresses, flip its flag back without touching the others.
+**What landed in code (consumer cutover):**
+* `creator.py` — wired to new shape; writes `task_intent: {}` placeholder.
+* `evaluator.py` — `run_evaluations(persona=…)` (was `kind=…`).
+* `evals.py` — re-keyed personas, kept all existing prompts.
+* `sandbox_eval.py` — reads `template.template_id` + `.primary_runtime`.
+* `agent.py` — DSPy fields renamed `kind` → `persona`; reads from `plan.template`.
+* `retriever.py` — `TaskRuntime` → `TemplateSpec`, capability-aware filename matching.
+* `classifier/classifier.py` — collapsed to `to_competencies()` + `Competency` re-export only.
+* All tests touching `TaskRuntime`/`classify_with_llm`/`_TEMPLATES` rewritten or deleted.
 
-**Definition of done:** all four consumers running on the new path in dev. Smoke tests pass on a representative spread (single-runtime, polyglot, no_match cases).
+**Cleanup that shipped at the same time (collapsed Phase 4):**
+| Step | Task | Status |
+|---|---|---|
+| 4.1 | Drop `competency_combo_classification` and `template_registry` tables | Migration `2026-05-29-drop-legacy-tables.sql` written — **NOT applied yet**; apply after consumer smoke-test passes |
+| 4.2 | Removed `TaskRuntime`, `Kind`, `Runtime` Literal enums from `infra/classifier/runtime.py` | ✅ |
+| 4.3 | Removed `template_name_for_runtime()`, `_TEMPLATES` seed, `_get_template` (old), `_cache_lookup`, `_cache_write`, `_db_load_template`, `_TEMPLATE_CACHE` | ✅ |
+| 4.4 | Removed legacy `resolve_plan`; renamed `resolve_plan_v2` → `resolve_plan`, `classify_match_v2` → `classify_match`, `TemplateSpecV2` → `TemplateSpec`, `ResolvedPlanV2` → `ResolvedPlan`, all `_v2` suffixes dropped | ✅ |
+| 4.5 | No feature flag was ever added (user directive: skip the flag, rip and replace) | ✅ |
+| 4.6 | `tests/test_runtime_resolver_v2.py` overwrote `tests/test_runtime_resolver.py`; legacy classifier/runtime tests rewritten for the new shape | ✅ |
+| 4.7 | Update [`classifier.md`](../task-classifier/classifier.md), [`e2b-templates.md`](../task-classifier/e2b-templates.md), and the [`classifier-flow.excalidraw`](../drawings/task-classifier/classifier-flow.excalidraw) diagram | Pending follow-up |
 
-**Estimated:** 3 days (parallelizable across consumers).
-
----
-
-### Phase 4 — Cleanup
-
-Delete the old paths. No coexistence drift.
-
-| Step | Task |
-|---|---|
-| 4.1 | Drop `competency_combo_classification` and `template_registry` tables (data already copied) |
-| 4.2 | Remove `TaskRuntime`, `Kind`, `Runtime` Literal enums from `infra/classifier/runtime.py` |
-| 4.3 | Remove `template_name_for_runtime()` helper and any rule-based picker code in `runtime_resolver.py` |
-| 4.4 | Remove the old `resolve_plan` shim; rename `resolve_plan_v2` → `resolve_plan` |
-| 4.5 | Remove the `USE_UNIFIED_CLASSIFICATION` feature flag from all consumers |
-| 4.6 | Delete the old test files that referenced `TaskRuntime` shape; the new tests are the spec |
-| 4.7 | Update [`classifier.md`](../task-classifier/classifier.md), [`e2b-templates.md`](../task-classifier/e2b-templates.md), and the [`classifier-flow.excalidraw`](../drawings/task-classifier/classifier-flow.excalidraw) diagram to reflect the new schema as shipped (no more "Proposed" labels on these items) |
-
-**Definition of done:** repo grep for `TaskRuntime`, `Kind` Literal, `template_registry`, `competency_combo_classification` returns zero results outside migration files.
-
-**Estimated:** 1 day.
+**Definition of done:** repo grep for `TaskRuntime`, `Kind` Literal, `_TEMPLATES`, `classify_with_llm`, `_v2` returns zero hits outside this plan doc + the historical smoke-test scripts.
 
 ---
 
@@ -481,9 +490,9 @@ Four consumers; if one regresses, we want to roll back that one without losing t
 
 1. Phase 0: CI fails on Dockerfile-without-manifest-update PR; existing `utkrusht-python` has a tracked manifest.
 2. Phase 1: `templates` and `task_template_match` exist in dev; row counts match the old tables.
-3. Phase 2: `resolve_plan_v2` passes all new tests including no_match, polyglot, and stale-registry-version cases.
+3. Phase 2: `resolve_plan` (landed as `resolve_plan_v2`, then renamed in Phase 3) passes all new tests including no_match, polyglot, and stale-registry-version cases.
 4. Phase 3: ≥3 representative tasks run end-to-end on the new path in dev: a single-runtime python+postgres, a polyglot rust+node, and a no_match (infra task).
-5. Phase 4: zero references to `TaskRuntime`, `Kind` Literal, `template_registry`, `competency_combo_classification` outside migration files.
+5. Phase 4 (collapsed into Phase 3): zero references to `TaskRuntime`, `Kind` Literal, `_TEMPLATES`, `classify_with_llm`, `_v2` outside migration files + this plan doc.
 
 When all five are checked, the unified schema is shipped and old paths are gone.
 

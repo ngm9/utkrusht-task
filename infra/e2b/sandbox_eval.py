@@ -29,11 +29,11 @@ from typing import Any
 from infra.logger_config import logger
 
 # The gate reads the template + build/test/compile commands from the
-# ResolvedPlan the caller hands in (B6: those values live in the
-# ``template_registry`` Supabase table; ``task_generation.runtime_resolver``
-# loads them and stamps them onto ``plan.template``). Doing it that way
-# means this module touches no ``task_generation`` import at all — sidesteps
-# the package-init import cycle that bit pytest collection earlier.
+# ResolvedPlan the caller hands in (those values live in the ``templates``
+# Supabase table; ``generators.task.runtime_resolver`` loads them and
+# stamps them onto ``plan.template``). Doing it that way means this module
+# touches no ``generators.task`` import at all — sidesteps the package-init
+# import cycle that bit pytest collection earlier.
 
 _TASK_DIR = "/home/user/task"
 _SANDBOX_TIMEOUT_S = 300
@@ -170,15 +170,15 @@ def _finish(result: SandboxEvalResult) -> SandboxEvalResult:
 def run_sandbox_eval(code_files: dict, plan: Any) -> SandboxEvalResult:
     """Boot a sandbox, write the generated code in, verify it compiles + runs.
 
-    ``plan`` is a ``ResolvedPlan`` (or any object exposing ``.runtime`` and
-    a ``.template`` with ``.name``/``.build_cmd``/``.test_cmd`` attributes);
+    ``plan`` is a ``ResolvedPlan`` (or any object exposing a ``.template``
+    with ``.template_id``/``.primary_runtime``/``.build_cmd``/``.test_cmd``);
     ``None`` is also accepted and treated as an explicit no-template skip.
     Returns ``skipped=True`` when the plan has no template, no code is
     provided, or E2B infra fails — a skip never blocks the task.
     """
-    runtime = getattr(plan, "runtime", None)
     template_spec = getattr(plan, "template", None)
-    template = template_spec.name if template_spec is not None else None
+    template = template_spec.template_id if template_spec is not None else None
+    runtime = template_spec.primary_runtime if template_spec is not None else None
 
     logger.info(f"{_GATE} {'─' * 60}")
     logger.info(f"{_GATE} E2B build/test gate — runtime={runtime!r} "
@@ -195,7 +195,7 @@ def run_sandbox_eval(code_files: dict, plan: Any) -> SandboxEvalResult:
 
     # Pulled from the ResolvedPlan so a future Java/Node/Go runtime gets its
     # own build/test/compile recipe without code changes here — the recipe
-    # lives in ``template_registry`` (B6).
+    # lives in ``templates``.
     build_cmd = template_spec.build_cmd
     test_cmd = template_spec.test_cmd
     compile_cmd = template_spec.compile_cmd or "python -m compileall -q ."

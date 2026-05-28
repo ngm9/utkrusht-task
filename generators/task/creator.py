@@ -60,6 +60,7 @@ from generators.task.persistence import (
     GITHUB_UTKRUSHTAPPS_TOKEN,
     REPO_OWNER,
     create_answer_github_repo,
+    fetch_existing_task_titles,
     init_supabase,
     upload_answer_files_to_repo,
     upload_files_to_github,
@@ -290,6 +291,13 @@ def create_task(
         logger.info(f"Loaded {len(scenarios)} relevant scenarios")
         logger.info(f"Scenarios: {scenarios}")
 
+        existing_titles = fetch_existing_task_titles(competencies, env=env)
+        if existing_titles:
+            logger.info(
+                f"Found {len(existing_titles)} existing tasks for this competency — "
+                f"will instruct LLM to avoid duplicating: {existing_titles}"
+            )
+
         input_data = {
             "competencies": [
                 {
@@ -301,6 +309,7 @@ def create_task(
             ],
             "background": background,
             "scenarios": scenarios,
+            "existing_task_titles": existing_titles,
         }
         # Retry loop gates everything downstream — GitHub repo / Gist /
         # Supabase row are only created when an attempt produces a
@@ -313,10 +322,9 @@ def create_task(
         } for comp in competencies]
 
         # Resolve the competency-set into a ResolvedPlan once, before the
-        # retry loop. The plan carries (a) the classified TaskRuntime
-        # (``kind`` routes the eval-critic personas) and (b) the resolved
-        # template (gate boot target). Phase B1 of the plan plugs the combo
-        # cache in behind resolve_plan(); this call site does not change.
+        # retry loop. The plan carries (a) the match decision (template_id
+        # + persona — persona routes the eval-critic personas) and (b) the
+        # hydrated template (gate boot target).
         runtime_comps = [
             Competency(
                 name=c.get("name"),
@@ -325,14 +333,20 @@ def create_task(
             for c in competencies if c.get("name")
         ]
         plan = resolve_plan(runtime_comps) if runtime_comps else None
-        task_runtime = plan.task_runtime if plan else None
-        if task_runtime:
+        match = plan.match if plan else None
+        template = plan.template if plan else None
+        if match:
             logger.info(
-                f"task_runtime classified: runtime={task_runtime.runtime} "
-                f"kind={task_runtime.kind} frameworks={task_runtime.frameworks} "
-                f"datastores={task_runtime.datastores}"
+                f"resolve_plan matched: template_id={match.template_id} "
+                f"persona={match.persona} confidence={match.confidence:.2f}"
             )
-        eval_kind = task_runtime.kind if task_runtime else None
+            if match.no_match_reason:
+                logger.info(
+                    f"  no_match: {match.no_match_reason} "
+                    f"missing={match.missing_capabilities} "
+                    f"suggested={match.suggested_template}"
+                )
+        eval_persona = match.persona if match else None
 
         max_attempts = MAX_EVAL_RETRIES + 1
         task_data = None
@@ -379,11 +393,18 @@ def create_task(
                     "task_eval": {"pass": False, "issues": reasons},
                     "code_eval": {"pass": False, "issues": ["task_data hollow before eval"]},
                 }
+                # Hollow candidates have nothing useful to patch — feed the
+                # canonical-keys reminder only; don't echo the empty JSON.
                 feedback = build_retry_feedback(reasons, None)
                 continue
 
             logger.info("Running task evaluations")
-            candidate_eval = run_evaluations(candidate, kind=eval_kind)
+            # Thread `scenarios` into the eval critic so Criterion 6
+            # (DOMAIN ALIGNMENT) can detect drift — task invented a new
+            # domain not present in the scenarios pool.
+            candidate_eval = run_evaluations(
+                candidate, persona=eval_persona, scenarios=scenarios,
+            )
             last_failure = candidate_eval
             t_pass = candidate_eval["task_eval"]["pass"]
             c_pass = candidate_eval["code_eval"]["pass"]
@@ -409,7 +430,11 @@ def create_task(
                 f"(task_eval.pass={t_pass}, code_eval.pass={c_pass}); "
                 f"will retry with feedback if budget remains"
             )
-            feedback = build_retry_feedback([], candidate_eval)
+            # Pass the failing candidate JSON so the next attempt patches
+            # this concrete output instead of regenerating a fresh task with
+            # a different scenario / different bugs.
+            feedback = build_retry_feedback([], candidate_eval,
+                                            prior_candidate=candidate)
 
         if task_data is None or eval_info is None:
             raise EvalGateError(max_attempts, last_failure)
@@ -521,6 +546,12 @@ def create_task(
             # dirty. Default to ['BUILD']; PR-review and design-review flows
             # set their own values.
             "task_type": ["BUILD"],
+            # task_intent is per-task USE of the matched template. The full
+            # intent (datastores, protocols_used, eval_method,
+            # secondary_runtimes, persona_override) is emitted later by the
+            # content-generation LLM in a follow-up phase. For now we stamp
+            # an empty intent so the column is never null.
+            "task_intent": {},
         }
 
         supabase = init_supabase(env)

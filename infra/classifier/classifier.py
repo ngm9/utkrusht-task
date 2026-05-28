@@ -1,34 +1,13 @@
-"""Public classifier entry point — thin wrapper around the LLM classifier.
+"""Public classifier helpers.
 
-The classifier returns a ``TaskRuntime`` for the supplied competencies via a
-single LLM call. There is no separate cache table — persistence happens at the
-caller's layer (typically: write the result onto ``tasks.task_runtime`` when
-the task row is created or backfilled).
-
-Callers that want the confidence score for human-review queues can call
-``classify_with_llm`` from ``prompt_generator.llm_classifier`` directly; this
-wrapper drops it for the common case where only the runtime is needed.
+Direct callers should use ``generators.task.runtime_resolver.resolve_plan``
+to classify a competency combo — it owns the cache + LLM call. This module
+keeps ``Competency`` re-exported and a tiny ``to_competencies`` helper so
+existing imports continue to work.
 """
 from __future__ import annotations
 
-import openai
-
-from infra.classifier.llm_classifier import classify_with_llm
-from infra.classifier.runtime import Competency, TaskRuntime
-
-
-def classify_task_runtime(
-    competencies: list[Competency],
-    *,
-    llm_client: openai.OpenAI | None = None,
-) -> TaskRuntime:
-    """Classify these competencies via the LLM and return the TaskRuntime.
-
-    Raises ``ValueError`` if the LLM produces invalid JSON after one retry.
-    """
-    if not competencies:
-        raise ValueError("classify_task_runtime requires at least one competency")
-    return classify_with_llm(competencies, client=llm_client).runtime
+from infra.classifier.runtime import Competency
 
 
 def to_competencies(items: list[dict]) -> list[Competency]:

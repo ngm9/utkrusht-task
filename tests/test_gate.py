@@ -1,4 +1,4 @@
-"""Unit tests for task_generation.gate — the retry-loop policy wrapper.
+"""Unit tests for generators.task.gate — the retry-loop policy wrapper.
 
 These cover the 4 outcomes returned by ``run_gate_for_attempt`` so the
 create_task loop can rely on each branch behaving as documented.
@@ -6,19 +6,23 @@ create_task loop can rely on each branch behaving as documented.
 from unittest.mock import patch
 
 from infra.e2b.sandbox_eval import SandboxEvalResult
-from infra.classifier.runtime import TaskRuntime
+from infra.classifier.runtime import TaskTemplateMatch
 from generators.task.gate import GateOutcome, run_gate_for_attempt
 from generators.task.runtime_resolver import ResolvedPlan, TemplateSpec
 
 
-def _plan(runtime: str = "python") -> ResolvedPlan:
-    tr = TaskRuntime(runtime=runtime, kind="app")
+def _plan(template_id: str = "utkrusht-python", primary_runtime: str = "python") -> ResolvedPlan:
+    match = TaskTemplateMatch(template_id=template_id, persona="backend", confidence=0.9)
     tpl = TemplateSpec(
-        name=f"utkrusht-{runtime}",
+        template_id=template_id,
+        primary_runtime=primary_runtime,
+        personas=["backend"],
+        eval_methods=["test_suite"],
+        capabilities={},
         build_cmd="pip install -r requirements.txt",
         test_cmd="python -m pytest",
     )
-    return ResolvedPlan(combo_key="x", task_runtime=tr, template=tpl)
+    return ResolvedPlan(combo_key="x", match=match, template=tpl)
 
 
 def test_disabled_when_env_flag_off():
@@ -54,7 +58,8 @@ def test_skipped_outcome_when_no_template():
     with patch("generators.task.gate.sandbox_eval_enabled", return_value=True), \
          patch("generators.task.gate.run_sandbox_eval", return_value=sb):
         outcome, fb = run_gate_for_attempt(
-            _plan("java"), {"code_files": {"a.java": "x"}}, candidate_eval, attempt=1,
+            _plan("utkrusht-java", "java"),
+            {"code_files": {"a.java": "x"}}, candidate_eval, attempt=1,
         )
     assert outcome == GateOutcome.SKIPPED
     assert fb == ""

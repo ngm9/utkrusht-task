@@ -1,15 +1,10 @@
 """Single-call LLM classifier.
 
-Two entry points live here during Phase 2 of
-``docs/plans/2026-05-27-unified-classifier-template-schema.md``:
+``classify_match`` emits a ``TaskTemplateMatch`` by picking one
+``template_id`` from the active set's capability sheets. Used by
+``resolve_plan`` (in ``generators/task/runtime_resolver.py``).
 
-* ``classify_with_llm`` (LEGACY) — emits ``TaskRuntime`` from competencies
-  alone. Used by today's ``resolve_plan``. Phase 4 deletes it.
-* ``classify_match_v2`` (NEW) — emits ``TaskTemplateMatch`` by picking
-  one template_id from the active set's capability sheets. Used by
-  ``resolve_plan_v2`` (Phase 2 next task).
-
-Neither function knows about caching or persistence — that's
+This module does not know about caching or persistence — that's
 ``runtime_resolver.py``'s job.
 """
 from __future__ import annotations
@@ -22,30 +17,9 @@ import openai
 from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
 from pydantic import ValidationError
 
-from infra.classifier.runtime import Competency, TaskRuntime, TaskTemplateMatch
+from infra.classifier.runtime import Competency, TaskTemplateMatch
 
 _MODEL = "claude-sonnet-4-6"
-
-_SYSTEM_PROMPT = """You classify a list of technical competencies into a \
-structured infrastructure spec for an automated assessment platform.
-
-For each input list of (competency name, proficiency) tuples, output a single \
-JSON object with EXACTLY these fields:
-
-  • runtime: one of "python","node","java","php","go","rust","flutter","ruby","scala","none"
-             "none" only when the task is pure SQL (db_only) or non-code.
-  • frameworks: array of named framework strings (e.g. ["fastapi"], ["spring-boot","hibernate"]).
-                Empty list if no framework competency is present.
-  • datastores: array of DB server names (e.g. ["postgres"], ["mongo","redis"]).
-                Empty if the task does not need a database.
-  • messaging: array of broker names (e.g. ["kafka"]). Empty if not applicable.
-  • needs_browser: true for Playwright/Selenium/Cypress tasks; otherwise false.
-  • kind: one of "app","script","mobile","frontend","testing","db_only","llm","vector_db","non_code".
-  • confidence: a float in [0.0, 1.0] for how sure you are. Use < 0.7 if the
-                input is ambiguous so a human can review.
-
-CRITICAL: respond with ONLY the JSON object. No prose, no markdown fences, no
-explanation. Any value not in the listed Literals is invalid."""
 
 _RETRY_NUDGE_PREFIX = (
     "Your previous reply did not match the schema. "
@@ -63,12 +37,6 @@ def _format_parse_error(exc: Exception) -> str:
     return str(exc)
 
 
-@dataclass(frozen=True)
-class ClassifierResult:
-    runtime: TaskRuntime
-    confidence: float
-
-
 def build_client() -> openai.OpenAI:
     """Portkey gateway → Anthropic, mirroring task_builder/conversation.py."""
     return openai.OpenAI(
@@ -79,11 +47,6 @@ def build_client() -> openai.OpenAI:
             api_key=os.getenv("PORTKEY_API_KEY"),
         ),
     )
-
-
-def _user_message(competencies: list[Competency]) -> str:
-    lines = "\n".join(f"- {c.name} ({c.proficiency})" for c in competencies)
-    return f"Classify these competencies:\n\n{lines}"
 
 
 def _extract_json(text: str) -> dict:
@@ -102,55 +65,8 @@ def _extract_json(text: str) -> dict:
     raise ValueError("invalid JSON: unbalanced braces")
 
 
-def _parse(raw: str) -> ClassifierResult:
-    """Parse raw LLM text into a ClassifierResult; raises ValueError on failure."""
-    data = _extract_json(raw)
-    confidence = float(data.pop("confidence", 1.0))
-    runtime = TaskRuntime.model_validate(data)
-    return ClassifierResult(runtime=runtime, confidence=confidence)
-
-
-def classify_with_llm(
-    competencies: list[Competency],
-    *,
-    client: openai.OpenAI | None = None,
-) -> ClassifierResult:
-    """Ask the LLM to classify these competencies. Retries once on bad JSON.
-
-    Raises ValueError if the LLM still produces invalid JSON after the retry.
-    """
-    if not competencies:
-        raise ValueError("classify_with_llm requires at least one competency")
-    client = client or build_client()
-    messages = [
-        {"role": "system", "content": _SYSTEM_PROMPT},
-        {"role": "user", "content": _user_message(competencies)},
-    ]
-
-    resp = client.chat.completions.create(model=_MODEL, messages=messages)
-    raw = resp.choices[0].message.content or ""
-    try:
-        return _parse(raw)
-    except (ValueError, ValidationError, json.JSONDecodeError) as first_err:
-        error_detail = _format_parse_error(first_err)
-
-    # Retry once with the specific error fed back to the model
-    nudge_msg = f"{_RETRY_NUDGE_PREFIX} Specific errors: {error_detail}"
-    nudge = messages + [
-        {"role": "assistant", "content": raw or "(empty response)"},
-        {"role": "user", "content": nudge_msg},
-    ]
-    resp = client.chat.completions.create(model=_MODEL, messages=nudge)
-    raw = resp.choices[0].message.content or ""
-    try:
-        return _parse(raw)
-    except (ValueError, ValidationError, json.JSONDecodeError) as exc:
-        raise ValueError(f"invalid JSON after retry: {exc}") from exc
-
-
 # ─────────────────────────────────────────────────────────────────────
-# v2: classify against capability sheets, emit TaskTemplateMatch.
-# Phase 2 of unified-classifier-template-schema.
+# classify_match: pick template_id + persona from capability sheets.
 # ─────────────────────────────────────────────────────────────────────
 
 
@@ -170,7 +86,7 @@ class ActiveTemplate:
     description: str | None = None
 
 
-_SYSTEM_PROMPT_V2 = """You match a list of technical competencies to a \
+_SYSTEM_PROMPT = """You match a list of technical competencies to a \
 deployable E2B template from the active set below.
 
 ACTIVE TEMPLATES:
@@ -226,7 +142,7 @@ def _render_templates_block(active: list[ActiveTemplate]) -> str:
     return "\n".join(lines)
 
 
-def _user_message_v2(competencies: list[Competency]) -> str:
+def _user_message(competencies: list[Competency]) -> str:
     lines = "\n".join(f"- {c.name} ({c.proficiency})" for c in competencies)
     return f"Classify these competencies:\n\n{lines}"
 
@@ -272,7 +188,7 @@ def _parse_match(raw: str) -> TaskTemplateMatch:
     return TaskTemplateMatch.model_validate(data)
 
 
-def classify_match_v2(
+def classify_match(
     competencies: list[Competency],
     active_templates: list[ActiveTemplate],
     *,
@@ -295,15 +211,15 @@ def classify_match_v2(
     a non-existent template/persona, after one retry with feedback.
     """
     if not competencies:
-        raise ValueError("classify_match_v2 requires at least one competency")
+        raise ValueError("classify_match requires at least one competency")
 
     client = client or build_client()
-    system_prompt = _SYSTEM_PROMPT_V2.format(
+    system_prompt = _SYSTEM_PROMPT.format(
         templates_block=_render_templates_block(active_templates),
     )
     messages = [
         {"role": "system", "content": system_prompt},
-        {"role": "user", "content": _user_message_v2(competencies)},
+        {"role": "user", "content": _user_message(competencies)},
     ]
 
     def _try_one(msgs: list[dict]) -> TaskTemplateMatch:

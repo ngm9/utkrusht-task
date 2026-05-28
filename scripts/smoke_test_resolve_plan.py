@@ -1,15 +1,15 @@
-"""End-to-end smoke test for resolve_plan_v2 against live dev Supabase.
+"""End-to-end smoke test for resolve_plan against live dev Supabase.
 
 Costs one real LLM call (~$0.001 via Portkey). Verifies the full path:
   1. cache miss in task_template_match
   2. load active templates (utkrusht-python)
-  3. classify via classify_match_v2 (LLM)
+  3. classify via classify_match (LLM)
   4. upsert task_template_match row
   5. hydrate the template
   6. cache hit on a second call
 
 Run from repo root:
-    python scripts/smoke_test_v2_end_to_end.py
+    python scripts/smoke_test_resolve_plan.py
 """
 from __future__ import annotations
 
@@ -23,7 +23,7 @@ load_dotenv()
 from infra.classifier.runtime import Competency  # noqa: E402
 from generators.task.runtime_resolver import (  # noqa: E402
     _build_supabase_client,
-    resolve_plan_v2,
+    resolve_plan,
 )
 
 
@@ -62,14 +62,14 @@ def main() -> int:
 
     _hr(f"1. First call (expect cache MISS → LLM)")
     t0 = time.time()
-    plan_1 = resolve_plan_v2(competencies, supabase=client)
+    plan_1 = resolve_plan(competencies, supabase=client)
     dt_1 = time.time() - t0
     print(f"  elapsed: {dt_1*1000:.0f} ms")
     show(plan_1)
 
     _hr(f"2. Second call (expect cache HIT)")
     t0 = time.time()
-    plan_2 = resolve_plan_v2(competencies, supabase=client)
+    plan_2 = resolve_plan(competencies, supabase=client)
     dt_2 = time.time() - t0
     print(f"  elapsed: {dt_2*1000:.0f} ms")
     show(plan_2)
@@ -80,7 +80,7 @@ def main() -> int:
         Competency("Rust", "INTERMEDIATE"),
         Competency("React", "INTERMEDIATE"),
     ]
-    plan_3 = resolve_plan_v2(polyglot, supabase=client)
+    plan_3 = resolve_plan(polyglot, supabase=client)
     show(plan_3)
     print("\n  (only utkrusht-python is built; LLM should return no_match here)")
 
@@ -90,7 +90,7 @@ def main() -> int:
         Competency("Helm", "INTERMEDIATE"),
         Competency("Terraform", "INTERMEDIATE"),
     ]
-    plan_4 = resolve_plan_v2(infra, supabase=client)
+    plan_4 = resolve_plan(infra, supabase=client)
     show(plan_4)
 
     _hr("Summary")

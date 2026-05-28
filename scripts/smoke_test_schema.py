@@ -4,7 +4,7 @@ Read-only checks against the dev Supabase. Verifies the four migrations
 applied cleanly. No LLM calls.
 
 Run from repo root:
-    python scripts/smoke_test_v2_migrations.py
+    python scripts/smoke_test_schema.py
 """
 from __future__ import annotations
 
@@ -19,7 +19,7 @@ load_dotenv()
 
 from generators.task.runtime_resolver import (  # noqa: E402
     _build_supabase_client,
-    _load_active_templates_v2,
+    _load_active_templates,
 )
 
 
@@ -41,7 +41,8 @@ def check_templates_table(client) -> bool:
             f"  {marker} {row['template_id']:24s} status={row['status']:9s} "
             f"runtime={row['primary_runtime']:8s} "
             f"personas={row.get('personas')} "
-            f"registry_version={row.get('registry_version')}"
+            f"registry_version={row.get('registry_version')} "
+            f"generated_at={row.get('generated_at', '<not in schema yet>')}"
         )
         if row["template_id"] == "utkrusht-python":
             expected_hash = "a27ae796c238a1d30996a81e2a830ac76652fcc9717b163c5c4980570bad03f3"
@@ -60,7 +61,8 @@ def check_task_template_match_table(client) -> bool:
     _hr("2. task_template_match table (backfilled)")
     # Total count
     resp = client.table("task_template_match").select(
-        "combo_key,template_id,persona,no_match_reason,classifier_model,registry_version",
+        "combo_key,template_id,persona,no_match_reason,classifier_model,"
+        "registry_version,classified_at",
         count="exact"
     ).limit(5).execute()
     rows = resp.data or []
@@ -73,10 +75,12 @@ def check_task_template_match_table(client) -> bool:
             persona = r.get("persona") or "—"
             reason = r.get("no_match_reason")
             tail = f"  reason={reason!r}" if reason else ""
+            ts = r.get("classified_at", "<not in schema yet>")
             print(
                 f"  combo={r['combo_key'][:50]:50s} "
                 f"template={tid:20s} persona={persona:10s} "
-                f"model={r.get('classifier_model')}{tail}"
+                f"model={r.get('classifier_model')} "
+                f"classified_at={ts}{tail}"
             )
 
     # Distribution by status
@@ -114,8 +118,8 @@ def check_tasks_task_intent_column(client) -> bool:
 
 
 def check_active_templates_helper(client) -> bool:
-    _hr("4. _load_active_templates_v2() helper")
-    active = _load_active_templates_v2(client)
+    _hr("4. _load_active_templates() helper")
+    active = _load_active_templates(client)
     print(f"active templates loaded: {len(active)}")
     for t in active:
         print(
@@ -171,7 +175,7 @@ def main() -> int:
         ("templates seeded",   check_templates_table(client)),
         ("task_template_match backfilled", check_task_template_match_table(client)),
         ("tasks.task_intent column",        check_tasks_task_intent_column(client)),
-        ("_load_active_templates_v2",       check_active_templates_helper(client)),
+        ("_load_active_templates",          check_active_templates_helper(client)),
         ("grants on new tables",            check_grants(client)),
     ]
 

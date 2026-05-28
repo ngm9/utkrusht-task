@@ -3,6 +3,7 @@
 > **Status:** `utkrusht-python` shipped; other templates proposed. `template_registry` table is shipped, but the `build_cmd`/`test_cmd`/`compile_cmd` columns aren't actively read by `sandbox_eval` yet.
 > **Updated:** 2026-05-26
 > **Sister doc:** [Task Classifier](./classifier.md) — produces the `TaskRuntime` that picks which template to boot.
+> **Open proposal:** [merge classifier output and template registry into one decision](./classifier.md#proposed-evolution-merge-taskruntime-and-template_registry-into-one-decision) — would turn each row in this registry into the capability sheet the classifier reads, with `no_match` becoming a first-class signal and templates becoming a fragmenting family (e.g. `utkrusht-python` → `utkrusht-python-llm`) driven by data signals. The schema sketch and migration path live in the classifier doc; the operational details for templates (fragmentation policy, sibling-vs-inheritance, manifest-hash-from-Dockerfile) are summarised there too.
 
 ## Problem statement — what is an E2B template, and why one per runtime?
 
@@ -427,6 +428,109 @@ Service containers are NOT a picker concern — they're brought by the task's co
 
 ---
 
+## Polyglot exception — secondary runtime install at boot
+
+The "no pip/npm/apt at runtime" rule is the spine of how E2B templates work: every dependency is baked into the snapshot at build time, so the candidate's sandbox boots in ~150 ms with everything ready. Polyglot tasks (Rust+React, Python+Node, etc.) break that rule because no single template carries every runtime combination.
+
+### The decision (2026-05-26)
+
+Three options were on the table:
+
+1. **Refuse to generate polyglot tasks** until a dedicated template exists.
+2. **Install the secondary runtime(s) at the top of `run.sh`** — primary from the template, secondaries via `curl|apt|...` at session start.
+3. **Build a dedicated polyglot template per pair** (`utkrusht-rust-node`, etc.).
+
+We chose **option 2 for now**. It's the only path that ships working polyglot tasks today without building new templates, AND it keeps eval verification (the gate runs the same installs, so polyglot tasks get verified instead of skipped).
+
+### What it looks like in `run.sh`
+
+For a `(rust, node)` task on the `utkrusht-rust` template:
+
+```bash
+#!/usr/bin/env bash
+set -euo pipefail
+
+# === Polyglot prelude: secondary runtimes (Node, in this case) ===
+# This block is auto-generated for polyglot tasks. Single-runtime tasks skip it.
+curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+apt-get install -y nodejs
+node --version  # verify
+
+# === Task starts here ===
+(cd backend  && cargo build --release && ./target/release/server &)
+(cd frontend && npm ci && npm run dev)
+```
+
+The prelude block is opaque to the candidate — they shouldn't need to touch it. Their work lives below it.
+
+### The `runtime_installer` table
+
+A small sibling to `template_registry` that records "how to install runtime X when it's NOT the primary in this sandbox":
+
+| column | type | example |
+|---|---|---|
+| `runtime` | `text` PK | `node`, `rust`, `python`, … |
+| `install_cmd` | `text` | `curl -fsSL https://deb.nodesource.com/setup_20.x \| bash - && apt-get install -y nodejs` |
+| `estimated_seconds` | `int` | 30 |
+| `verify_cmd` | `text` | `node --version` — asserted after install |
+
+Seed:
+
+| runtime | est. sec | install_cmd (abbreviated) |
+|---|---|---|
+| `node` | 30 | `setup_20.x \| bash && apt install nodejs` |
+| `rust` | 60 | `curl rustup.rs \| sh -s -- -y` |
+| `python` | 15 | `apt install python3 python3-pip` |
+| `go` | 20 | `curl go.dev/dl/go1.23.0.linux-amd64.tar.gz \| tar -C /usr/local -xz` |
+| `java` | 45 | `apt install openjdk-17-jdk maven` |
+| `php` | 30 | `apt install php8.2 composer` |
+| `ruby` | 30 | `apt install ruby-full bundler` |
+| `flutter` | — | **`polyglot_unsupported`** — too heavy to install at boot |
+
+`flutter` (and likely `scala` if we add it) are flagged as unsupported for polyglot mode — the install is too heavy to be reasonable mid-boot. Tasks classified with these as secondary runtimes get refused upstream.
+
+### Eval gate behavior
+
+The gate runs the same prelude. For `(rust, node)`:
+
+```text
+boot utkrusht-rust              ~150 ms
+run install_cmd(node)           ~30 s
+run cargo build                 ~20 s   (in backend/)
+run npm ci                      ~15 s   (in frontend/)
+run cargo test                  ~10 s
+run npm test                    ~10 s
+total                           ~1.5 min
+```
+
+Compare to a single-runtime Python eval (~30 s end-to-end). Polyglot eval is ~3× slower — acceptable, but build a per-task hard timeout (e.g. 5 min) so a flaky install doesn't burn 10 min on retries.
+
+### Honest risks
+
+1. **Install latency dominates eval-gate time.** Plan for ~3 min per polyglot eval. Set a hard 5 min cap; on hit, mark the row `polyglot_timeout` for review.
+2. **Install failures = new false-negative class.** `nodesource.com` down briefly = eval fails on code that's actually fine. Mitigation: retry the install once before declaring the task broken; distinguish `install_failed` from `test_failed` in the gate output.
+3. **Version drift.** `setup_20.x` pulls whatever Node 20.minor is current the day you eval. A candidate scoring Tuesday vs Friday might hit different patch versions. Don't pre-pin — only when a real drift bug bites.
+4. **The "no install at boot" rule is now polyglot-exempt.** This entire section IS the documentation of that exception. Future readers who only skim the "Polyglot exception" header should still know the rule.
+
+### When to upgrade to Option 3 (dedicated polyglot template)
+
+Trigger: ≥3 customer-generated tasks asking for the *same* runtime pair. The data lives in the classification registry — query it:
+
+```sql
+SELECT runtimes, count(*) AS combo_count
+FROM competency_combo_classification c
+JOIN tasks t ON t.combo_key = c.combo_key
+WHERE array_length(c.runtimes, 1) > 1
+GROUP BY runtimes
+ORDER BY combo_count DESC;
+```
+
+When `(node, python)` or `(node, rust)` hits 3+, build the fat polyglot template, register it in `template_registry`, and the picker upgrades automatically — no code change beyond a single INSERT.
+
+Until that data exists, paying the 30–60 s install cost is cheaper than guessing which polyglot template to build.
+
+---
+
 ## What changes in generated task content
 
 The prompt generator used to instruct the LLM to produce `run.sh` and `kill.sh` that install Docker, install the language runtime, install system packages, then bring up services. That made sense for the droplet target (bare VM). For the E2B target, **most of that boilerplate is already in the template** and should be stripped.
@@ -516,9 +620,10 @@ Ten wildly different tasks, all assembled from **~11 templates + each task's own
 
 1. **Wire `sandbox_eval` to read commands from `template_registry`** (~15 LOC). This is the small change that turns the registry from "stored but unused" into "actively consumed." It also validates the pattern before you're under pressure to add a second runtime. See "Why do we need a `template_registry` table?" above for the case.
 2. **Build the second template** (`utkrusht-node-base` + a leaf like `utkrusht-node-web`). This forces the multi-runtime path to work end-to-end and exercises the registry for real.
-3. **Defer the full ~11-template buildout** until you have demand. The current single-template setup handles the largest task chunk (Python).
-4. **Profile `start.sh` if eval-gate latency becomes a problem.** The microVM boot is ~150 ms; everything above that is start-cmd (dockerd warm-up, etc.). Don't pre-optimise image size — 20 GiB headroom on Pro covers anything reasonable.
-5. **Once `kind="infra"` becomes a real need** (K8s / Helm / Terraform tasks), build a `utkrusht-infra` template with `kubectl`, `helm`, `terraform`, and a fake/lightweight cluster (kind / k3d) for validation. The gate then runs `helm lint` / `kubectl --dry-run` / `terraform validate` instead of pytest.
+3. **Decide on the merged-model direction.** Before building the second template, consider the open proposal in the classifier doc to [merge classifier output and template registry into one decision](./classifier.md#proposed-evolution-merge-taskruntime-and-template_registry-into-one-decision). If you go that way, the second template should land with `personas: text[]` and a generated `manifest_hash` from day one — both are prerequisites for the merge, and retrofitting them onto a growing template set is harder than starting with them.
+4. **Defer the full ~11-template buildout** until you have demand. The current single-template setup handles the largest task chunk (Python).
+5. **Profile `start.sh` if eval-gate latency becomes a problem.** The microVM boot is ~150 ms; everything above that is start-cmd (dockerd warm-up, etc.). Don't pre-optimise image size — 20 GiB headroom on Pro covers anything reasonable.
+6. **Once `kind="infra"` becomes a real need** (K8s / Helm / Terraform tasks), build a `utkrusht-infra` template with `kubectl`, `helm`, `terraform`, and a fake/lightweight cluster (kind / k3d) for validation. The gate then runs `helm lint` / `kubectl --dry-run` / `terraform validate` instead of pytest. *(If the merged-model proposal has shipped by then, this template's row will be a no-match's `suggested_template` — the doc-driven roadmap becomes data-driven.)*
 
 ---
 

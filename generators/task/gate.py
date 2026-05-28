@@ -72,13 +72,17 @@ def run_gate_for_attempt(
             f"Attempt {attempt}: sandbox gate FAILED "
             f"({sb_result.verdict}) — {sb_result.detail}"
         )
+        # The gate verdict (verbatim stdout tail + verdict + detail) is
+        # already on ``candidate_eval["sandbox_eval"]`` from the line above,
+        # so ``build_retry_feedback`` re-renders it via the structured path
+        # rather than us passing it as a free-form hollow_reason string.
+        # The big win: pass ``candidate`` so the LLM sees its own failing
+        # JSON in the next-attempt feedback (no more "regenerate from
+        # scratch + describe past bug" pathology).
         feedback = build_retry_feedback(
-            [
-                f"E2B sandbox build/test gate failed "
-                f"({sb_result.verdict}): {sb_result.detail} "
-                f"{sb_result.stdout_tail}".strip()
-            ],
+            [],
             candidate_eval,
+            prior_candidate=candidate,
         )
         return GateOutcome.RETRY, feedback
 

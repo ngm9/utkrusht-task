@@ -48,6 +48,64 @@ def init_supabase(env: str = "dev") -> Client:
     return create_client(url, key)
 
 
+def fetch_existing_task_titles(
+    competencies: list[dict],
+    env: str = "dev",
+    limit: int = 25,
+) -> list[str]:
+    """Return titles of existing tasks that share AT LEAST ONE
+    (competency name, proficiency) with the input.
+
+    Used by the task-generation prompt to tell the LLM which scenarios /
+    domains have already been used, so it picks a different one.
+    Filtering happens client-side because ``criterias`` is a jsonb
+    array — Supabase's ``contains()`` operator on jsonb arrays is
+    awkward across schema variants. The volume of tasks per competency
+    is small (low hundreds), so the client-side filter is cheap.
+
+    Returns:
+        List of task titles (most recent first), capped at ``limit``.
+        Returns ``[]`` on any Supabase error — the caller should treat
+        an empty list as "no prior tasks to avoid".
+    """
+    try:
+        sb = init_supabase(env)
+        wanted = {
+            (c.get("name"), (c.get("proficiency") or "").upper())
+            for c in competencies
+            if c.get("name")
+        }
+        if not wanted:
+            return []
+
+        rows = (
+            sb.table("tasks")
+            .select("task_blob, criterias, created_at")
+            .order("created_at", desc=True)
+            .limit(500)
+            .execute()
+        )
+        titles: list[str] = []
+        for row in rows.data or []:
+            crits = row.get("criterias") or []
+            row_pairs = {
+                (c.get("name"), (c.get("proficiency") or "").upper())
+                for c in crits
+            }
+            if not (wanted & row_pairs):
+                continue
+            blob = row.get("task_blob") or {}
+            title = blob.get("title") or blob.get("name")
+            if title:
+                titles.append(title)
+            if len(titles) >= limit:
+                break
+        return titles
+    except Exception as exc:
+        logger.warning(f"fetch_existing_task_titles failed (env={env}): {exc}")
+        return []
+
+
 def upload_files_to_github(repo: str, code_data: Dict) -> None:
     """Upload the candidate's starter files to the GitHub template repo
     in a single commit.

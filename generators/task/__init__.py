@@ -3,13 +3,15 @@
 One module per responsibility:
 
 * ``_clients``         — shared LLM clients (Portkey/Anthropic + Portkey/OpenAI)
-* ``runtime_resolver`` — classify a competency combo into a ``ResolvedPlan``
+* ``runtime_resolver`` — match a competency combo to a template via the
+                         classifier + ``task_template_match`` cache, return
+                         a ``ResolvedPlan(match, template)``
 * ``evaluator``        — LLM eval critics + retry-feedback helpers
 * ``gate``             — E2B build/test gate invocation for the retry loop
 * ``persistence``      — Supabase + GitHub + gist writes
 * ``creator``          — ``create_task`` orchestration + answer-code helpers
 
-Tracking: ``docs/superpowers/plans/2026-05-22-task-generator-production-readiness.md``
+Tracking: ``docs/plans/2026-05-27-unified-classifier-template-schema.md``
 """
 from generators.task.creator import (
     create_task,

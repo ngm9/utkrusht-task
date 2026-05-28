@@ -6,24 +6,42 @@ code_files) is run separately — it needs E2B and is too slow for the suite.
 import os
 from unittest.mock import patch
 
+from infra.classifier.runtime import TaskTemplateMatch
 from infra.e2b.sandbox_eval import (
     SandboxEvalResult,
     _classify_pytest,
     run_sandbox_eval,
     sandbox_eval_enabled,
 )
-from generators.task.runtime_resolver import ResolvedPlan, TemplateSpec, _TEMPLATES
+from generators.task.runtime_resolver import ResolvedPlan, TemplateSpec
 
 
-def _plan(runtime: str) -> ResolvedPlan:
+def _python_template() -> TemplateSpec:
+    return TemplateSpec(
+        template_id="utkrusht-python",
+        primary_runtime="python",
+        personas=["backend"],
+        eval_methods=["test_suite"],
+        capabilities={},
+        build_cmd="pip install -r requirements.txt",
+        test_cmd="python -m pytest",
+        compile_cmd="python -m compileall -q .",
+    )
+
+
+def _plan(template: TemplateSpec | None) -> ResolvedPlan:
     """Build a ResolvedPlan that mirrors what ``resolve_plan`` returns —
-    template is the seed entry for ``runtime`` (or None for unknown runtimes,
-    which exercises the no_template skip path)."""
-    from infra.classifier.runtime import TaskRuntime
+    template is None for the no_template skip path."""
+    match = (
+        TaskTemplateMatch(template_id=template.template_id, persona="backend",
+                          confidence=0.9)
+        if template else
+        TaskTemplateMatch(no_match_reason="no template", confidence=0.5)
+    )
     return ResolvedPlan(
-        combo_key=f"test-{runtime}",
-        task_runtime=TaskRuntime(runtime=runtime, kind="app"),
-        template=_TEMPLATES.get(runtime),
+        combo_key="test-combo",
+        match=match,
+        template=template,
     )
 
 
@@ -69,13 +87,13 @@ def test_classify_internal_error_fails_gate():
 
 # --- run_sandbox_eval skip paths (no sandbox boot) --------------------------
 
-def test_skips_unknown_runtime():
-    r = run_sandbox_eval({"app.py": "x"}, _plan("rust"))
+def test_skips_no_template_in_plan():
+    r = run_sandbox_eval({"app.py": "x"}, _plan(None))
     assert r.skipped and r.verdict == "no_template"
 
 
 def test_skips_empty_code():
-    r = run_sandbox_eval({}, _plan("python"))
+    r = run_sandbox_eval({}, _plan(_python_template()))
     assert r.skipped and r.verdict == "no_code"
 
 

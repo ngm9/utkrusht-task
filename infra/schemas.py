@@ -57,24 +57,62 @@ EVAL_RESPONSE_SCHEMA = {
         "properties": {
             "pass": {
                 "type": "boolean",
-                "description": "Whether the evaluation passed or failed"
+                "description": (
+                    "True iff blocking_issues is empty. SUGGESTIONS NEVER "
+                    "AFFECT pass — they are nice-to-haves only."
+                )
             },
-            "issues": {
+            # blocking_issues: things that MUST be fixed before the task can
+            # ship. Drive the retry loop. Critics must NOT invent new
+            # requirements not stated in the task description here.
+            "blocking_issues": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "List of issues found (empty if passed)"
+                "description": (
+                    "Things that MUST be fixed before the task ships. "
+                    "Only items that fail one of the explicit checklist "
+                    "criteria in the prompt belong here. Do NOT add "
+                    "production-readiness / observability / caching / "
+                    "extra-feature demands unless the task description "
+                    "explicitly mentions them."
+                )
+            },
+            # suggestions: nice-to-haves the critic noticed but that do
+            # NOT block. Stored on eval_info for human review, never
+            # surfaced in the retry loop.
+            "suggestions": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "Nice-to-have improvements that do NOT block. Stored "
+                    "for human review only."
+                )
             },
             "validated_criteria": {
                 "type": "array",
                 "items": {"type": "string"},
                 "description": "List of criteria that were validated/met"
             },
+            # Legacy fields kept for back-compat with callers that haven't
+            # migrated. Critics should populate issues = blocking_issues
+            # (same content) so legacy readers still work.
+            "issues": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": (
+                    "LEGACY — mirrors blocking_issues. New callers should "
+                    "read blocking_issues directly."
+                )
+            },
             "feedback": {
                 "type": "string",
                 "description": "Detailed feedback if evaluation failed"
             }
         },
-        "required": ["pass", "issues", "validated_criteria", "feedback"],
+        "required": [
+            "pass", "blocking_issues", "suggestions",
+            "validated_criteria", "issues", "feedback"
+        ],
         "additionalProperties": False
     },
     "strict": True

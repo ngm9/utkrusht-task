@@ -408,6 +408,41 @@ def clean_llm_json_response(response: str) -> str:
         logger.error(f"Error cleaning LLM response: {str(e)}")
         return response
 
+def _format_scenarios_with_existing_titles(
+    scenarios, existing_titles: list[str] | None
+) -> str:
+    """Render the scenarios payload and, when prior tasks exist for the
+    same (competency, proficiency), append an explicit
+    "EXISTING TASKS — DO NOT DUPLICATE" block so the LLM picks a
+    different scenario than ones already shipped.
+
+    Why this lives in the prompt-args layer (not in each prompt file):
+    every competency-specific prompt has the same `{real_world_task_scenarios}`
+    slot. Composing the block here means we don't have to touch dozens
+    of prompt files when the de-dup rule changes.
+    """
+    base = "" if scenarios is None else (
+        scenarios if isinstance(scenarios, str) else repr(scenarios)
+    )
+    if not existing_titles:
+        return base
+
+    bullets = "\n".join(f"- {t}" for t in existing_titles)
+    addendum = (
+        "\n\n## EXISTING TASKS FOR THIS COMPETENCY — DO NOT DUPLICATE\n"
+        "Tasks ALREADY SHIPPED in this competency/proficiency:\n"
+        f"{bullets}\n\n"
+        "HARD RULE: pick a scenario whose BUSINESS DOMAIN and BUG ARCHETYPE\n"
+        "are clearly different from every task above. If two candidates of\n"
+        "this competency received tasks back-to-back, they must not look\n"
+        "like minor rewordings of the same scenario.\n"
+        "If every remaining scenario is too close to an existing task,\n"
+        "explicitly say so and pick the LEAST similar one — do not silently\n"
+        "regenerate a near-duplicate."
+    )
+    return base + addendum
+
+
 def get_task_prompt_by_technology_stack(competency_stack, input_data):
     """Get task prompt by technology stack. Auto-discovered from PROMPT_REGISTRY in each prompt module."""
     competencies = input_data.get("competencies", [])
@@ -430,7 +465,10 @@ def get_task_prompt_by_technology_stack(competency_stack, input_data):
         "role_context": input_data["background"]["role_context"],
         "minutes_range": input_data.get("minutes_range", "15-20"),
         "competencies": input_data.get("competencies"),
-        "real_world_task_scenarios": input_data.get("scenarios", ""),
+        "real_world_task_scenarios": _format_scenarios_with_existing_titles(
+            input_data.get("scenarios", ""),
+            input_data.get("existing_task_titles"),
+        ),
         "question_prompt": input_data.get("background", {}).get("questions_prompt", ""),
     }
     return [t.format(**fmt_args) for t in templates]

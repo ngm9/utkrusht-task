@@ -10,11 +10,11 @@ from typing import Callable
 from run_pipeline import (
     REPO_ROOT,
     RUNS_DIR,
-    SCENARIOS_FILE,
     _locate_input_files,
     _pick_python,
     _run_stage,
     _summarise_task_stage,
+    scenarios_file_for,
 )
 from task_builder.log_tail import StageLogTailer
 from task_builder.slots import TaskBrief
@@ -161,7 +161,8 @@ def run_pipeline_for_brief(brief: TaskBrief, *, run_id: str, emit: EmitFn,
 
         rec = _stage("04_tasks", [
             py, "multiagent.py", "generate_tasks",
-            "-c", str(comp_json), "-b", str(bg_json), "-s", str(SCENARIOS_FILE),
+            "-c", str(comp_json), "-b", str(bg_json),
+            "-s", str(scenarios_file_for(level)),
             "--env", env,
         ])
         outcome = _summarise_task_stage(Path(rec["stdout"]))
