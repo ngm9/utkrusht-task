@@ -11,6 +11,7 @@
     :root {
       --bg: #ffffff;
       --panel: #f7f7f8;
+      --panel-2: #f0f0f2;
       --border: #e4e4e7;
       --text: #0a0a0a;
       --muted: #71717a;
@@ -20,6 +21,11 @@
       --bad: #dc2626;
       --code-bg: #fafafa;
       --table-row: #fcfcfc;
+      --pill-ok-bg: #ecfdf5;
+      --pill-warn-bg: #fffbeb;
+      --pill-bad-bg: #fef2f2;
+      --pill-info-bg: #eef2ff;
+      --pill-info-fg: #4338ca;
     }
     * { box-sizing: border-box; }
     html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
@@ -136,483 +142,179 @@
       white-space: pre; margin: 0 0 22px;
     }
     hr { border: 0; border-top: 1px solid var(--border); margin: 48px 0; }
+
+    /* Pills used for status / verdict */
+    .pill {
+      display: inline-block; padding: 2px 8px; font-size: 12px; font-weight: 500;
+      border-radius: 999px; border: 1px solid var(--border); background: var(--panel);
+      color: var(--muted); white-space: nowrap;
+    }
+    .pill-ok   { background: var(--pill-ok-bg);   color: var(--ok);   border-color: #bbf7d0; }
+    .pill-warn { background: var(--pill-warn-bg); color: var(--warn); border-color: #fde68a; }
+    .pill-bad  { background: var(--pill-bad-bg);  color: var(--bad);  border-color: #fecaca; }
+    .pill-info { background: var(--pill-info-bg); color: var(--pill-info-fg); border-color: #c7d2fe; }
+
+    /* Two-up comparison panels: current vs target */
+    .twoup {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+      margin: 0 0 22px;
+    }
+    .twoup .card {
+      border: 1px solid var(--border); border-radius: 8px;
+      padding: 16px; background: var(--panel);
+    }
+    .twoup .card h4 {
+      margin: 0 0 8px; font-size: 13px; text-transform: uppercase;
+      letter-spacing: 0.05em; color: var(--muted);
+    }
+    .twoup .card.target { background: #fefce8; border-color: #fde68a; }
+    .twoup .card .ascii { background: rgba(255,255,255,0.6); margin: 0; }
+    @media (max-width: 700px) { .twoup { grid-template-columns: 1fr; } }
+
+    /* Numbered migration step cards */
+    .steps { display: flex; flex-direction: column; gap: 12px; margin: 0 0 22px; }
+    .step {
+      display: grid; grid-template-columns: 36px 1fr; gap: 14px;
+      border: 1px solid var(--border); border-radius: 8px; padding: 14px 16px;
+      background: var(--panel);
+    }
+    .step .num {
+      width: 32px; height: 32px; border-radius: 999px;
+      background: var(--accent); color: #fff;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 600; font-size: 13px;
+    }
+    .step.gate { border-color: #fde68a; background: #fffbeb; }
+    .step.gate .num { background: var(--warn); }
+    .step.danger { border-color: #fecaca; background: #fef2f2; }
+    .step.danger .num { background: var(--bad); }
+    .step .body h4 { margin: 0 0 6px; font-size: 14.5px; color: var(--text); }
+    .step .body p:last-child { margin-bottom: 0; }
+
+    /* Horizon table for aging */
+    .horizon {
+      display: grid; grid-template-columns: 110px 1fr 1fr; gap: 0;
+      border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+      margin: 0 0 22px; font-size: 13.5px;
+    }
+    .horizon > div { padding: 12px 14px; border-top: 1px solid var(--border); background: var(--bg); }
+    .horizon > div:nth-child(-n+3) { border-top: 0; background: var(--panel); font-weight: 600; color: var(--accent); font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.05em; }
+    .horizon .hd { font-weight: 600; color: var(--accent); background: var(--panel); }
+    .horizon .label { font-weight: 600; }
+
+    /* "Why this shape" inline numbered grid */
+    .why {
+      display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px;
+      margin: 0 0 22px;
+    }
+    .why .item {
+      border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px;
+      background: var(--panel); font-size: 13.5px;
+    }
+    .why .item strong { display: block; margin-bottom: 4px; font-size: 13px; }
   </style>
 </head>
 <body>
 <div class="layout">
 <aside class="sidebar">
   <h1>Task Classifier</h1>
-  <p class="subtitle">From competencies to <code>TaskRuntime</code> — the LLM classifier, the Supabase classification registry, and the four downstream consumers that read it.</p>
+  <p class="subtitle">A single LLM call matches a task's competency combo against the deployable templates' capability sheets — picking <code>template_id</code> + <code>persona</code> directly, or returning a structured <code>no_match</code>.</p>
   <nav class="toc">
     <a href="#problem">Problem statement</a>
-    <a href="#solution">Solution: LLM + registry</a>
-    <a href="#input-signal">Classifier input signal</a>
-    <a href="#model">The TaskRuntime model</a>
-    <a href="#stress-test">Stress-testing the model</a>
-    <a href="#merge-proposal">Merge proposal: TaskRuntime ↔ template_registry</a>
-    <a href="#registry-table">Classification registry (B1)</a>
+    <a href="#design">The design</a>
+    <a href="#today">Where we are today</a>
+    <a href="#why-broken">Why the current shape stalls</a>
+    <a href="#migration">Migration path</a>
+    <a href="#choices">Choices along the way</a>
+    <a href="#fragmentation">Template fragmentation policy</a>
+    <a href="#aging">How this design ages</a>
     <a href="#resolve-plan">How resolve_plan works</a>
-    <a href="#consumers">Who reads ResolvedPlan</a>
     <a href="#failure-modes">Failure modes</a>
     <a href="#bootstrap">Bootstrap migrations</a>
     <a href="#status">Implementation status</a>
     <a href="#next">What we should do next</a>
   </nav>
+  <p class="sister">
+    <span class="status">Status</span> Design decided 2026-05-27. Migration ahead.<br /><br />
+    <span class="status">Sister doc</span> <a href="./e2b-templates.html">E2B Templates</a>
+  </p>
 </aside>
 <main>
 
 <h2 id="problem">Problem statement</h2>
-<p>The pipeline needs one consistent answer to the question:</p>
-<blockquote><p><em>"What infrastructure does this competency combo need?"</em></p></blockquote>
-<p>That answer flows into <strong>four</strong> downstream systems:</p>
+<p>The pipeline needs one consistent answer to:</p>
+<blockquote><p><em>"What infrastructure does this competency combo need, and which reviewer should grade it?"</em></p></blockquote>
+<p>That answer flows into four downstream systems:</p>
 <ol>
-  <li>The <strong>prompt-generator agent</strong> (DSPy InputFields + HARD CONSTRAINT rules that shape the generated <code>run.sh</code>, <code>docker-compose.yml</code>, etc.)</li>
-  <li>The <strong>reference retriever</strong> (picks structural exemplars by shape match)</li>
-  <li>The <strong>eval critic personas</strong> (DBA / MLE / SDET / … chosen by task shape)</li>
-  <li>The <strong>E2B build/test gate</strong> (template lookup)</li>
+  <li>The <strong>prompt-generator agent</strong> — DSPy InputFields + HARD CONSTRAINT rules shaping <code>run.sh</code>, <code>docker-compose.yml</code>, etc.</li>
+  <li>The <strong>reference retriever</strong> — picks structural exemplars by shape match.</li>
+  <li>The <strong>eval critic personas</strong> — DBA / MLE / SDET / … chosen by task shape.</li>
+  <li>The <strong>E2B build/test gate</strong> — boots the sandbox the candidate will receive.</li>
 </ol>
-<p>If the answer is wrong, <strong>every downstream system inherits the lie</strong>. A FastAPI task misclassified as <code>PURE_CODE</code> gets generic boilerplate from the prompt generator, a generic reviewer from the eval critics, and no template from the gate. The cost compounds across the four consumers.</p>
-
-<h3>The old broken state</h3>
-<p>A rule-based classifier (<code>prompt_generator/classifier.py</code>) was answering this question by walking token lists and applying hand-coded <code>if</code> branches. It had three structural failure modes:</p>
-
-<p><strong>Failure A — framework-without-database structural bug.</strong> The <code>_has_backend_language()</code> check required <code>backend-token AND NOT framework-token</code>. For <code>Python - FastAPI</code>, both matched, so the function returned <code>False</code>, and every branch fell through to the <code>PURE_CODE</code> default. 9 FastAPI tasks, 11 Laravel tasks, 3+ Spring Boot tasks all landed in <code>PURE_CODE</code>.</p>
-
-<p><strong>Failure B — missing tokens for entire languages.</strong> Flutter, Dart, Scala, Playwright, React Native, MERN — none of these appeared in any token list. Every task using them defaulted to <code>PURE_CODE</code>.</p>
-
-<p><strong>Failure C — wrong branch on edge cases.</strong> Go is in <code>_BACKEND_LANG_TOKENS</code> but not <code>_WEB_APP_LANG_TOKENS</code>. So <code>Golang + Redis</code> landed in <code>SCRIPT_AND_DB</code> instead of <code>APP_AND_DB</code>. Wrong template, wrong eval persona.</p>
-
-<p><strong>The data.</strong> Re-classified all 339 rows of the dev <code>tasks</code> table:</p>
-<pre><code>pure_code               183     ← the "default" bucket (54%)
-frontend                 46
-app_and_db               37
-non_code                 17
-db_only                  12
-llm_framework            11
-messaging                10
-containerized_app         9
-microservices             6
-vector_db                 5
-script_and_db             3</code></pre>
-<p><strong>183 of 339 tasks (54%) landed in <span class="bad">PURE_CODE</span></strong> — the "I dunno" default. Of those 183, the vast majority were genuine apps, scripts, or mobile tasks the classifier just couldn't recognise.</p>
-
-<h3>Why rules can't be saved</h3>
+<p>If the answer is wrong, every downstream system inherits the lie. A FastAPI task misclassified as <code>PURE_CODE</code> gets generic boilerplate, a generic reviewer, and no template. The cost compounds.</p>
+<p>A previous rule-based classifier in <code>prompt_generator/classifier.py</code> tried to answer with hand-coded <code>if</code> branches over token lists. It dumped <strong>183 of 339 dev tasks (54%)</strong> into <code>PURE_CODE</code> through three structural bugs:</p>
 <ul>
-  <li><strong>Token lists go stale.</strong> Every time new tech emerges (Elixir, Mojo, Bun, Phoenix LiveView), someone has to remember to update the token list. The LLM doesn't — its training data is current.</li>
-  <li><strong>Substring matching has false positives.</strong> <code>"rust"</code> substring-matches <code>"trusted"</code>. <code>"go"</code> substring-matches <code>"mongo"</code>. Maintaining substring tokens is fighting your own pattern.</li>
-  <li><strong>Bugs are emergent from rule complexity.</strong> The framework-no-DB bug wasn't there by intent — it emerged from the interaction of three independent <code>if</code> branches. Removing rules removes that whole <em>category</em> of bug.</li>
+  <li>A framework-without-database check that returned <code>False</code> whenever both matched (FastAPI, Laravel, Spring Boot all fell through).</li>
+  <li>Missing tokens for entire languages — Flutter, Dart, Scala, Playwright, React Native, MERN.</li>
+  <li>Wrong branches on edge cases (<code>Golang + Redis</code> → <code>SCRIPT_AND_DB</code> instead of <code>APP_AND_DB</code>).</li>
 </ul>
+<p>Rules go stale, substring matching has false positives, bugs emerge from rule interactions. Rules are not the answer here.</p>
 
-<h2 id="solution">Solution: LLM classifier with Supabase registry</h2>
-<p>One Sonnet call per unique competency combo, ever. The result is stored in a Supabase **classification registry** keyed by the sorted competency set. Every consumer reads from the registry directly; on a miss (no row yet) we call the LLM and insert one.</p>
+<h2 id="design">The design — classifier picks <code>template_id</code> directly</h2>
 
-<div class="ascii">                competencies (list of name + proficiency)
-                          │
-                          ▼
-         ┌────────────────────────────────────┐
-         │ combo_key = make_combo_key(...)    │
-         └────────────────────────────────────┘
-                          │
-                          ▼
-         ┌────────────────────────────────────┐
-         │ SELECT … FROM                       │
-         │   competency_combo_classification   │
-         │   WHERE combo_key = ?               │
-         └────────────────────────────────────┘
-                          │
-              HIT         │         MISS
-                          ▼
-                   TaskRuntime
-                   (~10 ms, $0)
-                          │
-                          │  MISS path:
-                          ▼
-         ┌────────────────────────────────────┐
-         │ classify_with_llm(competencies)    │  ~2 s, ~$0.001
-         │   • Sonnet via Portkey             │
-         │   • strict Pydantic schema         │
-         │   • retry once with ValidationError │
-         │     fed back to the model          │
-         └─────────────────┬──────────────────┘
-                          ▼
-         ┌────────────────────────────────────┐
-         │ UPSERT competency_combo_classification│
-         │   classifier_version, confidence    │
-         └─────────────────┬──────────────────┘
-                          ▼
-                   TaskRuntime</div>
+<p>A single LLM call matches a task's competency combo against the deployable template set. Each template carries a <strong>capability sheet</strong>: the runtime, frameworks, datastores, tools, and personas it can host. The LLM reads those sheets and returns either a match or a structured no-match.</p>
 
-<p><strong>Economics.</strong> ~50 unique competency combos across 339 dev tasks → ~50 LLM calls ever → <strong>~$0.05 to populate the registry</strong>. After that, every consumer reads a column. Latency: ~10 ms when the row already exists vs ~2 s on first encounter. Misses only happen at task-generation time, never on a user-facing hot path.</p>
-<p><strong>Determinism.</strong> Same input → same output, because the read path is a column lookup. The "LLM is non-deterministic" objection doesn't survive once a row exists — the LLM is only consulted on first encounter.</p>
-<p><strong>Override path.</strong> Edit the row in Supabase. Every consumer reads the registry directly, so the corrected row is authoritative — no code change needed when the LLM hallucinates once.</p>
+<div class="ascii">                  competency combo (sorted, proficiency-suffixed)
+                                  │
+                                  ▼
+   ┌──────────────────────────────────────────────────────────────┐
+   │  LLM reads templates WHERE status = 'built'                   │
+   │  Each row is a capability sheet:                              │
+   │    template_id, runtime, frameworks, datastores, tools,       │
+   │    personas, build_cmd, test_cmd, manifest_hash               │
+   └──────────────────────────────┬───────────────────────────────┘
+                                  │
+                  ┌───────────────┴──────────────────┐
+                  ▼                                  ▼
+        <span class="ok">MATCH</span>                              <span class="bad">NO MATCH</span>
+   { template_id,                        { no_match: true,
+     persona,                              missing_capabilities,
+     confidence }                          suggested_template,
+                                           reason }</div>
 
-<h3 id="input-signal">Classifier input signal — current limitation and proposed fix</h3>
-<blockquote>
-  <p><strong>Update (2026-05-27):</strong> the "pass scenario+background to <code>resolve_plan</code>" proposal below was <strong>reversed</strong>. The locked direction is in <a href="../plans/2026-05-27-unified-classifier-template-schema.md">docs/plans/2026-05-27-unified-classifier-template-schema.md</a>:</p>
-  <ul>
-    <li><code>resolve_plan(competencies)</code> stays pure — no scenario, no background.</li>
-    <li>The content-generation LLM (in <code>generators/prompts/agent.py</code>) already has the scenario in scope; it emits <code>tasks.task_intent</code> per task (datastore roles, protocols used, eval method, secondary runtimes, optional persona override).</li>
-    <li>This avoids double-paying for scenario context and keeps the classifier cache as a pure combo→template+persona mapping.</li>
-  </ul>
-  <p>The section below is preserved for the history of the reasoning that led to the reversal.</p>
-</blockquote>
-<p>The classifier IS called at task-generation time (inside <a href="../../generators/task/creator.py"><code>generators/task/creator.py</code></a>), where the pipeline already has scenarios + background in scope. <strong>But the current <code>resolve_plan()</code> signature only accepts competencies</strong> — see <a href="../../generators/task/runtime_resolver.py"><code>generators/task/runtime_resolver.py</code></a>:</p>
-<pre><code>def resolve_plan(competencies: Iterable[Competency], *, supabase=None) -&gt; ResolvedPlan:</code></pre>
-<p>This is a self-inflicted limitation, not a structural one. The classifier has to <strong>guess</strong> structural fields (datastore roles, protocols, eval method) from competency labels alone.</p>
+<p><strong>Match</strong> picks a template the LLM is confident can host the task, plus one persona from that template's <code>personas: text[]</code> list. <strong>No-match</strong> is a first-class output, not a silent skip — it captures <em>why</em> no template fits, what capabilities the task needs, and what template name the LLM proposes for it.</p>
 
-<h4>Where this hurts — ambiguous combos</h4>
-<table>
-  <thead><tr><th>Competency combo</th><th>Without scenario (today)</th><th>With scenario (proposed)</th></tr></thead>
-  <tbody>
-    <tr><td><code>Python + Postgres</code></td><td>Guesses <code>[{postgres, primary}]</code> — works for CRUD, wrong for migration</td><td>Reads "MySQL → Postgres migration" → emits <code>[{mysql, source}, {postgres, target}]</code></td></tr>
-    <tr><td><code>Python + microservices</code></td><td>Guesses REST (most common shape)</td><td>Reads "gRPC payments service" → <code>protocols=["grpc"]</code></td></tr>
-    <tr><td><code>Node + frameworks</code></td><td>Guesses generic Node app</td><td>Reads "Build a Storybook component library" → <code>shape="frontend"</code>, <code>eval_method="compile_only"</code></td></tr>
-  </tbody>
-</table>
-<p>The classifier is doing best-effort pattern inference from sparse input. It will sometimes be wrong, and the registry's editable-row property is the escape hatch.</p>
+<p>There is no intermediate <code>Runtime</code> enum, no rule-based picker, no separate "what runtime" decision before "which template." The template rows ARE the classifier's input set. Adding a template is adding a row; the system can never claim to support tech it doesn't actually deploy.</p>
 
-<h4>Proposed fix — pass scenario + background</h4>
-<pre><code>def resolve_plan(
-    competencies: Iterable[Competency],
-    *,
-    scenario:   str | None = None,    # NEW — task scenario string
-    background: dict | None = None,   # NEW — candidate background JSON
-    supabase=None,
-) -&gt; ResolvedPlan:</code></pre>
-<p>The LLM classifier prompt then grows a "Scenario context" section that the model uses to disambiguate. Concretely:</p>
-<pre><code>Competencies:
-- Python (INTERMEDIATE)
-- PostgreSQL (INTERMEDIATE)
+<h3>Why this shape</h3>
 
-Scenario context (use this to disambiguate):
-&gt; "Build a data migration pipeline that moves user records from a
-&gt;  legacy MySQL database to a new Postgres setup, with a dry-run mode
-&gt;  and verification step."
+<div class="why">
+  <div class="item"><strong>1. One source of truth</strong>Today the <code>Runtime</code> enum and <code>template_registry.status</code> are two versions of the same fact, maintained separately. With the merged design, the rows ARE the truth — the LLM literally cannot return a runtime we don't deploy.</div>
+  <div class="item"><strong>2. <code>no_match</code> is first-class</strong>Infra/shell/Terraform tasks that silently skip today become structured tickets with capability gaps and a suggested template name. Two years of these is your template roadmap.</div>
+  <div class="item"><strong>3. Adding a template is data</strong>No enum bump, no picker branch, no Python migration. Insert a row; the LLM considers it on the next cold classification.</div>
+  <div class="item"><strong>4. Shape and persona separate</strong>Shape is implied by the template (an <code>utkrusht-infra</code> task is by construction infra-shape). Specialty is the <code>persona</code> picked from <code>personas[]</code>. The conflated <code>kind</code> field disappears.</div>
+  <div class="item"><strong>5. Polyglot is honest</strong>A polyglot task with no matching template surfaces as <code>no_match</code> with a clear capability gap, not a silent runtime collision.</div>
+</div>
 
-Background:
-- This is the third task in a series; the candidate is mid-bootcamp.
+<h3>The schema</h3>
+<p>Two tables — same row count as today, but the seam moves to a useful place.</p>
 
-Classify into TaskRuntime…</code></pre>
-<p>With scenario in context, ambiguity collapses — the LLM doesn't have to guess what "Python + Postgres" means; it reads "migration pipeline."</p>
-
-<h4>Registry-key implications</h4>
-<p>The registry is keyed on <code>combo_key = sorted competencies</code>. If scenarios influence classification, then <strong>the same combo can classify differently for different tasks</strong> — which breaks the "one row per combo" invariant.</p>
-<p>Three options for how to handle this:</p>
-<table>
-  <thead><tr><th>Option</th><th>Cache key</th><th>Pro</th><th>Con</th></tr></thead>
-  <tbody>
-    <tr><td><strong>A. Scenario enriches, key unchanged</strong></td><td><code>combo_key</code> (today)</td><td>Registry stays small (~50 rows); fast</td><td>First task's scenario fixes the classification; later tasks with same combo but different scenario inherit</td></tr>
-    <tr><td><strong>B. Combo + scenario hash</strong></td><td><code>combo_key + sha(scenario)</code></td><td>Accurate per-scenario</td><td>Registry grows to ~339 rows; memoization benefit dies; populate cost ~6×</td></tr>
-    <tr><td><strong>C. Combo default + per-task override</strong></td><td><code>combo_key</code> default; <code>tasks.task_runtime_override JSONB</code> for outliers</td><td>Registry stays small; ambiguous tasks get override rows</td><td>Two sources of truth; consumer code must check override first</td></tr>
-  </tbody>
-</table>
-<p><strong>Recommendation: Option A.</strong> Pass scenario to enrich the LLM's input on <strong>first encounter only</strong>. The registry captures the LLM's best classification informed by whatever scenario triggered it. The editable-row property remains the escape hatch when a later task's scenario clashes with the cached classification.</p>
-<p>Promote to Option C when ≥3 tasks with the same combo classify differently in a quarter (the data lives in the registry — we can detect it).</p>
-
-<h4>Status</h4>
-<table>
-  <thead><tr><th>Step</th><th>Status</th></tr></thead>
-  <tbody>
-    <tr><td>Pass <code>scenario</code> to <code>resolve_plan()</code></td><td class="warn"><strong>Proposed</strong> — one signature change in <code>runtime_resolver.py</code> + the caller in <code>creator.py</code></td></tr>
-    <tr><td>Pass <code>background</code> to <code>resolve_plan()</code></td><td class="warn"><strong>Proposed</strong> — same change, optional second arg</td></tr>
-    <tr><td>Extend LLM classifier prompt with Scenario / Background sections</td><td class="warn"><strong>Proposed</strong> — prompt edit in <code>infra/classifier/llm_classifier.py</code></td></tr>
-    <tr><td>Keep registry keyed on <code>combo_key</code> (Option A)</td><td class="ok"><strong>Recommended for v1</strong></td></tr>
-    <tr><td>Promote to per-task override (Option C)</td><td>Trigger: ≥3 same-combo / different-scenario disagreements</td></tr>
-  </tbody>
-</table>
-
-<h3>Why no rules layer at all</h3>
-<table>
-  <thead><tr><th>Concern</th><th>Rules answer</th><th>LLM-only answer</th></tr></thead>
-  <tbody>
-    <tr><td>New tech emerges weekly</td><td>Manual token-list updates</td><td>Auto-handled by training data currency</td></tr>
-    <tr><td>Substring false positives</td><td>Constant fighting</td><td>Doesn't exist (LLM judges meaning)</td></tr>
-    <tr><td>Bug surface</td><td>Emergent from rule complexity</td><td>Bounded — one prompt, one parser</td></tr>
-    <tr><td>Latency</td><td>~5 ms</td><td>~2 s — but only on first encounter</td></tr>
-    <tr><td>Cost</td><td>$0 forever</td><td>~$0.05 once, then $0</td></tr>
-    <tr><td>Determinism</td><td>Yes</td><td>Yes via the registry</td></tr>
-  </tbody>
-</table>
-
-<h2 id="model">The <code>TaskRuntime</code> model</h2>
-
-<h3>Current shape (shipped)</h3>
-<p><code>infra/classifier/runtime.py</code>:</p>
-<pre><code>from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field
-
-Runtime = Literal[
-    "python", "node", "java", "php", "go", "rust",
-    "flutter", "ruby", "scala", "none",
-]
-Kind = Literal[
-    "app", "script", "mobile", "frontend", "testing",
-    "db_only", "llm", "vector_db", "non_code",
-]
-
-class TaskRuntime(BaseModel):
-    model_config = ConfigDict(frozen=True)
-    runtime:       Runtime
-    frameworks:    list[str] = Field(default_factory=list)
-    datastores:    list[str] = Field(default_factory=list)
-    messaging:     list[str] = Field(default_factory=list)
-    needs_browser: bool = False
-    kind:          Kind</code></pre>
-
-<p>The <code>kind</code> enum carries two different things:</p>
-<table>
-  <thead><tr><th><code>Kind</code> value</th><th>What it really describes</th></tr></thead>
-  <tbody>
-    <tr><td><code>app</code>, <code>script</code>, <code>mobile</code>, <code>frontend</code>, <code>testing</code>, <code>non_code</code></td><td><strong>Shape of output</strong> — what files/structure the task ships</td></tr>
-    <tr><td><code>db_only</code>, <code>llm</code>, <code>vector_db</code></td><td><strong>Specialty</strong> — which reviewer persona should evaluate it</td></tr>
-  </tbody>
-</table>
-<p>A <code>kind="app"</code> is a <em>shape</em> (HTTP service + tests + maybe compose). A <code>kind="vector_db"</code> is a <em>specialty</em> (the reviewer should focus on dimensionality, distance metric, recall@k). They're not at the same level of description. This shows up as disambiguation pain at classification time:</p>
-<table>
-  <thead><tr><th>Task</th><th>Could plausibly be</th></tr></thead>
-  <tbody>
-    <tr><td>"Pinecone + REST API for similarity search"</td><td><code>kind="app"</code> (it's a backend app) <strong>or</strong> <code>kind="vector_db"</code> (vector specialty)</td></tr>
-    <tr><td>"RAG pipeline with Chroma"</td><td><code>kind="llm"</code> (RAG) <strong>or</strong> <code>kind="vector_db"</code> (Chroma-specific)</td></tr>
-    <tr><td>"pgvector schema design"</td><td><code>kind="db_only"</code> (schema) <strong>or</strong> <code>kind="vector_db"</code> (vector specifics)</td></tr>
-  </tbody>
-</table>
-<p>The LLM has to pick <em>one</em>, but both are true.</p>
-
-<h3>Proposed evolution — split <code>kind</code> into <code>shape</code> + <code>specialty</code></h3>
-<pre><code>Shape = Literal[
-    "app", "script", "mobile", "frontend", "testing",
-    "non_code", "infra",   # ← "infra" is also new (K8s, Helm, Terraform)
-]
-Specialty = Literal[
-    "backend", "frontend", "data", "dba", "llm",
-    "vector_db", "mle", "sdet", "none",
-]
-
-class TaskRuntime(BaseModel):
-    model_config = ConfigDict(frozen=True)
-    runtime:       Runtime
-    shape:         Shape       # ← what files/structure
-    specialty:     Specialty = "none"   # ← which reviewer persona
-    frameworks:    list[str] = Field(default_factory=list)
-    datastores:    list[str] = Field(default_factory=list)
-    messaging:     list[str] = Field(default_factory=list)
-    needs_browser: bool = False</code></pre>
-
-<p>Now the disambiguation cases resolve cleanly:</p>
-<table>
-  <thead><tr><th>Task</th><th>Shape</th><th>Specialty</th></tr></thead>
-  <tbody>
-    <tr><td>"Pinecone + REST API for similarity search"</td><td><code>app</code></td><td><code>vector_db</code></td></tr>
-    <tr><td>"RAG pipeline with Chroma"</td><td><code>app</code></td><td><code>llm</code></td></tr>
-    <tr><td>"pgvector schema design"</td><td><code>non_code</code> (or <code>infra</code>)</td><td><code>dba</code></td></tr>
-    <tr><td>"Plain FastAPI + Postgres CRUD"</td><td><code>app</code></td><td><code>backend</code></td></tr>
-    <tr><td>"Build a Helm chart for a microservice"</td><td><code>infra</code></td><td><code>backend</code></td></tr>
-    <tr><td>"Pure SQL schema design"</td><td><code>non_code</code></td><td><code>dba</code></td></tr>
-    <tr><td>"Flutter mobile app"</td><td><code>mobile</code></td><td><code>none</code></td></tr>
-  </tbody>
-</table>
-
-<p>Concretely, what each consumer reads changes:</p>
-<table>
-  <thead><tr><th>Consumer</th><th>Today reads</th><th>Proposed reads</th></tr></thead>
-  <tbody>
-    <tr><td>Prompt generator HARD CONSTRAINT block</td><td><code>kind</code></td><td><code>shape</code></td></tr>
-    <tr><td>Reference retriever filename matching</td><td><code>kind</code> + <code>datastores</code> + <code>needs_browser</code></td><td><code>shape</code> + same</td></tr>
-    <tr><td>Eval critic persona routing</td><td><code>kind</code></td><td><code>specialty</code> (with <code>shape</code> as fallback when <code>specialty="none"</code>)</td></tr>
-    <tr><td>E2B template picker</td><td><code>runtime</code> (+ small <code>kind</code> checks)</td><td><code>runtime</code> + <code>shape</code></td></tr>
-  </tbody>
-</table>
-
-<p><strong>Migration path</strong> (when this lands):</p>
-<ol>
-  <li>Add both columns to <code>competency_combo_classification</code> (NULL-able initially).</li>
-  <li>Update the LLM system prompt to emit both fields.</li>
-  <li>Re-classify the existing rows (~50 LLM calls, ~$0.05).</li>
-  <li>Update consumers one at a time, defaulting to the legacy <code>kind</code> until each is migrated.</li>
-  <li>Once all four consumers are migrated, drop <code>kind</code>.</li>
-</ol>
-
-<p><strong>Why defer it.</strong> At ~50 combos and one functioning persona-routing flow today, the cost of disambiguation pain is small. Ship this split when:</p>
-<ul>
-  <li>You add <code>kind="infra"</code> (K8s / Helm / Terraform tasks become common enough to need a reviewer persona)</li>
-  <li>You have ≥3 tasks where the kind/specialty conflict caused a wrong reviewer choice</li>
-  <li>You're already touching the schema for an unrelated reason</li>
-</ul>
-<p>Until then the single-field <code>kind</code> carries both axes at the cost of occasional ambiguity.</p>
-
-<h2 id="stress-test">Stress-testing the model — where <code>TaskRuntime</code> breaks</h2>
-<p>The shape/specialty split fixes one ambiguity (<code>kind="vector_db"</code>). It does <strong>not</strong> fix the structural rigidity. Running concrete tasks through the current model reveals a deeper pattern: closed enums keep collapsing axes that are genuinely orthogonal.</p>
-
-<h3>Eight cases that exercise the model</h3>
-<table>
-  <thead><tr><th>#</th><th>Task</th><th>Current model says</th><th>What actually breaks</th></tr></thead>
-  <tbody>
-    <tr><td><strong>A</strong></td><td>Helm chart for a microservice</td><td><code>runtime=none</code> (or <code>python</code>?), no <code>kind</code> fits</td><td>No <code>shape="infra"</code>. No template (<code>utkrusht-infra</code>). No eval recipe (<code>helm lint</code>, <code>kubectl --dry-run</code>). Gate skips, no quality signal.</td></tr>
-    <tr><td><strong>B</strong></td><td>Rust backend + React frontend (polyglot monorepo)</td><td><code>runtime=rust</code> OR <code>runtime=node</code> — must pick one</td><td>Template picker boots only one runtime's sandbox. The other half of the task can't build or test. Eval persona is ambiguous.</td></tr>
-    <tr><td><strong>C</strong></td><td>MySQL → Postgres data migration</td><td><code>datastores=[mysql, postgres]</code></td><td>Flat list erases that mysql is the <em>source</em> (read-only) and postgres is the <em>target</em> (write). Eval can't verify directionality.</td></tr>
-    <tr><td><strong>D</strong></td><td>Analyze a dataset in a Jupyter notebook</td><td><code>shape=script</code>? <code>non_code</code>? None fit</td><td><code>pytest</code> is the wrong eval. Notebooks need <code>papermill</code> / <code>nbclient</code>. No template variant for notebook execution.</td></tr>
-    <tr><td><strong>E</strong></td><td>Train a sentiment classifier in PyTorch</td><td><code>runtime=python</code>, <code>specialty=mle</code> (if shipped)</td><td>No <code>resources</code> field for GPU. Eval shape is wrong — train-to-convergence isn't a test suite.</td></tr>
-    <tr><td><strong>F</strong></td><td>Solana smart contract in Anchor (Rust)</td><td><code>runtime=rust</code>, <code>frameworks=[anchor]</code></td><td><code>utkrusht-rust</code> has no <code>solana-test-validator</code>. The classifier output looks reasonable but the template fundamentally can't run the tests. <code>specialty="blockchain"</code> not in proposed enum.</td></tr>
-    <tr><td><strong>G</strong></td><td>gRPC payments service in Go</td><td><code>runtime=go</code>, <code>frameworks=[grpc]</code></td><td>Wire protocol (gRPC vs REST vs GraphQL vs WebSocket) is implicit in <code>frameworks</code>. Prompt generator can't reliably emit a <code>.proto</code> file + <code>protoc</code> step.</td></tr>
-    <tr><td><strong>H</strong></td><td>Postgres primary + read replica routing</td><td><code>datastores=[postgres]</code></td><td>Two role-distinct datastores collapse into one entry. Eval can't verify "writes to primary, reads to replica."</td></tr>
-  </tbody>
-</table>
-
-<h3>The pattern — closed enum collapses orthogonal axes</h3>
-<p>Every failure is the same shape: a single field is forced to carry information about multiple independent dimensions.</p>
-<table>
-  <thead><tr><th>Axis that needs to exist</th><th>Currently squashed into</th><th>Cases affected</th></tr></thead>
-  <tbody>
-    <tr><td>Multi-runtime (polyglot)</td><td><code>runtime: Runtime</code> (single literal)</td><td>B</td></tr>
-    <tr><td>Shape vs specialty</td><td><code>kind</code> (already known)</td><td>A, D, E, F</td></tr>
-    <tr><td>Datastore role (source/target/replica/cache)</td><td><code>datastores: list[str]</code></td><td>C, H</td></tr>
-    <tr><td>Wire protocol (REST/gRPC/GraphQL/WS)</td><td>implicit in <code>frameworks</code></td><td>G</td></tr>
-    <tr><td>Resource needs (GPU/RAM/time)</td><td>not expressible</td><td>E</td></tr>
-    <tr><td>Eval method (pytest/notebook/validator/lint/benchmark)</td><td>implicit from <code>runtime</code></td><td>D, E, F</td></tr>
-    <tr><td>Long-tail runtimes (C++/C#/Kotlin/Swift/R/Julia/shell/yaml)</td><td>closed <code>Runtime</code> enum</td><td>not in cases above, but real</td></tr>
-  </tbody>
-</table>
-<p>The rigidity isn't inherently wrong — it's correct <em>as long as the downstream consumers are also bounded</em>. We have ~9 templates, ~5 eval personas, ~4 prompt-generator branches. The schema mirrors that. But every time a new consumer or task type lands with finer-grained needs, the schema cracks.</p>
-
-<h3>Recommended schema changes</h3>
-<p>Don't open up everything. Open up <em>exactly</em> the axes that already broke, with closed enums (so type-checking still catches typos):</p>
-<ol>
-  <li><strong><code>runtimes: list[Runtime]</code> (rename plural).</strong> Picker uses the first for template choice; full list goes to eval persona + prompt generator. Solves Case B.</li>
-  <li><strong>Ship the shape/specialty split</strong> (already proposed). Adds <code>shape="infra"</code> for K8s/Terraform/Helm. Adds <code>specialty="mle" | "dba" | "blockchain" | "security" | "devops"</code>. Solves A, D (partial), E, F.</li>
-  <li><strong><code>datastores: list[{name: str, role: Literal["primary","replica","source","target","cache"]}]</code>.</strong> Solves C and H.</li>
-  <li><strong><code>protocols: list[Literal["rest","grpc","graphql","websocket","none"]]</code>.</strong> Solves G.</li>
-  <li><strong><code>eval_method: Literal["pytest","notebook","validator","lint","benchmark","compile_only"]</code></strong> with defaults by runtime. Solves D, E, and the "what does the gate actually run?" question for special-case templates.</li>
-  <li><strong>Hold the line on <code>Runtime</code>.</strong> Don't add C++/C#/Kotlin/Swift until there's a real template behind each. Otherwise the gate quietly skips and we've added noise. The enum <em>should</em> track "what we can actually run."</li>
-</ol>
-
-<p>Two things to explicitly <em>not</em> do:</p>
-<ul>
-  <li><strong>No <code>tags: list[str]</code>.</strong> Loses type safety; every consumer becomes a string-parsing pile. The current closed-enum-per-axis is right; we just have too few axes.</li>
-  <li><strong>No <code>resources</code> field yet.</strong> No consumer reads GPU/memory/time today. Add when E2B template variants actually offer them.</li>
-</ul>
-
-<h3>Superset model proposal — one rich shape, consumer projections</h3>
-<p>A second question: should we keep one <code>TaskRuntime</code> model that everyone reads, or split into a rich superset + consumer-specific projections?</p>
-
-<p><strong>Option A — keep one model (current).</strong></p>
-<pre><code>class TaskRuntime(BaseModel):
-    runtimes:      list[Runtime]
-    shape:         Shape
-    specialty:     Specialty
-    datastores:    list[DatastoreRef]
-    protocols:     list[Protocol]
-    frameworks:    list[str]
-    messaging:     list[str]
-    needs_browser: bool
-    eval_method:   EvalMethod</code></pre>
-<p>Every consumer reads the whole thing; ignores fields it doesn't need.</p>
-
-<p><strong>Option B — superset + projections.</strong></p>
-<pre><code>class TaskRuntime(BaseModel):       # source of truth; the LLM emits this
-    # all of the above, plus freeform notes the LLM wants to surface
-    notes: str = ""
-
-class TemplateRequest(BaseModel):   # projection for the template picker
-    runtime: Runtime
-    shape: Shape
-    needs_browser: bool
-
-class EvalContext(BaseModel):       # projection for persona routing
-    shape: Shape
-    specialty: Specialty
-    eval_method: EvalMethod
-
-class PromptContext(BaseModel):     # projection for the prompt generator
-    runtimes: list[Runtime]
-    frameworks: list[str]
-    datastores: list[DatastoreRef]
-    protocols: list[Protocol]</code></pre>
-<p>The classifier always emits the rich superset; each consumer constructs the projection it actually wants.</p>
-
-<p><strong>Honest take: Option A for now, B when forced.</strong></p>
-<p>Option B looks clean on paper but pays a cost: more types, more conversion code, more places to keep in sync. The argument for it kicks in when <em>consumers genuinely diverge</em>. Today they mostly read overlapping subsets — the template picker reads <code>runtime</code> + a tiny bit of shape, the eval persona reads <code>shape</code> + <code>specialty</code>, the prompt generator reads almost everything. There's no point projecting "almost everything" through a separate type.</p>
-<p>When to flip to B:</p>
-<ul>
-  <li>A 5th or 6th consumer lands with a genuinely different read pattern (e.g. a deployment-cost estimator that only needs <code>resources</code>).</li>
-  <li>The model grows past ~10 fields and consumers start picking very different subsets.</li>
-  <li>A consumer needs to <em>mutate or augment</em> the model (today none do — everything is read-only).</li>
-</ul>
-<p>Until then, one model with field-level optionality (some fields with sensible defaults, most consumers ignoring most fields) is cheaper and equally honest.</p>
-
-<h3>Template implications — polyglot is composition's real argument</h3>
-<p>The fat-vs-composition discussion in the templates doc recommends <em>fat templates</em> because image size doesn't affect cold-start latency. That stands — for single-runtime tasks. But Case B (polyglot) is where composition has a unique payoff the fat argument missed:</p>
-<ul>
-  <li>Baking Rust + Node + Python + Java into one fat image is <em>not</em> like baking Python's fastapi/django/flask into one image. It's adding entire SDKs whose dependencies don't overlap and conflict-spaces don't simplify.</li>
-  <li>A monorepo with Rust backend + React frontend genuinely needs both <code>cargo</code> and <code>npm</code> in the sandbox.</li>
-  <li>E2B's <code>from_template()</code> is <strong>single-parent inheritance</strong> (like Docker <code>FROM</code>) — you can't chain multiple parents to build "Rust + Node = polyglot." That rules out the cleanest version of composition.</li>
-</ul>
-<p>That leaves three viable shapes for polyglot:</p>
-<ol>
-  <li><strong>Dedicated polyglot templates</strong> for common pairs (<code>utkrusht-node-python</code> for typical web stacks, <code>utkrusht-rust-node</code> for backend+frontend). Built fat, but with multiple runtimes. Costs disk; honest about the use case.</li>
-  <li><strong>Pick a primary runtime; install the secondary at session start.</strong> Slow (~30–60 s cold-start regression) but uses existing single-runtime templates and works for ANY polyglot pair without a new template build. Documented in <a href="./e2b-templates.html#polyglot">E2B Templates → Polyglot exception</a>.</li>
-  <li><strong>Skip the gate for polyglot</strong> until the pair becomes common. Concretely: when <code>len(runtimes) &gt; 1</code>, classifier writes a row, <code>template_runtime</code> stays NULL, gate skips with <code>polyglot_skipped</code>. Lossy but visible.</li>
-</ol>
-<p><strong>Decision (2026-05-26):</strong> <strong>option 2 — install secondary runtime at session start.</strong> It's the only path that ships working polyglot tasks today (option 3 leaves the candidate with an unrunnable task; option 1 takes a week per pair). The eval gate runs the same install prelude, so polyglot tasks get <em>verified</em> instead of skipped. Upgrade to option 1 (dedicated polyglot template) once a specific runtime pair recurs ≥3 times — the classification registry has the data to drive that decision.</p>
-
-<h3>Status of this section</h3>
-<table>
-  <thead><tr><th>Idea</th><th>Status</th><th>Trigger to revisit</th></tr></thead>
-  <tbody>
-    <tr><td>Shape/specialty split</td><td class="warn">Proposed (above)</td><td><code>kind="infra"</code> or ≥3 misrouted reviewers</td></tr>
-    <tr><td><code>runtimes: list[Runtime]</code></td><td class="warn">Proposed (this section)</td><td>First polyglot task — decision: install secondary at boot (see <a href="./e2b-templates.html#polyglot">e2b-templates.html#polyglot</a>)</td></tr>
-    <tr><td><code>datastores</code> with role</td><td class="warn">Proposed (this section)</td><td>First migration / replica task in the wild</td></tr>
-    <tr><td><code>protocols</code> field</td><td class="warn">Proposed (this section)</td><td>First gRPC / GraphQL task needing a different prompt branch</td></tr>
-    <tr><td><code>eval_method</code> field</td><td class="warn">Proposed (this section)</td><td>First notebook / benchmark / infra task that needs non-pytest eval</td></tr>
-    <tr><td>Superset + projections</td><td class="warn">Deferred</td><td>5+ consumers OR model &gt;10 fields</td></tr>
-    <tr><td>Polyglot templates</td><td class="warn">Deferred</td><td>≥3 tasks asking for the same runtime pair</td></tr>
-  </tbody>
-</table>
-<p>The model isn't rigid in the <em>bad</em> sense (over-specified). It's rigid in the <em>underdimensioned</em> sense — too few axes, each axis nearly correct. The fix is <strong>more axes, not looser axes</strong>.</p>
-
-<h2 id="merge-proposal">Proposed evolution: merge <code>TaskRuntime</code> and <code>template_registry</code> into one decision</h2>
-
-<h3>The structural alternative to "more axes"</h3>
-<p>The section above concludes: the model is <em>underdimensioned</em> and the fix is <em>more axes</em>. There's a second answer that doesn't add fields at all — <strong>collapse the classifier output and the template registry into a single decision surface</strong>.</p>
-<p>The current two-table shape encodes a conceptual seam:</p>
-<div class="ascii">                  classifier emits             picker resolves
-competencies ──► TaskRuntime ───────────────► template_id
-                  (runtime + frameworks +     (template_registry lookup
-                   datastores + needs_browser  keyed on runtime)
-                   + kind)</div>
-<p>Two LLM-readable surfaces (the prompt's enums + the registry's templates), two PKs (<code>runtime</code>, <code>combo_key</code>), two places to keep aligned. The seam is where bugs of the "classifier said <code>node</code>, but <code>utkrusht-node</code> doesn't exist" shape live — and where shell / Terraform / infra tasks fall through silently today.</p>
-<p>The alternative collapses that to:</p>
-<div class="ascii">                                                LLM reads capability sheets
-competencies ─────────────────────────────────► picks template_id (+ persona)
-                                                OR returns structured no_match</div>
-<p>The classifier's job is <em>only</em> to match a task against the deployable set. The template registry rows ARE the capability sheets the classifier reads — the registry stops being a downstream lookup and becomes the classifier's input.</p>
-
-<h3>Why this is structurally better</h3>
-<ol>
-  <li><strong>One place knows what we can run.</strong> Today the <code>Runtime</code> Literal in <code>infra/classifier/runtime.py</code> says we support <code>python | node | java | ...</code>, while <code>template_registry.status</code> says only <code>python</code> is actually built. Both are versions of the same fact, maintained separately. With the merged model, the rows are the truth — the LLM literally can't return a runtime we don't deploy.</li>
-  <li><strong>"No template fits" becomes a first-class signal.</strong> Today an infra / shell / Terraform task hits the rule-based picker, the picker falls through, the gate skips with <code>no_template</code>, and nobody notices. With the merged model the LLM returns <code>match: null, missing_capabilities: ["terraform-cli","tflint"], suggested_template: "utkrusht-infra"</code> — a build-new-template ticket generated automatically the first time a task needs it.</li>
-  <li><strong>Adding a template is a row insert, not an enum bump.</strong> The closed <code>Runtime</code> enum is a deliberate gate today, but accumulates as a graveyard (you can't remove old values that cached rows reference). Capability sheets carry that information instead — open at the edges, validated at consumption.</li>
-  <li><strong>The shape/specialty split becomes moot.</strong> "Shape" is implied by the template (an <code>utkrusht-infra</code> task is by construction an infra-shape task). "Specialty / persona" lives on the template as a <code>personas: text[]</code> column; the LLM picks one per task. The proposal earlier in this doc to split <code>kind</code> into <code>shape</code> + <code>specialty</code> is resolved structurally rather than by adding more fields.</li>
-  <li><strong>Polyglot is honest about what it is.</strong> A polyglot task with no matching template surfaces as <code>no_match</code>, not as a silent runtime collision. Build-or-skip becomes data-driven.</li>
-</ol>
-
-<h3>The proposed schema</h3>
-<p>Same row count as today — but the seam moves to a useful place.</p>
 <pre><code>-- templates: the registry IS the capability sheet
 CREATE TABLE templates (
   template_id        text PRIMARY KEY,        -- "utkrusht-python", "utkrusht-node-playwright"
   status             text NOT NULL,           -- "built" | "proposed" | "deprecated"
 
   -- Capability sheet (what the LLM reads to match)
-  runtime            text NOT NULL,           -- "python3.12" - primary language/VM
+  runtime            text NOT NULL,           -- "python3.12" — primary language/VM
   language_versions  jsonb DEFAULT '{}',      -- {"node":"20.11","python":"3.12"}
   frameworks         text[] DEFAULT '{}',     -- ["fastapi","sqlalchemy"]
   datastores         text[] DEFAULT '{}',     -- ["postgresql-16","redis-7"]
   tools              text[] DEFAULT '{}',     -- ["pytest","ruff","docker","helm"]
   needs_browser      boolean DEFAULT false,
   needs_gpu          boolean DEFAULT false,
-  capabilities_note  text,                    -- free-form for anything the structured fields miss
+  capabilities_note  text,
 
-  -- Personas this template can host (list, not scalar — one image serves multiple personas)
+  -- Personas this template can host (list, not scalar)
   personas           text[] NOT NULL,         -- ["backend","data","mle"]
 
   -- Execution
@@ -620,29 +322,29 @@ CREATE TABLE templates (
   test_cmd           text NOT NULL,
   compile_cmd        text,
 
-  -- Drift control: load-bearing for year-2 durability
+  -- Drift control (load-bearing for year-2 durability)
   manifest_hash      text NOT NULL,           -- sha256 of source Dockerfile/manifest
-  generated_at       timestamptz NOT NULL,    -- when sheet was last regenerated from manifest
+  generated_at       timestamptz NOT NULL,
   registry_version   integer NOT NULL         -- monotonic; bumps on any sheet change
 );
 
 CREATE INDEX templates_active_idx ON templates(status) WHERE status = 'built';
 
--- task_template_match: the classification cache, now pointing at templates
+-- task_template_match: the classification cache, pointing at templates
 CREATE TABLE task_template_match (
   combo_key             text PRIMARY KEY,
   template_id           text REFERENCES templates(template_id), -- NULL = no_match
-  persona               text NOT NULL,                          -- one of template.personas
+  persona               text NOT NULL,
   confidence            real,
 
-  -- no_match path: first-class signal, not a silent skip
+  -- no_match path
   no_match_reason       text,
-  missing_capabilities  text[],                                 -- ["terraform-cli","tflint"]
-  suggested_template    text,                                   -- "utkrusht-infra"
+  missing_capabilities  text[],
+  suggested_template    text,
 
   -- Cache invalidation keys
-  classifier_model      text NOT NULL,                          -- "claude-sonnet-4-6"
-  registry_version      integer NOT NULL,                       -- value at classification time
+  classifier_model      text NOT NULL,
+  registry_version      integer NOT NULL,
   classified_at         timestamptz DEFAULT now(),
 
   CHECK (
@@ -650,198 +352,327 @@ CREATE TABLE task_template_match (
     (template_id IS NULL     AND no_match_reason IS NOT NULL)
   )
 );</code></pre>
-<p>A cache hit requires <code>classifier_model = current AND registry_version = current_registry_version</code>. Stale entries get re-classified automatically when either bumps.</p>
 
-<h3>Contrast — same row count, better seam</h3>
+<p>A cache hit requires <code>classifier_model = current AND registry_version = current_registry_version</code>. Either bumping invalidates stale entries automatically.</p>
+
+<h2 id="today">Where we are today</h2>
+
+<p>The shipped pipeline implements the same input-to-deploy flow, but via two decision surfaces stitched together by a rule-based picker.</p>
+
+<div class="twoup">
+  <div class="card">
+    <h4>Today — two surfaces</h4>
+    <div class="ascii">competencies
+     │
+     ▼
+ TaskRuntime
+   (runtime, kind,
+    frameworks,
+    datastores,
+    needs_browser)
+     │
+     ▼
+ template_registry
+   (runtime PK lookup)
+     │
+     ▼
+ template_name</div>
+  </div>
+  <div class="card target">
+    <h4>Target — one decision</h4>
+    <div class="ascii">competencies
+     │
+     ▼
+ LLM reads capability sheets
+   (templates WHERE status='built')
+     │
+     ▼
+ template_id + persona
+   OR
+ no_match { missing_capabilities,
+            suggested_template }</div>
+  </div>
+</div>
+
+<h3>Shipped components</h3>
+
 <table>
-  <thead><tr><th>Concern</th><th>Current (two tables)</th><th>Merged (two tables)</th></tr></thead>
+  <thead><tr><th>Component</th><th>Where</th></tr></thead>
   <tbody>
-    <tr><td>Primary entity</td><td><code>runtime</code> enum</td><td><code>template_id</code> row set</td></tr>
-    <tr><td>Adding new tech</td><td>Enum bump + code PR + migration + registry row</td><td>One row insert</td></tr>
-    <tr><td>Adding a template variant (e.g. <code>python-ml</code>)</td><td>Awkward — <code>runtime</code> PK blocks it</td><td>Natural — second row</td></tr>
-    <tr><td>"What's in this template?"</td><td>Implicit in <code>template_name</code> string</td><td>Explicit in capability columns</td></tr>
-    <tr><td>Reviewer persona</td><td><code>kind</code> (scalar, conflated with shape)</td><td><code>personas[]</code> on template; one picked per task</td></tr>
-    <tr><td>Picker logic</td><td><code>if/else</code> on runtime / kind / frameworks (growing)</td><td>LLM reads capability sheets</td></tr>
-    <tr><td>"No template fits"</td><td>Silent <code>no_template</code> skip</td><td>Structured <code>missing_capabilities</code> + suggested name</td></tr>
-    <tr><td>Cache staleness on template change</td><td>Not modeled</td><td><code>registry_version</code> bump invalidates</td></tr>
-    <tr><td>Cache staleness on model upgrade</td><td>Implicit</td><td><code>classifier_model</code> in cache key, explicit policy</td></tr>
-    <tr><td>Drift between sheet and reality</td><td>N/A — no sheet</td><td><code>manifest_hash</code> + CI check</td></tr>
+    <tr><td>LLM classifier (Sonnet 4.6 via Portkey, strict JSON, retry-with-validation-error)</td><td><code>infra/classifier/llm_classifier.py</code></td></tr>
+    <tr><td><code>TaskRuntime</code> Pydantic model — single closed <code>Runtime</code> Literal</td><td><code>infra/classifier/runtime.py</code></td></tr>
+    <tr><td><code>competency_combo_classification</code> cache table</td><td>migration 2026-05-25</td></tr>
+    <tr><td><code>template_registry</code> table — <code>runtime</code> PK, one row per language</td><td>migration 2026-05-25</td></tr>
+    <tr><td><code>resolve_plan(combo_key)</code> orchestrator</td><td><code>generators/task/runtime_resolver.py</code></td></tr>
+    <tr><td><code>utkrusht-python</code> (only <code>built</code> row; node/java/php/go/rust/flutter/ruby/scala are <code>proposed</code>)</td><td>E2B registry</td></tr>
+    <tr><td><code>sandbox_eval</code> reads <code>template_name</code> from registry</td><td><code>e2b_flow/sandbox_eval.py</code></td></tr>
+    <tr><td>Persona-routed eval critics keyed off <code>TaskRuntime.kind</code></td><td><code>evals.py</code></td></tr>
   </tbody>
 </table>
 
-<h3>The load-bearing decision — sheets are generated, not hand-written</h3>
-<p>The merged model has one architectural weak point: <strong>the sheet can lie about the image</strong>. Someone bumps the Dockerfile (Node 20 → 22, adds <code>redis-cli</code>) but forgets the row. The classifier picks based on stale info.</p>
-<p>The fix: sheets are <em>generated</em>, not hand-maintained.</p>
-<ul>
-  <li>Each template's Dockerfile (or <code>e2b_flow/templates/&lt;name&gt;/template.py</code>) emits a manifest at build time.</li>
-  <li>The manifest is hashed → <code>manifest_hash</code> column.</li>
-  <li>CI gate: "Dockerfile changed but sheet wasn't regenerated → fail build."</li>
-  <li>Bumping the row bumps <code>registry_version</code>, invalidating cached classifications.</li>
-</ul>
-<p>Without this discipline the merged model rots in year 2. With it, sheets can't lie and the cache-invalidation story is clean. <strong>This is the single decision that determines whether the merged model is sound at year 2.</strong> If the team isn't ready to invest in manifest generation, stay on the two-layer model — the rule-based picker survives lying data better than an LLM does.</p>
+<p>The picker function <code>_get_template(runtime)</code> in <code>runtime_resolver.py:140-188</code> is the entire current routing logic — a PK lookup by runtime. <code>kind</code>, <code>frameworks</code>, <code>needs_browser</code> are stored on the classification row but unused by routing.</p>
 
-<h3>Template fragmentation policy</h3>
-<p><code>utkrusht-python</code> is fat by design today. As task volume grows, real splits will be needed (e.g. <code>utkrusht-python-nlp</code> once pandas + transformers become heavy enough to bake separately; later <code>utkrusht-python-llm</code> for the LangChain / LlamaIndex lane). The split decision should be signal-driven, not speculative.</p>
-<p><strong>Signals that justify a split:</strong></p>
-<ol>
-  <li><strong>Base image bloat</strong> — build time on the base past some threshold (~60 s) or image size past some MB. CI metric.</li>
-  <li><strong>Over-serving</strong> — most tasks routed to the base also pull <code>pandas</code> / <code>transformers</code> / <code>langchain</code> at install time. The <code>build_cmd</code> is "install X" over and over per sandbox. Bake X into a sibling template.</li>
-  <li><strong>No-match clustering</strong> — multiple <code>no_match</code> rows with the same <code>missing_capabilities</code>. Five no-matches in a month asking for <code>["torch","transformers"]</code> is a <code>utkrusht-python-llm</code> ticket.</li>
-</ol>
-<p>Signal (3) is what the merged model gives you for free — the highest-signal source of "what template to build next," generated automatically rather than guessed at by humans.</p>
-<p><strong>Sprawl avoidance — the equally-important policy:</strong></p>
+<h3>Gaps vs. the design</h3>
+
+<table>
+  <thead><tr><th>Gap</th><th>Effect today</th></tr></thead>
+  <tbody>
+    <tr><td>Closed <code>Runtime</code> Literal</td><td>New tech requires code change + migration + redeploy</td></tr>
+    <tr><td>No <code>personas: text[]</code> on templates</td><td><code>kind</code> carries persona — conflated with shape, one value per task</td></tr>
+    <tr><td>No first-class <code>no_match</code> output</td><td>Infra / shell / Terraform tasks skip silently with <code>no_template</code></td></tr>
+    <tr><td>No <code>manifest_hash</code> / capability sheet provenance</td><td>Image content can drift from documented commands; no CI check</td></tr>
+    <tr><td>No <code>(classifier_model, registry_version)</code> cache invalidation</td><td>Stale rows survive model upgrades and template changes</td></tr>
+    <tr><td>Picker ignores <code>frameworks</code> and <code>needs_browser</code></td><td>Template variants (<code>python-llm</code> vs <code>python-web</code>) can't coexist under <code>runtime</code> PK</td></tr>
+    <tr><td><code>Runtime</code> enum and <code>template_registry.status</code> duplicate the same fact</td><td>Classifier can claim to support runtimes we don't actually deploy</td></tr>
+  </tbody>
+</table>
+
+<h2 id="why-broken">Why the current shape doesn't carry us forward</h2>
+
+<p>The two-layer model isn't wrong by intent — it was the natural shape with one template and one runtime. As task variety grows, the seam between classifier output and routing accumulates structural failures. Concrete cases from real tasks:</p>
+
+<table>
+  <thead><tr><th>#</th><th>Task</th><th>Current model says</th><th>What breaks</th></tr></thead>
+  <tbody>
+    <tr><td>A</td><td>Helm chart for a microservice</td><td><code>runtime=none</code>, no <code>kind</code> fits</td><td>No infra template; gate skips; no quality signal</td></tr>
+    <tr><td>B</td><td>Rust backend + React frontend (polyglot)</td><td>Must pick one runtime</td><td>The other half can't build or test</td></tr>
+    <tr><td>C</td><td>MySQL → Postgres data migration</td><td><code>datastores=[mysql, postgres]</code></td><td>Source/target roles erased; eval can't verify directionality</td></tr>
+    <tr><td>D</td><td>Jupyter notebook analysis</td><td>None of the <code>kind</code> values fit</td><td><code>pytest</code> is the wrong eval; no notebook execution path</td></tr>
+    <tr><td>E</td><td>PyTorch sentiment classifier</td><td><code>runtime=python</code>, no GPU expression</td><td>Train-to-convergence isn't a test suite</td></tr>
+    <tr><td>F</td><td>Solana smart contract in Anchor</td><td><code>runtime=rust</code></td><td><code>utkrusht-rust</code> has no <code>solana-test-validator</code>; classifier looks fine but template can't run tests</td></tr>
+    <tr><td>G</td><td>gRPC payments service in Go</td><td><code>runtime=go</code>, <code>frameworks=[grpc]</code></td><td>Wire protocol implicit in frameworks; no <code>.proto</code>/<code>protoc</code> step</td></tr>
+    <tr><td>H</td><td>Postgres primary + replica routing</td><td><code>datastores=[postgres]</code></td><td>Two role-distinct stores collapse into one entry</td></tr>
+  </tbody>
+</table>
+
+<p>Every failure has the same shape: <strong>a single field forced to carry information about multiple independent dimensions</strong>. The intuitive fix is "add more axes" — split <code>kind</code> into <code>shape</code>+<code>specialty</code>, plural-ize <code>runtime</code>, add <code>protocols</code>, add <code>eval_method</code>. But more axes doesn't fix the <em>seam</em>. It makes both sides more complex: the picker branch tree grows, the LLM has more enums to satisfy, and adding new tech still requires editing closed enums.</p>
+
+<p>The structural fix is the design above: <strong>stop carrying the task's needs through an intermediate model.</strong> The template rows describe what we can deploy; the classifier matches against them directly. There's no model to "underdimension" because there's no model — just rows and a matcher.</p>
+
+<h2 id="migration">Migration path</h2>
+
+<p>The current implementation is partially aligned with the design. The migration is additive and reversible until the final step.</p>
+
+<div class="steps">
+  <div class="step">
+    <div class="num">1</div>
+    <div class="body">
+      <h4>Extend <code>template_registry</code> (additive, reversible)</h4>
+      <p>Add <code>personas</code>, <code>frameworks</code>, <code>datastores</code>, <code>tools</code>, <code>needs_gpu</code>, <code>language_versions</code>, <code>capabilities_note</code>, <code>manifest_hash</code>, <code>generated_at</code>, <code>registry_version</code>. Backfill the <code>utkrusht-python</code> row with its current sheet (extracted from <code>infra/e2b/templates/python/template.py</code>).</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="num">2</div>
+    <div class="body">
+      <h4>Switch the PK from <code>runtime</code> to <code>template_id</code></h4>
+      <p>The current <code>runtime</code> PK blocks template variants — <code>utkrusht-python-llm</code> and <code>utkrusht-python-web</code> can't coexist when <code>runtime='python'</code> is unique. The new PK is <code>template_id</code>; <code>runtime</code> stays as a non-unique descriptor.</p>
+    </div>
+  </div>
+  <div class="step gate">
+    <div class="num">3</div>
+    <div class="body">
+      <h4>Manifest-hash CI gate — <strong>the durability decision</strong></h4>
+      <p>Each <code>infra/e2b/templates/&lt;name&gt;/template.py</code> emits a <code>manifest.json</code> at build time (apt packages, pip packages, language versions, exposed ports, <code>start.sh</code> commands). CI hashes the manifest and compares to <code>template_registry.manifest_hash</code> for that row. If the template's source changed but the row's hash doesn't match, the build fails. Bumping the hash also bumps <code>registry_version</code>, invalidating the classification cache.</p>
+      <p><strong>If the team isn't ready to invest in this, stop at Step 2 and stay on the two-layer model.</strong> The rule-based picker survives lying data better than an LLM does.</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="num">4</div>
+    <div class="body">
+      <h4>Classifier emits <code>template_id</code> + <code>persona</code></h4>
+      <p>Update the prompt in <code>infra/classifier/llm_classifier.py</code> to receive the active template rows (<code>status='built'</code>) inline and return <code>{ template_id, persona, confidence }</code> or <code>{ no_match: true, missing_capabilities, suggested_template, reason }</code>. <code>TaskRuntime</code> stays — it becomes a projection of the picked template, computed on read for consumers that still need its fields. Migrate consumers off it one at a time.</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="num">5</div>
+    <div class="body">
+      <h4>Create <code>task_template_match</code> table</h4>
+      <p>Replaces <code>competency_combo_classification</code> for new rows. Backfill: copy old rows, derive <code>template_id</code> via the legacy picker, <code>registry_version=1</code>.</p>
+    </div>
+  </div>
+  <div class="step">
+    <div class="num">6</div>
+    <div class="body">
+      <h4>Wire the <code>no_match</code> path</h4>
+      <p>Rows with <code>template_id IS NULL</code> are the template roadmap. A query over <code>task_template_match</code> — group by <code>missing_capabilities</code>, count, sort — produces "what to build next."</p>
+    </div>
+  </div>
+  <div class="step danger">
+    <div class="num">7</div>
+    <div class="body">
+      <h4>Drop the <code>Runtime</code> Literal enum (irreversible)</h4>
+      <p>Only after at least one new template has landed via the new path. The enum is now redundant with the templates table; removing it makes the design unambiguous.</p>
+    </div>
+  </div>
+</div>
+
+<h2 id="choices">Choices along the way</h2>
+
+<h3>Capability sheets are generated, not hand-written</h3>
+<p>The single failure mode that determines whether this design ages well. Someone bumps a Dockerfile (Node 20→22, adds <code>redis-cli</code>) but forgets the row; the classifier picks on stale info; the bug surfaces weeks later in eval. Mitigation: sheets generated from the image manifest at build time, hashed (<code>manifest_hash</code>), CI-checked. See Step 3.</p>
+
+<h3>Personas are a list, not a scalar</h3>
+<p>One template legitimately hosts multiple personas. <code>utkrusht-python</code> is reasonable for <code>backend</code>, <code>data</code>, <code>mle</code>, and <code>llm</code> tasks — same image, different reviewer. Forcing a single persona onto the template means either over-fragmenting templates or moving persona to the classification row (re-introducing the seam). Persona is a list on the template; the LLM picks one per task.</p>
+
+<h3>No catch-all template</h3>
+<p>A <code>utkrusht-base</code> that runs any task feels safe but erases the highest-value signal the design produces. A <code>no_match</code> row with <code>missing_capabilities: ["terraform"]</code> is a roadmap. A catch-all that vaguely runs it as Python is silent failure dressed up as success.</p>
+
+<h3>Cache invalidation has two keys</h3>
+<p><code>classifier_model</code> AND <code>registry_version</code>. Either bumping invalidates cached rows. Sonnet 4.6 → 5.x quietly changes decisions on borderline cases; without <code>classifier_model</code> in the key, cached rows survive the upgrade. A template's sheet gains <code>redis-cli</code>; without <code>registry_version</code> in the key, rows classified before the update never reconsider the better-fit template.</p>
+
+<h3>Sibling templates, not E2B inheritance</h3>
+<p>When <code>utkrusht-python</code> splits into <code>utkrusht-python-nlp</code> / <code>-llm</code> / <code>-web</code>, the variants should each <code>FROM</code> a common Docker base — <strong>not</strong> chain via E2B's <code>from_template()</code>. Inheritance feels DRY but makes rebuild graphs ugly and CVE patching cascades. Siblings duplicate a small amount and are independently buildable / patchable.</p>
+
+<h2 id="fragmentation">Template fragmentation policy</h2>
+
+<p><code>utkrusht-python</code> is fat by design today. As task volume grows, real splits will be needed. The split decision should be signal-driven, not speculative.</p>
+
+<h3>Signals that justify a split</h3>
+<table>
+  <thead><tr><th>#</th><th>Signal</th><th>Threshold</th><th>Action</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td><strong>Base image bloat</strong></td><td>Build time &gt; ~60 s or image size past MB ceiling</td><td>Move heavy pip libs to a sibling template</td></tr>
+    <tr><td>2</td><td><strong>Over-serving</strong></td><td>Most tasks routed to base also <code>pip install pandas / transformers / langchain</code> at sandbox-boot</td><td>Bake into a sibling — sandbox boot drops by N seconds</td></tr>
+    <tr><td>3</td><td><strong><code>no_match</code> clustering</strong></td><td>≥5 <code>no_match</code> rows / month sharing <code>missing_capabilities</code></td><td>Build the suggested template — this is the data-driven roadmap</td></tr>
+  </tbody>
+</table>
+
+<p>Signal (3) is the one the merged design gives you for free — the highest-signal source of "what template to build next."</p>
+
+<h3>Sprawl avoidance</h3>
 <ul>
-  <li>Capability sheets must be <em>distinctive</em>. Two templates with 90 % overlap confuse the LLM matcher. That's the signal to merge them, or to make the sheet sharper.</li>
+  <li>Capability sheets must be <strong>distinctive</strong>. Two templates with 90% overlap confuse the LLM matcher. Merge them, or sharpen the sheet.</li>
   <li><code>status = "deprecated"</code> is for templates we've replaced; rows stay (cache validity) but the LLM stops picking them.</li>
-  <li>Every CVE patch is N rebuilds — keep N small. ~12 templates at the two-year mark is reasonable; 30 is sprawling.</li>
+  <li>Every CVE patch is N rebuilds. ~12 templates at the two-year mark is reasonable; 30 is sprawling.</li>
 </ul>
-<p><strong>Inheritance vs siblings.</strong> When <code>utkrusht-python</code> splits, the variants should be <strong>siblings</strong> (each <code>FROM</code> a common base image), not E2B <code>from_template()</code> inheritance. Inheritance feels DRY but makes rebuild graphs ugly and CVE patching cascades. Siblings duplicate a small amount and are independently buildable / patchable.</p>
 
-<h3>How the two designs age</h3>
-<p><strong>Two-layer model (current).</strong> Fails worst on <em>closed-vocab drift</em>. Bun ships, the LLM emits <code>runtime=node, frameworks=['bun']</code> because Bun isn't in the enum, the picker routes to the Node template, Bun-specific behaviour fails subtly. By the time someone debugs it, three months have passed. This is the canonical failure mode of closed-vocab classification in a fast-moving domain — and the tech-stack-for-assessments domain is fast-moving.</p>
-<p><strong>Merged model.</strong> Fails worst on <em>sheet ambiguity</em>. The LLM picks <code>utkrusht-python</code> for a task that wanted <code>utkrusht-python-llm</code> because the LLM-libs distinction wasn't sharp in the sheet. Surfaces in eval failure; fix is to sharpen the sheet (one row update). Louder failure mode, faster feedback loop.</p>
-<p>Closed-vocab drift compounds silently. Sheet ambiguity is loud. The merged model fails <em>better</em> over years — but only with the manifest-hash discipline above.</p>
+<h2 id="aging">How this design ages</h2>
 
-<h3>Migration path</h3>
-<ol>
-  <li><strong>Add <code>personas: text[]</code> to <code>template_registry</code></strong> (additive; defaults <code>[]</code>). Cheap.</li>
-  <li><strong>Add <code>manifest_hash</code>, <code>generated_at</code>, <code>registry_version</code></strong> columns. Backfill from existing rows. Cheap.</li>
-  <li><strong>Build the manifest-emitting CI step.</strong> Each template's <code>build_prod.py</code> writes a manifest JSON; CI hashes it and compares to the row. <strong>This is the durability gate</strong> — don't merge classifier and registry without it.</li>
-  <li><strong>Extend the classifier system prompt</strong> to receive the active template rows (only <code>status='built'</code>) and return <code>template_id</code> + <code>persona</code> (or structured <code>no_match</code>). The current <code>TaskRuntime</code> keeps existing — it becomes a projection derivable from the picked template.</li>
-  <li><strong>Wire the <code>no_match</code> path.</strong> Rows with <code>template_id IS NULL</code> log a structured ticket. After a few weeks, the most common <code>missing_capabilities</code> is the template roadmap.</li>
-  <li><strong>Once stable, drop the <code>Runtime</code> Literal enum.</strong> Now redundant with the templates table. Irreversible step; do it after at least one new template has landed via the new path.</li>
-</ol>
-<p>Existing <code>competency_combo_classification</code> rows become the seed for <code>task_template_match</code> — same <code>combo_key</code>, derived <code>template_id</code> via the current picker, <code>registry_version = 1</code>.</p>
+<div class="horizon">
+  <div class="hd">Horizon</div>
+  <div class="hd">What we'll see</div>
+  <div class="hd">What we'll need</div>
 
-<h3>Status of this proposal</h3>
-<table>
-  <thead><tr><th>Idea</th><th>Status</th><th>Trigger to ship</th></tr></thead>
-  <tbody>
-    <tr><td><code>personas: text[]</code> on template</td><td class="warn">Proposed</td><td>Whenever persona-routing next needs to handle a template serving multiple personas (already true of <code>utkrusht-python</code>)</td></tr>
-    <tr><td><code>manifest_hash</code> + CI sheet-from-Dockerfile check</td><td class="warn">Proposed — required for full merge</td><td>Before adding the second built template; this is the durability gate</td></tr>
-    <tr><td>First-class <code>no_match</code> output</td><td class="warn">Proposed</td><td>First infra / shell / Terraform task that surfaces the gap</td></tr>
-    <tr><td>Full merge — LLM picks <code>template_id</code> directly</td><td class="warn">Proposed</td><td>When (a) the second built template lands, or (b) ≥3 "wrong runtime" misclassifications in a quarter</td></tr>
-    <tr><td>Sibling-template fragmentation of <code>utkrusht-python</code></td><td class="warn">Deferred</td><td>When build-time, image-size, or no-match clustering signals fire (see "Template fragmentation policy" above)</td></tr>
-  </tbody>
-</table>
-<p>The shape/specialty split proposed earlier in this doc remains valid as an intermediate move <em>if</em> the full merge is deferred. If the merge ships, the split becomes structurally unnecessary — shape comes from the template, specialty from the picked persona.</p>
+  <div class="label">6 months</div>
+  <div>First sheet inconsistency (<code>"postgres"</code> vs <code>"postgresql-16"</code>) confuses matching. LLM occasionally picks "plausible but wrong" (<code>utkrusht-python</code> when task wanted <code>utkrusht-python-llm</code>).</div>
+  <div>Controlled vocabulary in capability columns; sharpen sheets where matches collide.</div>
 
-<h2 id="registry-table">The classification registry — <code>competency_combo_classification</code> (B1)</h2>
-<table>
-  <thead><tr><th>column</th><th>type</th><th>role</th></tr></thead>
-  <tbody>
-    <tr><td><code>combo_key</code></td><td><code>text</code> PK</td><td>e.g. <code>"FastAPI (INTERMEDIATE), Python (INTERMEDIATE)"</code> — sorted, proficiency-suffixed</td></tr>
-    <tr><td><code>runtime</code>, <code>kind</code></td><td><code>text</code></td><td>the classifier's verdict</td></tr>
-    <tr><td><code>frameworks</code>, <code>datastores</code>, <code>messaging</code></td><td><code>text[]</code></td><td>structured <code>TaskRuntime</code> fields</td></tr>
-    <tr><td><code>needs_browser</code></td><td><code>bool</code></td><td>for Playwright/Selenium</td></tr>
-    <tr><td><code>template_runtime</code></td><td><code>text</code> FK → <code>template_registry(runtime)</code></td><td>which template to boot; <code>NULL</code> when no template seeded yet</td></tr>
-    <tr><td><code>classifier_version</code></td><td><code>text</code></td><td>bump when the LLM prompt/model changes; old rows can be re-classified</td></tr>
-    <tr><td><code>confidence</code></td><td><code>numeric(3,2)</code></td><td>rows <code>&lt; 0.7</code> surface for human review</td></tr>
-  </tbody>
-</table>
-<p><strong>One row per <code>combo_key</code>. No <code>organization_id</code></strong> — the classifier output for a given competency set is platform-global (e.g. "Python + FastAPI + Postgres" is always <code>kind=app, runtime=python, frameworks=[fastapi], datastores=[postgres]</code>, regardless of which org is using it). Earlier versions had <code>organization_id NOT NULL</code>; that was over-applied multi-tenancy and was reverted on 2026-05-26.</p>
-<p><strong>combo_key</strong> is built by <code>make_combo_key()</code> — sorts competencies by name, suffixes each with its proficiency. The same competency set always hashes to the same key regardless of input order.</p>
+  <div class="label">2 years</div>
+  <div>15–25 templates. Cold classifications read 8–15k tokens of sheets — cacheable, tractable. <code>no_match</code> clusters become the template roadmap.</div>
+  <div>Manifest-hash CI gate (without it, sheets drift); <code>status='deprecated'</code> policy to retire old variants.</div>
+</div>
 
-<h2 id="resolve-plan">How <code>resolve_plan</code> uses the registry</h2>
-<p><code>generators/task/runtime_resolver.py</code>:</p>
+<p>The <strong>compounding win</strong> is the <code>no_match</code> corpus: every task that doesn't fit yields a structured ticket. Two years of these is a better template roadmap than any human-driven guess.</p>
+<p>The <strong>compounding risk</strong> is sheet-vs-reality drift. Mitigated only by the manifest-hash CI gate. Without that one investment, the design rots.</p>
+
+<h3>Vs. the two-layer model</h3>
+<p>The two-layer model fails in two years on <em>closed-vocab drift</em> — Bun ships, the LLM emits <code>runtime=node, frameworks=['bun']</code>, the picker routes to Node, Bun-specific behaviour fails subtly. Three months pass before anyone debugs it. <span class="bad">Closed-vocab drift compounds silently.</span></p>
+<p>The merged model fails on <em>sheet ambiguity</em> — LLM picks the wrong but plausible template. Surfaces in eval failure; fix is to sharpen the sheet (one row update). <span class="ok">Louder failure, faster feedback.</span></p>
+
+<h2 id="resolve-plan">How <code>resolve_plan</code> works (current implementation)</h2>
+
+<p><code>generators/task/runtime_resolver.py</code> is the single entry point. Every consumer goes through it; there is no second classification site anywhere in the codebase.</p>
+
 <div class="ascii">combo_key = make_combo_key(competencies)
                 ▼
   SELECT runtime, kind, frameworks, datastores, messaging, needs_browser
     FROM competency_combo_classification
    WHERE combo_key = ?
                 ▼
-   ┌─── HIT  → return ResolvedPlan(
-   │             TaskRuntime(from row),
-   │             template = _get_template(runtime)
-   │           )                                       (~10 ms, $0)
+   ┌── HIT  → return ResolvedPlan(
+   │            TaskRuntime(from row),
+   │            template = _get_template(runtime)
+   │          )                                       (~10 ms, $0)
    │
-   └─── MISS → classify_with_llm(competencies)         (~2 s, ~$0.001)
+   └── MISS → classify_with_llm(competencies)         (~2 s, ~$0.001)
                 ▼
-              UPSERT competency_combo_classification (
-                  combo_key,
-                  runtime, kind, frameworks, datastores, messaging, needs_browser,
-                  template_runtime,           -- FK; NULL if no template seeded
-                  classifier_version='v1',
-                  confidence
-              )
+              UPSERT competency_combo_classification
                 ▼
               return ResolvedPlan(new TaskRuntime, template)</div>
-<p>Never raises. Failure modes degrade gracefully (see below).</p>
 
-<h2 id="consumers">Who reads <code>ResolvedPlan</code></h2>
+<p><strong>Economics.</strong> ~50 unique competency combos across 339 dev tasks → ~50 LLM calls ever → ~$0.05 to populate the cache. After that, every consumer reads a column. Misses happen at task-generation time, never on a user-facing hot path.</p>
+
+<p>After the migration, the orchestrator's shape stays the same — only the cache table and the LLM output change.</p>
+
+<h3>Consumers</h3>
 <table>
-  <thead><tr><th>Consumer</th><th>Field used</th><th>Effect</th></tr></thead>
+  <thead><tr><th>Consumer</th><th>Field used today</th><th>Field after migration</th></tr></thead>
   <tbody>
-    <tr><td><code>multiagent.py:create_task</code></td><td><code>plan.kind</code></td><td>persona-routed eval critics (DBA / MLE / SDET / …)</td></tr>
-    <tr><td><code>multiagent.py:create_task</code></td><td><code>plan.template.name</code></td><td>E2B build/test gate template id</td></tr>
-    <tr><td><code>generators/prompts/agent.py:step1</code></td><td><code>plan.task_runtime</code></td><td>DSPy InputFields + HARD CONSTRAINT block</td></tr>
-    <tr><td><code>e2b_flow/sandbox_eval.py</code></td><td><code>template_name_for_runtime(plan.runtime)</code></td><td>sandbox boot</td></tr>
+    <tr><td><code>multiagent.py:create_task</code></td><td><code>plan.kind</code> (persona)</td><td><code>plan.persona</code></td></tr>
+    <tr><td><code>multiagent.py:create_task</code></td><td><code>plan.template.name</code></td><td><code>plan.template_id</code></td></tr>
+    <tr><td><code>generators/prompts/agent.py:step1</code></td><td><code>plan.task_runtime</code> (whole object)</td><td><code>plan.task_runtime</code> (projection of template row)</td></tr>
+    <tr><td><code>e2b_flow/sandbox_eval.py</code></td><td><code>template_name_for_runtime(plan.runtime)</code></td><td><code>_get_template(plan.template_id)</code></td></tr>
   </tbody>
 </table>
-<p>Every consumer goes through <code>resolve_plan</code>. There is no longer a second classification site anywhere in the codebase.</p>
 
 <h2 id="failure-modes">Failure modes — graceful degradation</h2>
+
+<p>The principle: <strong>classifier failures never block task generation.</strong> A task without a classification gets the generic eval critic and skips the build/test gate — exactly the prior behaviour before classification existed.</p>
+
 <table>
   <thead><tr><th>Failure</th><th>Behaviour</th></tr></thead>
   <tbody>
-    <tr><td>Supabase unreachable at registry-lookup time</td><td>Warn, fall through to direct LLM call (no insert this call)</td></tr>
-    <tr><td>Supabase upsert fails at registry-write time</td><td>Warn, return the resolved plan anyway; next call re-classifies</td></tr>
-    <tr><td><code>SUPABASE_URL_APTITUDETESTSDEV</code> / <code>SUPABASE_API_KEY_APTITUDETESTSDEV</code> env vars missing</td><td>Skip the registry entirely, plain LLM path (used in unit tests via <code>supabase=None</code> + patched <code>_build_supabase_client</code>)</td></tr>
+    <tr><td>Supabase unreachable at lookup time</td><td>Warn, fall through to direct LLM call (no upsert this call)</td></tr>
+    <tr><td>Supabase upsert fails at write time</td><td>Warn, return the resolved plan anyway; next call re-classifies</td></tr>
+    <tr><td><code>SUPABASE_URL_APTITUDETESTSDEV</code> / <code>_API_KEY_…</code> env vars missing</td><td>Skip cache entirely, plain LLM path (used in unit tests)</td></tr>
     <tr><td>LLM classifier raises after retry</td><td>Return empty <code>ResolvedPlan</code> — callers skip persona routing and the gate, never crash</td></tr>
-    <tr><td><code>template_runtime</code> not yet in <code>template_registry</code></td><td>Stored as <code>NULL</code> (FK respected); the gate skips with <code>no_template</code></td></tr>
-    <tr><td>API role missing <code>GRANT</code> on the table</td><td><code>permission denied for table</code> warning, same fall-through as Supabase-down — needs the GRANT migration applied</td></tr>
+    <tr><td>Classifier returns <code>template_id</code> not in registry (post-migration)</td><td>Treat as <code>no_match</code>; log warning; do not boot a hallucinated template</td></tr>
+    <tr><td><code>template_id</code> exists but <code>status != 'built'</code></td><td><code>_get_template</code> filters via <code>.eq("status", "built")</code>; gate skips with <code>no_template</code></td></tr>
+    <tr><td>API role missing <code>GRANT</code> on the table</td><td><code>permission denied for table</code> warning; same fall-through — needs the GRANT migration</td></tr>
   </tbody>
 </table>
-<p>The principle: <strong>classifier failures never block task generation.</strong> A task without a classification just gets the generic eval critic and skips the build/test gate — exactly the prior behaviour before classification existed.</p>
 
 <h2 id="bootstrap">Bootstrap — migrations to apply (in order)</h2>
+
 <table>
   <thead><tr><th>#</th><th>File</th><th>What it does</th></tr></thead>
   <tbody>
-    <tr><td>1</td><td><code>2026-05-25-create-template-registry.sql</code></td><td>Creates the template registry that the classification registry's FK references</td></tr>
-    <tr><td>2</td><td><code>2026-05-25-create-competency-combo-classification.sql</code></td><td>Creates the classification registry with FK to (1)</td></tr>
-    <tr><td>3</td><td><code>2026-05-25-grant-cache-tables.sql</code></td><td>Grants <code>SELECT/INSERT/UPDATE/DELETE</code> to <code>anon</code>, <code>authenticated</code>, <code>service_role</code>. <strong>Without this the registry silently fails on every call.</strong> Tables created in the SQL editor default to <code>postgres</code>-only ownership.</td></tr>
-    <tr><td>4</td><td><code>2026-05-26-classification-drop-org-id.sql</code></td><td>Drops the <code>organization_id</code> column (over-applied multi-tenancy — classifications are platform-global). Safe against empty dev table.</td></tr>
+    <tr><td>1</td><td><code>2026-05-25-create-template-registry.sql</code></td><td>Creates the template registry</td></tr>
+    <tr><td>2</td><td><code>2026-05-25-create-competency-combo-classification.sql</code></td><td>Creates the classification cache with FK to (1)</td></tr>
+    <tr><td>3</td><td><code>2026-05-25-grant-cache-tables.sql</code></td><td>Grants <code>SELECT/INSERT/UPDATE/DELETE</code> to <code>anon</code>, <code>authenticated</code>, <code>service_role</code>. <strong>Without this the cache silently fails on every call.</strong></td></tr>
+    <tr><td>4</td><td><code>2026-05-26-classification-drop-org-id.sql</code></td><td>Drops <code>organization_id</code> — over-applied multi-tenancy</td></tr>
+    <tr><td>5</td><td><em>to be written</em></td><td>Step 1 of migration — additive ALTER on <code>template_registry</code></td></tr>
+    <tr><td>6</td><td><em>to be written</em></td><td>Step 2 — switch PK to <code>template_id</code></td></tr>
+    <tr><td>7</td><td><em>to be written</em></td><td>Step 5 — create <code>task_template_match</code>, backfill from <code>competency_combo_classification</code></td></tr>
   </tbody>
 </table>
 
-<h2 id="status">Implementation status (2026-05-26)</h2>
+<h2 id="status">Implementation status (2026-05-27)</h2>
+
 <table>
-  <thead><tr><th>Component</th><th>Status</th><th>Where</th></tr></thead>
+  <thead><tr><th>Component</th><th>Status</th></tr></thead>
   <tbody>
-    <tr><td><code>TaskRuntime</code> Pydantic model (replaces <code>TaskCategory</code> enum)</td><td class="ok">Shipped</td><td><code>infra/classifier/runtime.py</code></td></tr>
-    <tr><td>LLM classifier (Sonnet via Portkey, strict JSON, retry-with-validation-error)</td><td class="ok">Shipped</td><td><code>infra/classifier/llm_classifier.py</code></td></tr>
-    <tr><td><code>tasks.task_runtime</code> JSONB column (write-only first attempt)</td><td class="warn">Dropped</td><td>replaced by the classification registry</td></tr>
-    <tr><td><code>competency_combo_classification</code> classification registry (B1)</td><td class="ok">Shipped</td><td>migration + Python read/write</td></tr>
-    <tr><td><code>resolve_plan(combo_key)</code> — single registry-aware entry point</td><td class="ok">Shipped</td><td><code>generators/task/runtime_resolver.py</code></td></tr>
-    <tr><td><code>generators/prompts/agent.py</code> routes through <code>resolve_plan</code></td><td class="ok">Shipped</td><td>no more double classification</td></tr>
-    <tr><td><code>e2b_flow/sandbox_eval.py</code> shares the template registry</td><td class="ok">Shipped</td><td>via <code>template_name_for_runtime</code></td></tr>
-    <tr><td>Persona-routed eval critics keyed off <code>TaskRuntime.kind</code></td><td class="ok">Shipped</td><td><code>evals.py</code></td></tr>
-    <tr><td><code>organization_id</code> on classifier tables</td><td class="warn">Reverted (2026-05-26)</td><td>over-applied multi-tenancy</td></tr>
-    <tr><td>Shape + specialty split in <code>TaskRuntime</code></td><td class="warn">Proposed</td><td>see "Proposed evolution" above</td></tr>
-    <tr><td>Merged classifier ↔ template-registry decision (LLM picks <code>template_id</code> directly)</td><td class="warn">Proposed — see <a href="#merge-proposal">"Merge proposal"</a> above</td><td>—</td></tr>
-    <tr><td><code>personas: text[]</code> on template rows</td><td class="warn">Proposed — prerequisite for the merge</td><td>—</td></tr>
-    <tr><td>Manifest-hash sheet-from-Dockerfile CI gate</td><td class="warn">Proposed — durability gate for the merge</td><td>—</td></tr>
-    <tr><td>First-class <code>no_match</code> output (missing_capabilities + suggested_template)</td><td class="warn">Proposed — value-driver for the merge</td><td>—</td></tr>
-    <tr><td><code>classifier_version</code> re-classification tooling (backfill script)</td><td class="warn">Proposed</td><td>—</td></tr>
+    <tr><td>LLM classifier (Sonnet 4.6, strict JSON, retry)</td><td><span class="pill pill-ok">Shipped</span></td></tr>
+    <tr><td><code>TaskRuntime</code> Pydantic model</td><td><span class="pill pill-ok">Shipped</span> <span class="pill pill-warn">deprecates at Step 7</span></td></tr>
+    <tr><td><code>competency_combo_classification</code> cache</td><td><span class="pill pill-ok">Shipped</span> <span class="pill pill-warn">superseded at Step 5</span></td></tr>
+    <tr><td><code>template_registry</code> table (one row per runtime)</td><td><span class="pill pill-ok">Shipped</span> <span class="pill pill-warn">evolves at Steps 1–2</span></td></tr>
+    <tr><td><code>resolve_plan</code> orchestrator</td><td><span class="pill pill-ok">Shipped</span> <span class="pill pill-warn">output changes at Step 4</span></td></tr>
+    <tr><td><code>utkrusht-python</code> template (only <code>built</code> row)</td><td><span class="pill pill-ok">Shipped</span></td></tr>
+    <tr><td><code>sandbox_eval</code> reads <code>template_name</code> from registry</td><td><span class="pill pill-ok">Shipped</span></td></tr>
+    <tr><td><code>sandbox_eval</code> reads <code>build_cmd</code>/<code>test_cmd</code> from registry</td><td><span class="pill pill-info">Proposed</span> (~15 LOC)</td></tr>
+    <tr><td>Persona-routed eval critics keyed off <code>TaskRuntime.kind</code></td><td><span class="pill pill-ok">Shipped</span> <span class="pill pill-warn">re-keys off <code>persona</code> at Step 4</span></td></tr>
+    <tr><td><code>personas: text[]</code> column on templates</td><td><span class="pill pill-info">Proposed — Step 1</span></td></tr>
+    <tr><td>Manifest-hash CI gate</td><td><span class="pill pill-warn">Proposed — Step 3, the durability gate</span></td></tr>
+    <tr><td>Classifier emits <code>template_id</code> + <code>persona</code></td><td><span class="pill pill-info">Proposed — Step 4</span></td></tr>
+    <tr><td><code>task_template_match</code> table</td><td><span class="pill pill-info">Proposed — Step 5</span></td></tr>
+    <tr><td>Drop <code>Runtime</code> Literal enum</td><td><span class="pill pill-bad">Proposed — Step 7, irreversible</span></td></tr>
   </tbody>
 </table>
 
 <h2 id="next">What we should do next</h2>
+
 <ol>
-  <li><strong>Apply the four migrations</strong> above to dev (and then prod) — currently all created, pending application.</li>
-  <li><strong>Wire <code>sandbox_eval</code> to read commands from <code>template_registry</code></strong> — today the build / test / compile commands are hardcoded in <code>sandbox_eval.py</code>; the registry stores the same values but isn't read at runtime.</li>
-  <li><strong>Decide on the merged-model direction.</strong> The <a href="#merge-proposal">"Merge proposal" section</a> lays out collapsing <code>TaskRuntime</code> and <code>template_registry</code> into one decision surface. The blocking prerequisite is <strong>manifest-hash + CI sheet-from-Dockerfile generation</strong> — without that the merged model rots within a year. If the team isn't ready to invest in manifest generation, defer the merge and ship the shape+specialty split instead.</li>
-  <li><strong>Defer the shape+specialty split</strong> until either (a) <code>kind="infra"</code> becomes a real need, (b) ≥3 ambiguous classifications cause wrong reviewer routing, (c) you're touching the schema for an unrelated reason, or (d) the merged-model proposal lands (in which case the split becomes structurally unnecessary).</li>
-  <li><strong>Optionally backfill</strong> the registry from the existing 339 tasks (one script call, ~$0.05, surfaces low-confidence combos for review <em>before</em> they affect real generation). Currently the table is empty — populates organically as tasks are generated.</li>
+  <li><strong>Wire <code>sandbox_eval</code> to read build/test commands from <code>template_registry</code></strong> (~15 LOC). Validates the "registry as source of truth" pattern before the schema grows. See <a href="./e2b-templates.html">E2B Templates</a>.</li>
+  <li><strong>Step 1 of migration</strong> — additive ALTER on <code>template_registry</code>, backfill the <code>utkrusht-python</code> row. Cheap, reversible.</li>
+  <li><strong>Step 3 — build the manifest-hash CI gate before the second template lands.</strong> This is the only step whose absence makes the design rot.</li>
+  <li><strong>Defer Steps 4–7</strong> until the second built template is real. The LLM-picks-template_id change is cheap to implement but premature when there's only one template to pick.</li>
+  <li><strong>Build the second template (<code>utkrusht-node-base</code>) with <code>personas[]</code> and a generated <code>manifest_hash</code> from day one.</strong> Retrofitting these onto a growing template set is harder than starting with them.</li>
 </ol>
 
 </main>
 </div>
 
 <script>
-// Scrollspy — highlight the TOC link for the section currently near the top
-// of the viewport. Updates on scroll via requestAnimationFrame throttling.
 (function () {
   const sections = Array.from(document.querySelectorAll('main h2[id]'));
   const links = new Map();
@@ -860,8 +691,6 @@ CREATE TABLE task_template_match (
   }
 
   function update() {
-    // The active section is the LAST one whose top has crossed the
-    // threshold (i.e. the deepest one that has scrolled into the upper zone).
     const threshold = 120;
     let activeId = sections[0].id;
     for (const sec of sections) {

@@ -1,635 +1,353 @@
 # E2B Templates & Registry
 
-> **Status:** `utkrusht-python` shipped; other templates proposed. `template_registry` table is shipped, but the `build_cmd`/`test_cmd`/`compile_cmd` columns aren't actively read by `sandbox_eval` yet.
-> **Updated:** 2026-05-26
-> **Sister doc:** [Task Classifier](./classifier.md) — produces the `TaskRuntime` that picks which template to boot.
-> **Open proposal:** [merge classifier output and template registry into one decision](./classifier.md#proposed-evolution-merge-taskruntime-and-template_registry-into-one-decision) — would turn each row in this registry into the capability sheet the classifier reads, with `no_match` becoming a first-class signal and templates becoming a fragmenting family (e.g. `utkrusht-python` → `utkrusht-python-llm`) driven by data signals. The schema sketch and migration path live in the classifier doc; the operational details for templates (fragmentation policy, sibling-vs-inheritance, manifest-hash-from-Dockerfile) are summarised there too.
+> **Status:** `utkrusht-python` shipped (one `built` row). Registry table is shipped but is **not yet a capability sheet** — that's the merged-model work.
+> **Updated:** 2026-05-27
+> **Sister doc:** [Task Classifier](./classifier.md) — owns the merged-design decision. This doc covers the operational reality of templates: what's in each one, what the registry row should carry, and what we need to change to get from "build-command lookup" to "capability sheet the classifier reads."
 
-## Problem statement — what is an E2B template, and why one per runtime?
+## The concept — each row is the template's capability sheet
 
-An **E2B template** is a pre-built Firecracker microVM snapshot, registered with E2B by name (e.g. `utkrusht-python`). A sandbox boots from it in ~150 ms with **nothing installed at boot** — every dependency the task needs is already baked into the image.
+The `template_registry` table looks superficially like a build-command lookup ("here's the `pip install` line for Python tasks"). In the [merged design](./classifier.md#the-design--classifier-picks-template_id-directly), it's something stronger: **each row is the capability sheet the classifier reads to decide which template a task should boot.**
 
-[`e2b_flow/templates/python-sql/template.py`](../../e2b_flow/templates/python-sql/template.py):
+The row describes:
+
+| Axis | Field | What it tells the classifier |
+|---|---|---|
+| Identity | `template_id`, `status` | Is this template real and currently picked-able? |
+| Image content | `runtime`, `language_versions`, `frameworks`, `datastores`, `tools`, `needs_browser`, `needs_gpu`, `capabilities_note` | What's already baked in — so the task's `run.sh` doesn't need to install it |
+| Who grades it | `personas[]` | Which reviewer persona this template can host (one row → many personas) |
+| How to run | `build_cmd`, `test_cmd`, `compile_cmd` | The platform's pre-flight commands, idiomatic for this stack |
+| Provenance | `manifest_hash`, `generated_at`, `registry_version` | Proof the row matches the actual image — see "Drift control" below |
+
+The classifier picks a template by reading every row where `status='built'` and matching the task's competency combo against these sheets. Adding a new template = adding a row. Removing a runtime we never built = deleting a row. **The registry is the deployable set; there is no other catalog.**
+
+## What is an E2B template
+
+An E2B template is a pre-built Firecracker microVM snapshot, registered with E2B under a name like `utkrusht-python`. A sandbox boots from it in ~150 ms with **nothing installed at boot** — every dependency the task needs is already baked into the image.
+
+Templates are defined as Python (E2B v2 SDK), built via `python build_prod.py` (or `build_dev.py`) from the template's directory, and uploaded to the E2B registry. A `template_registry` row points at one (`template_id` matches the E2B-side name).
+
+The build-time lifecycle is:
+
+```
+template.py  (Python — declares apt/pip/curl steps via AsyncTemplate chain)
+     │
+     │  python build_prod.py
+     ▼
+E2B builds a Firecracker snapshot, registers it as `utkrusht-python`
+     │
+     ▼
+template_registry row exists / is updated to point at it
+     │
+     ▼
+sandbox_eval (gate) and deploy both call Sandbox.create("utkrusht-python")
+```
+
+The classifier reads the row; the gate boots the image; the candidate later gets a sandbox from the same template. **One image lineage** — see "One template lineage, used for both eval and deployment" below.
+
+## What's in the registry today
+
+Two template directories live in [`infra/e2b/templates/`](../../infra/e2b/templates/). They are not equally important.
+
+### `utkrusht-python` — the active "fat Python" template
+
+**Path:** [`infra/e2b/templates/python/template.py`](../../infra/e2b/templates/python/template.py).
+**Status:** `built` — the only currently-active row in the registry.
+**Base:** `from_python_image("3.12")` (lean Python image; no Jupyter).
+
+What's baked in:
+
+| Layer | What's installed |
+|---|---|
+| System | `ca-certificates curl gnupg lsb-release git jq postgresql-client default-mysql-client netcat-openbsd` |
+| Docker | Full DinD — `docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin` |
+| Python — web | `fastapi flask django uvicorn[standard] gunicorn httpx requests` |
+| Python — ORM/DB clients | `sqlalchemy psycopg2-binary pymongo redis` |
+| Python — LLM | `langchain llama-index openai anthropic pinecone chromadb` |
+| Python — data | `pandas numpy` |
+| Python — test | `pytest pytest-asyncio` |
+| Compat shim | `/usr/local/bin/docker-compose` → `docker compose` (v1→v2 alias) |
+| Browser surfaces | `ttyd` :7681 (terminal), `code-server` :8443 (IDE), `adminer` :8080 (DB GUI), `php-cli php-pgsql php-mysql` |
+
+What's **not** baked in (intentionally):
+
+- Service containers (Postgres, Redis, Mongo, MySQL servers). Each task brings its own `docker-compose.yml`; DinD runs it inside the sandbox.
+- Versions on most pip packages (`pip install fastapi flask django ...` floats to latest at build time — see "Gaps" below).
+
+### `utkrusht-python-sql` — the original PoC (legacy)
+
+**Path:** [`infra/e2b/templates/python-sql/template.py`](../../infra/e2b/templates/python-sql/template.py).
+**Status:** registered with E2B but the `python/` template was explicitly authored to supersede it (see comment in `python/template.py:14`).
+**Base:** `e2bdev/code-interpreter:latest` (heavier — ships Jupyter we don't need).
+
+Differences from `utkrusht-python`:
+
+| | `python-sql` (legacy) | `python` (active) |
+|---|---|---|
+| Base image | `e2bdev/code-interpreter:latest` | `from_python_image("3.12")` |
+| Python lib set | `psycopg2-binary sqlalchemy pandas` | Fat — fastapi/flask/django + LLM stack + data + test |
+| MySQL client | ❌ | ✓ |
+| Intended life | Replaced by `python` | Active |
+
+These two templates have ~80% overlap. Keeping them both alive is exactly the [sprawl failure mode](./classifier.md#sprawl-avoidance) the merged design warns about — the classifier can't reliably distinguish them, and CVE patches double. Once `utkrusht-python` is verified end-to-end, `utkrusht-python-sql` should be marked `deprecated` in the registry and the directory removed.
+
+### Other rows in `template_registry`
+
+Per [migration 2026-05-26-template-registry-add-status-and-proposed-rows.sql](../../migrations/2026-05-26-template-registry-add-status-and-proposed-rows.sql), every runtime in the current `Runtime` Literal has a row, but only `python` is `built`:
+
+| runtime | template_name | status |
+|---|---|---|
+| `python` | `utkrusht-python` | **`built`** |
+| `node`, `java`, `php`, `go`, `rust`, `flutter`, `ruby`, `scala` | `utkrusht-<lang>` | `proposed` |
+
+The `proposed` rows document intent (recipe captured, template name reserved) but no E2B-side template exists yet — the gate filters them via `.eq("status","built")` and skips with `no_template`.
+
+## How the registry feeds the gate today
+
+[`infra/e2b/sandbox_eval.py`](../../infra/e2b/sandbox_eval.py) boots a sandbox from the template that matches the classifier's `runtime`, copies code in, and runs build → test → optional compile. Today most of this is implicit:
 
 ```python
-from e2b import AsyncTemplate
-
-template = (
-    AsyncTemplate()
-    .from_image("e2bdev/code-interpreter:latest")
-    .run_cmd("apt-get install -y postgresql-client netcat-openbsd ...")
-    .run_cmd("install docker-ce docker-compose-plugin ...")  # DinD
-    .run_cmd("pip install psycopg2-binary sqlalchemy pandas")
-    .run_cmd("install ttyd ...")                              # browser terminal
-    .run_cmd("dpkg -i code-server_4.96.4_amd64.deb")          # browser VS Code
-    .run_cmd("install adminer ...")                           # DB GUI
-    .copy("start.sh", "/usr/local/bin/start.sh")
-    .set_start_cmd("sudo /usr/local/bin/start.sh", "sleep 20")
-)
+spec = _get_template(runtime)              # registry lookup
+sb = await Sandbox.create(spec.template_name)
+_run(sb, "pip install --break-system-packages -r requirements.txt", ...)   # ← hardcoded
+_run(sb, "python -m pytest -q --tb=short", ...)                            # ← hardcoded
+if exit_code == 5:
+    _run(sb, "python -m compileall -q .", ...)                             # ← hardcoded
 ```
 
-Built once via `python build_prod.py` → registered with E2B → boots as a snapshot. **Pip/npm/apt at runtime is exactly the wrong pattern.** The candidate gets a sandbox where `import fastapi` just works because FastAPI is already there.
+The registry **stores** `build_cmd` / `test_cmd` / `compile_cmd`, but `sandbox_eval` doesn't yet read them — the strings are hardcoded in Python. This is the cheapest first step toward "registry as source of truth" (see [What we should do next](#what-we-should-do-next)).
 
-### The intuitive plan that doesn't scale
+## `run.sh` vs `build_cmd` — who runs what, when
 
-A naive approach would be "one template per task type." The math kills it:
+A natural question: each task already ships a `run.sh`. Why does the registry carry separate `build_cmd` / `test_cmd` columns instead of just executing it?
 
-```
-8 runtimes × 5 frameworks × 4 datastores × 3 messaging × … ≈ 480+ templates
-```
+They serve different consumers at different points in the lifecycle.
 
-That's a maintenance disaster. Every new framework or DB combination becomes a new template to build, ship, and update.
-
-### The actual shape
-
-A template carries **runtime + lane** (e.g. Python + web frameworks, Node + mobile, Python + LLM libs). Service containers (Postgres, Redis, Mongo, Kafka) are NOT in the template — they come from the **task's own `docker-compose.yml`**, started by `docker compose up` inside the sandbox via Docker-in-Docker.
-
-```
-┌──────────────────────────────┬──────────────────────────────┐
-│ Owner: Platform              │ Owner: Each task             │
-├──────────────────────────────┼──────────────────────────────┤
-│ E2B template                 │ docker-compose.yml           │
-│  • Runtime SDK (Python, JDK) │  • postgres-server           │
-│  • Lane libraries (fastapi,  │  • redis-server              │
-│    spring-boot, ...)         │  • mongo-server              │
-│  • DinD (Docker daemon)      │  • kafka-broker              │
-│  • Browser tools             │ run.sh / kill.sh             │
-│  • ~11 templates total       │  • compose up / compose down │
-└──────────────────────────────┴──────────────────────────────┘
-```
-
-Template count is bounded by **runtime × framework-lane**, NOT by databases × messaging × everything else. That's the design trick that makes the maintenance surface tractable.
-
-This is confirmed by `DEFAULT_PROBE_PORTS` in [`e2b_flow/sandbox_manager.py`](../../e2b_flow/sandbox_manager.py):
-
-| Ports baked into the template | Ports the task brings via compose |
-|---|---|
-| 7681 (ttyd), 8443 (code-server), 8080 (Adminer) | 5432 (Postgres), 6379 (Redis), 27017 (Mongo) |
-| Plus 8000/3000/5000 — the candidate's app dev server | |
-
----
-
-## Why do we need a `template_registry` table?
-
-This is the **real architectural question**, and it deserves an honest answer.
-
-### Your intuition is half right
-
-"Why is `build_cmd` / `test_cmd` / `compile_cmd` in a runtime-level table? Each task is different — each task has its own `requirements.txt`, its own tests, its own code."
-
-**True. But there are two different things going on:**
-
-| What's task-specific | What's runtime-specific |
-|---|---|
-| The **content** to operate on: `requirements.txt`, the test files, the source code | The **command shape** for that runtime's tooling |
-| `requirements.txt` (different per task) | `pip install -r requirements.txt` (same for every Python task) |
-| Test files (different per task) | `python -m pytest -q --tb=short` (same for every Python task) |
-| Source code | `python -m compileall -q .` (same for every Python task) |
-
-Different Python tasks use different libraries, but they all install them the same way: `pip install -r requirements.txt`. Different Java tasks use different Maven dependencies, but they all build the same way: `mvn package`. The **command** is a property of the language's tooling — not of any individual task.
-
-So `template_registry` stores the *runtime's idiomatic build/test recipe*, and the task's `requirements.txt` (or `pom.xml`, or `package.json`) is the input that recipe operates on. They're orthogonal.
-
-### What `template_registry` actually does
-
-Schema:
-
-| column | type | role |
+| | `run.sh` (task-owned) | `build_cmd` / `test_cmd` (registry-owned) |
 |---|---|---|
-| `runtime` | `text` PK | `python`, `node`, `java`, `go`, … |
-| `template_name` | `text` | E2B template id, e.g. `utkrusht-python` |
-| `build_cmd` | `text` | e.g. `pip install --break-system-packages -r requirements.txt` |
-| `test_cmd` | `text` | e.g. `python -m pytest -q --tb=short` |
-| `compile_cmd` | `text` | e.g. `python -m compileall -q .` (optional) |
-| `needs_browser` | `bool` | for Playwright lanes |
-| `description` | `text` | what's baked into the image |
-| `status` | `text` (added 2026-05-26) | `built` / `proposed` / `deprecated` — see "Why only one row is `built`" below |
-
-### Current rows in the registry
-
-After [`2026-05-26-template-registry-add-status-and-proposed-rows.sql`](../../migrations/2026-05-26-template-registry-add-status-and-proposed-rows.sql), every runtime in the `TaskRuntime.runtime` Literal has a row:
-
-| runtime | template_name | build_cmd | test_cmd | status |
-|---|---|---|---|---|
-| `python` | `utkrusht-python` | `pip install --break-system-packages -r requirements.txt` | `python -m pytest -q --tb=short` | **`built`** |
-| `node` | `utkrusht-node` | `npm ci` | `npm test` | `proposed` |
-| `java` | `utkrusht-java` | `mvn -q -DskipTests package` | `mvn -q test` | `proposed` |
-| `php` | `utkrusht-php` | `composer install --no-progress` | `vendor/bin/phpunit` | `proposed` |
-| `go` | `utkrusht-go` | `go mod download` | `go test ./...` | `proposed` |
-| `rust` | `utkrusht-rust` | `cargo build --quiet` | `cargo test --quiet` | `proposed` |
-| `flutter` | `utkrusht-flutter` | `flutter pub get` | `flutter test` | `proposed` |
-| `ruby` | `utkrusht-ruby` | `bundle install --quiet` | `bundle exec rspec` | `proposed` |
-| `scala` | `utkrusht-scala` | `sbt -batch compile` | `sbt -batch test` | `proposed` |
-| `none` | — | — | — | (no row — db_only / non_code tasks always skip the gate) |
-
-### Why only one row is `built`
-
-An E2B template isn't a database row — it's a **microVM snapshot built with `python build_prod.py`, uploaded to E2B's registry, and given a name** (e.g. `utkrusht-python`). Inserting a `template_registry` row for `utkrusht-java` doesn't conjure the template into existence; the gate would still fail with "template not registered" when it tries to boot.
-
-So the `status` column carries the truth:
-
-- **`built`** — there's a real E2B template registered with this name. `_get_template` returns the row, `sandbox_eval` boots successfully.
-- **`proposed`** — the row documents intent (recipe captured, template_name reserved) but no E2B template exists yet. `_db_load_template` filters these out with `.eq("status", "built")` so the gate cleanly skips with `no_template` — same behaviour as before this migration, just now backed by visible SQL data.
-- **`deprecated`** — for templates we've removed; same filter behaviour as `proposed`.
-
-The proposed rows pay off when each template gets built:
-
-1. Build the E2B template (`python build_prod.py`, ~1 hour per template).
-2. Verify it boots and runs tests for a sample task.
-3. **One SQL line**: `UPDATE template_registry SET status='built' WHERE runtime='node'`. Done — the gate now boots it for every Node task without a code change.
-
-### Composition caveat — the 11-template hierarchy isn't in here yet
-
-The "Template hierarchy" section below proposes ~11 templates including composition leaves like `utkrusht-python-sql` / `utkrusht-python-web` / `utkrusht-python-llm` — three templates sharing `runtime="python"`. **The current schema can't hold this.** `runtime` is the primary key, so only one row per language is allowed.
-
-Storing the full leaf hierarchy requires schema evolution:
-- Drop `runtime` as PK, use `template_name` as PK
-- Keep `runtime` as a non-unique FK column
-- Add a `lane` column (e.g. `sql` / `web` / `llm` / `base`) to disambiguate leaves
-- Update `_get_template` from a single-key lookup to a (runtime, lane) lookup driven by the picker function
-
-That's a follow-up migration. For now the registry holds **one row per language**, the picker function in `template_name_for_runtime` is what it is, and the composition-leaf design is captured in this doc as the target architecture.
-
-## Fat templates vs composition — what should we actually do?
-
-This is a real design question and the doc's original answer (~11 composition leaves) is probably the wrong one at our scale. Let me lay out the trade-off honestly.
-
-### What "fat templates" means
-
-One template per runtime, baking **everything common for that runtime**:
-
-```
-utkrusht-python      Python + all common DB drivers (psycopg2, pymongo, redis-py, mysqlclient)
-                     + all common frameworks (fastapi, flask, django, uvicorn, sqlalchemy)
-                     + all common LLM libs (langchain, llama-index, openai, anthropic)
-                     + pandas, numpy, pytest, +DinD, +browser tools
-                     → ONE image, ANY Python task.
-
-utkrusht-node        Node + all common frameworks (express, next, react, jest, vitest)
-                     + react-native CLI, expo
-                     + +DinD, +browser tools
-                     → ONE image, ANY Node task.
-…
-```
-
-This is exactly what `utkrusht-python` already **is** today. Look at the row in `template_registry`: "Fat base: fastapi, flask, django, sqlalchemy, redis, pymongo, langchain, llama-index, pandas, numpy, pytest." The doc proposed splitting it into 3 leaves (`python-sql`, `python-web`, `python-llm`) — but the deployed version is one fat template.
-
-### What "composition" means
-
-A base template per runtime, plus leaves per framework lane, glued together with E2B's `from_template()`:
-
-```
-utkrusht-python-base    Python + DinD + browser tools + common runtime deps
-   ├── utkrusht-python-sql       +postgres tooling
-   ├── utkrusht-python-web       +fastapi/flask/django
-   └── utkrusht-python-llm       +langchain/llama-index
-```
-
-Smaller leaves, layer-cache shared. The doc's aspirational design.
-
-### Head-to-head
-
-| Concern | Fat templates | Composition |
-|---|---|---|
-| **Number of templates** | ~8 (one per runtime + playwright + infra special-cases) | ~13 (7 roots + 6 leaves) |
-| **Image size per template** | ~3–4 GiB | ~1.5 GiB base + ~200 MiB per leaf |
-| **Total storage on E2B** | ~25 GiB (Pro tier: 20 GiB — slightly over, may need bump) | ~12 GiB (comfortable) |
-| **Cold-start latency** | ~150 ms (snapshot size doesn't matter) | ~150 ms (same) |
-| **Start-cmd latency** | ~3–8 s (dockerd + ttyd + code-server) | ~3–8 s (same — independent of image size) |
-| **Picker function complexity** | Trivial: `runtime → template_name` | Multi-axis: `(runtime, kind, frameworks, datastores, needs_browser) → template_name`. Half the existing `pick_template()` is disambiguation. |
-| **Schema fit** | One row per runtime — current schema fits | Needs PK change + `lane` column + picker rewrite |
-| **Adding a new framework** | Either do nothing or rebuild the fat template once | Either rebuild a leaf, build a new leaf, or push into the base |
-| **Dependency-conflict risk** | Higher — everything coexists in one venv | Lower — each leaf only carries its lane |
-| **Security surface** | Higher — more installed packages = larger CVE surface | Lower |
-| **"Missing template" failure** | Doesn't exist — any Python task can use `utkrusht-python` | Combo not anticipated as a leaf has no template; gate skips |
-
-### The size argument is weaker than it looks
-
-At our scale, the headline "composition saves disk" argument doesn't survive scrutiny:
-
-- **E2B Pro tier ships 20 GiB storage.** 8 fat templates × ~3 GiB ≈ 24 GiB. Slightly over — needs a tier bump or some pruning. Not a blocker.
-- **Cold-start latency is constant regardless of image size.** Firecracker boots from a snapshot in ~78–180 ms whether the image is 500 MiB or 5 GiB. Verified in the SDK section below.
-- **Start-cmd latency is also independent.** The 3–8 s before a sandbox is "ready" is dockerd + ttyd + code-server warming up — not loading the image off disk. Same number either way.
-- **User-perceived latency: zero difference between fat and composition.**
-
-### What we should actually do — recommendation
-
-**Fat templates, with two special-case branches.** Concretely:
-
-| Template | Runtime | Bakes in | Notes |
-|---|---|---|---|
-| `utkrusht-python` ✅ | python | All common DB drivers, frameworks, LLM libs, pandas, pytest | What's deployed today. |
-| `utkrusht-node` | node | express, react, next, ts, jest, vitest, react-native, expo | Fat — covers web AND mobile. |
-| `utkrusht-java` | java | JDK 17, maven, gradle, spring-boot, hibernate, JUnit | Fat. |
-| `utkrusht-php` | php | php-fpm, composer, laravel, phpunit | Fat. |
-| `utkrusht-go` | go | Go toolchain + common libs (gin, chi, sqlx) | Static binaries — toolchain is tiny anyway. |
-| `utkrusht-rust` | rust | cargo + tokio, serde, sqlx, axum | Fat by Rust standards but still small. |
-| `utkrusht-flutter` | flutter | Dart SDK + flutter + emulator | Standalone. Mobile tasks have no compose. |
-| `utkrusht-playwright` *(special-case)* | node | node base + chromium-headless + playwright | Chromium adds ~300 MiB; worth a separate image. |
-| `utkrusht-infra` *(proposed)* | (none) | kubectl + helm + terraform + kind/k3d | For `kind="infra"` tasks (see classifier doc). |
-
-**~9 templates total.** The schema fits today (one row per runtime, plus playwright and infra as additional rows — would need the `template_name` PK evolution noted above for those two special-cases, but only for them, not for the whole hierarchy).
-
-### Why this is the right default
-
-1. **It's what already works.** `utkrusht-python` is fat, ships everything Python, runs every Python task today without issue. Composition leaves were aspirational; fat is operational.
-2. **Picker function shrinks dramatically.** Today `pick_template()` has 11 lines disambiguating leaves. With fat templates: 8 lines, one per runtime, no overlap logic.
-3. **The dependency-conflict risk is real but manageable.** When LangChain + Django + Pinecone actually conflict, that's the day you split `python-llm` as a leaf. Don't pre-split before the conflict exists.
-4. **Cold-start is constant.** The biggest perceived-cost argument against fat is wrong: image size doesn't affect boot time.
-5. **"Missing template" is a worse failure mode than "slightly large template."** When a candidate's combo doesn't match any leaf, the gate skips with `no_template` and a real task ships unverified. With fat templates, this can't happen as long as the runtime has a template at all.
-
-### When you'd actually split (the right reasons)
-
-- **Genuine dependency conflict.** If LangChain pins `pydantic<2` and FastAPI requires `pydantic>=2`, you can't put both in one image. Split into `python-llm` + `python-web`.
-- **Heavy outlier libs.** Chromium for Playwright (~300 MiB). CUDA for ML training (~1 GiB). These genuinely justify a special-case template.
-- **Security boundary.** If a customer needs a no-LLM template for compliance reasons, split it.
-- **Image-size headroom exhausted.** If E2B Pro hits its limit and a tier bump isn't acceptable.
-
-None of these apply today. **Default to fat. Split when forced.**
-
-### What this means for the doc below
-
-The "Template hierarchy" section below shows the composition design. **Treat it as historical aspiration, not current direction.** The recommendation above is what the registry should actually look like. The doc will get rewritten to lead with fat templates once you've decided to commit (this section is the proposal that triggers that rewrite).
-
-### The honest case for / against
-
-**For** — three real reasons:
-
-1. **Update safety.** When (not if) Python's idiomatic test command evolves — new pytest flag, new test runner — it's a one-row `UPDATE` in `template_registry`. The alternative (the build/test command stored on every classification-registry row) requires updating N rows and risks drift between them.
-2. **Adding a runtime is data, not code.** Want Java support? Insert one row into `template_registry`. No edit to `sandbox_eval.py` to fork on `runtime == "java"`. Especially valuable as Node/Java/Go support lands.
-3. **One source of truth for "what command runs this runtime?"** Today only `sandbox_eval` reads this. Tomorrow when E2B-based deploy ships, the deploy path reads the same row. The gate and deploy can't drift.
-
-**Against** — be honest:
-
-1. **Today, the columns aren't actually read.** [`sandbox_eval.py`](../../e2b_flow/sandbox_eval.py) hardcodes the same strings:
-   ```python
-   _run(sb, "pip install --break-system-packages -r requirements.txt", ...)
-   _run(sb, "python -m pytest -q --tb=short", ...)
-   _run(sb, "python -m compileall -q .", ...)
-   ```
-   These match the seeded `template_registry.python` row by construction, but nothing in code re-reads them at runtime. So today the registry is **forward scaffolding** — it pays off when the multi-runtime gate refactor lands, not before.
-2. **Only one consumer today.** Just `sandbox_eval` (via `template_name_for_runtime`). Deploy doesn't read it yet. So the "single source of truth across consumers" benefit is theoretical until deploy lands.
-3. **Drift risk while the columns are unused.** Someone could change the Python build command in `sandbox_eval.py` and forget to update the seeded row. Nothing would break, because the row isn't read — but you've now got two sources documenting different things.
-
-### So what should we do?
-
-Three options, in order of how I'd recommend them:
-
-1. **Wire `sandbox_eval` to read from the registry.** ~15 LOC change. Eliminates the drift risk *and* validates the registry pattern now instead of when you're under pressure adding Java/Node. The change:
-
-   ```python
-   # in sandbox_eval.py, where _TEMPLATES is read today
-   from generators.task.runtime_resolver import _get_template
-
-   def run_sandbox_eval(code_files, task_runtime):
-       spec = _get_template(task_runtime.runtime)
-       if not spec:
-           return _finish(skipped, "no_template")
-       _run(sb, spec.build_cmd, ...)
-       _run(sb, spec.test_cmd, ...)
-       if exit_code == 5 and spec.compile_cmd:
-           _run(sb, spec.compile_cmd, ...)
-   ```
-
-   **Recommended.** Small change, real consolidation, validates the design.
-
-2. **Keep the columns as scaffolding (current state).** No code change. Risk: drift between the seed row and hardcoded literals. Pay off later when adding Java.
-
-3. **Drop the columns until they're needed.** Pure YAGNI. Migration is trivial. Re-add when wiring Node/Java. Honest, but loses the "one INSERT to add a runtime" benefit you've already paid for.
-
-### Why not put `build_cmd` on the combo row instead?
-
-That was the *first* design instinct ("classify and store everything together"). It's wrong:
-
-- 50+ combos × identical Python build command = 50+ copies of `"pip install --break-system-packages -r requirements.txt"`. Update once → fan-out across all rows.
-- Adding a new combo doesn't change the build command — but you'd be writing the value anew on every classification-registry insert.
-- The `build_cmd` is a function of `runtime`, not of `combo_key`. That's the textbook case for normalization (3NF).
-
-Storing build_cmd on the combo row would be denormalisation that propagates the same value redundantly. The two-table split with FK is the right normalised shape.
-
-### `run.sh` vs `build_cmd` — who runs what, when
-
-Natural follow-up: each task already ships a `run.sh`. Why does the eval gate need separate `build_cmd` / `test_cmd` columns instead of just executing it?
-
-Because they serve different consumers at different points in the lifecycle.
-
-|                      | `run.sh` (task-owned)                                            | `build_cmd` / `test_cmd` (registry-owned)            |
-| -------------------- | ---------------------------------------------------------------- | ---------------------------------------------------- |
-| **Runs when**        | Candidate's session starts                                       | Eval gate, before the task ships                     |
-| **Process shape**    | Long-running — `docker compose up`, seed DB, start dev server    | Short-lived — install deps, run pytest, exit         |
-| **Exit semantics**   | "Server is up" — no exit code to grade against                   | `0` = pass, `1` = test failure, `5` = no tests       |
-| **Scope**            | Per task (different services, seeds, dev-server invocation)      | Per runtime (every Python task installs the same way)|
-| **Consumer**         | The candidate, in their IDE / terminal                           | The platform's pre-flight quality gate               |
+| **Runs when** | Candidate's session starts | Eval gate, before the task ships |
+| **Process shape** | Long-running — `docker compose up`, seed DB, start dev server | Short-lived — install deps, run pytest, exit |
+| **Exit semantics** | "Server is up" — no exit code to grade against | `0` = pass, `1` = test failure, `5` = no tests |
+| **Scope** | Per task (different services, seeds, dev-server invocation) | Per template (every Python task installs the same way) |
+| **Consumer** | Candidate, in their IDE / terminal | The platform's pre-flight quality gate |
 
 Three concrete reasons the gate can't just execute `run.sh`:
 
-1. **`run.sh` doesn't exit.** It runs `docker compose up && python app/main.py` — the dev server runs forever. The gate needs a process that ends so it can read an exit code. Wrapping the script in a timeout and parsing stdout for "did pytest pass?" is fragile in a way that `pytest; echo $?` isn't.
-2. **The test command is a property of the runtime, not the task.** Every Python task runs `pytest`; every Node task runs `npm test`. Embedding that in each task's `run.sh` means every prompt-generator output has to remember the right invocation — drift (`pytest` vs `python -m pytest`, `--tb=short` vs not) becomes per-task instead of fixed by the platform.
-3. **The orchestration is opposite.** The gate wants: copy code in → install deps → run tests → kill. The candidate wants: bring up services → keep the dev server running → expose ports to a browser. Same template, opposite lifecycle.
+1. **`run.sh` doesn't exit.** It runs `docker compose up && python app/main.py` — the dev server runs forever. The gate needs a process that ends so it can read an exit code.
+2. **The test command is a property of the runtime, not the task.** Every Python task runs `pytest`; every Node task runs `npm test`. Embedding that in each task's `run.sh` means every prompt-generator output has to remember the right invocation — drift becomes per-task instead of fixed by the platform.
+3. **The orchestration is opposite.** Gate wants: copy code in → install deps → run tests → kill. Candidate wants: bring up services → keep the dev server running → expose ports.
 
-So the registry columns aren't a duplicate of `run.sh` — they're the platform's pre-flight checklist that runs **before** any candidate ever sees `run.sh`, and they're never invoked at candidate runtime.
+So registry columns aren't a duplicate of `run.sh` — they're the platform's pre-flight checklist that runs **before** any candidate ever sees `run.sh`.
 
----
+## Gaps vs. the merged model
 
-## Template hierarchy — composition-aware
+The merged design expects each row to be a *capability sheet that cannot lie about its image*. The current registry is closer to a build-command lookup. The gap:
 
-Final shape, based on E2B SDK capabilities verified against the v2 SDK:
-
-```
-utkrusht-python-base   from_python_image()
-                       + DinD, ttyd, code-server, adminer, compose-shim, common deps
-   ├── utkrusht-python-sql       from_template("utkrusht-python-base") + psycopg2, sqlalchemy, postgresql-client
-   ├── utkrusht-python-web       from_template("utkrusht-python-base") + fastapi, flask, django, uvicorn
-   └── utkrusht-python-llm       from_template("utkrusht-python-base") + langchain, llama-index, openai, anthropic
-
-utkrusht-node-base     from_node_image()
-                       + DinD, ttyd, code-server, adminer, compose-shim
-   ├── utkrusht-node-web         from_template("utkrusht-node-base") + express, react, next, typescript, jest
-   ├── utkrusht-node-mobile      from_template("utkrusht-node-base") + react-native, expo
-   └── utkrusht-playwright       from_template("utkrusht-node-base") + chromium-headless, playwright
-
-utkrusht-java-base     from_debian_image() + JDK 17 + maven + gradle + DinD + browser tools
-   └── utkrusht-java-spring      from_template("utkrusht-java-base") + spring-boot starters
-
-# stand-alone (no leaves yet):
-utkrusht-php-laravel   from_debian_image() + php-fpm + composer + laravel + DinD + browser tools
-utkrusht-go-base       from_debian_image() + go toolchain + DinD + browser tools
-utkrusht-rust-base     from_debian_image() + cargo + common crates + DinD + browser tools
-utkrusht-flutter       from_debian_image() + dart SDK + flutter + browser tools  (no DinD)
-```
-
-**Effective maintenance surface:** 7 roots + ~6 leaves = ~13 template files. Each leaf is ~20 LOC because of `from_template()` composition.
-
-### Common boilerplate baked into every template
-
-- Docker daemon (DinD) so tasks can `docker compose up` against their own compose file
-- `ttyd` browser terminal on port 7681
-- `code-server` browser VS Code on port 8443
-- Adminer browser DB GUI on port 8080 (any SQL DB task uses this)
-- Compose v1→v2 shim, `netcat-openbsd`, `git`, `jq`
-
-### One template lineage, used for both eval and deployment
-
-We do **not** maintain "eval templates" and "deploy templates" as separate sets:
-
-| Why not | Detail |
+| Gap | Where it shows up |
 |---|---|
-| **Production parity** | Anything that passes eval must run on the template the candidate actually gets. A split would re-introduce F12-class bugs at the template layer ("eval template was fine, deploy template missing a library"). |
+| Most pip packages are unpinned (`pip install fastapi flask django ...`) | Two builds of the "same" template can install different versions; reproducibility broken |
+| No `personas` column | `kind` on the classification row carries persona — conflated with shape, single-valued |
+| No `frameworks` / `datastores` / `tools` columns on `template_registry` | Capability info lives only in `template.py` shell strings — extractable only by reading source |
+| No `manifest_hash` / `generated_at` / `registry_version` columns | Nothing detects "Dockerfile changed, row didn't"; sheet vs. image drift goes unnoticed |
+| No manifest emitted by the build pipeline | `build_prod.py` calls `AsyncTemplate.build()` and exits — never writes a structured record of what's in the image |
+| No CI check tying `template.py` to the row's hash | Drift, when it happens, surfaces in eval failure weeks later, not at build time |
+| `runtime` is the PK — only one template per language | `utkrusht-python-llm` and `utkrusht-python-web` can't coexist (and `python-sql` + `python` conflict already) |
+| `utkrusht-python-sql` overlaps `utkrusht-python` ~80% | The "sheet ambiguity" failure mode in flesh — LLM matcher can't reliably distinguish them |
+
+## What it takes to get to the merged model
+
+Five template-side changes; they sequence with the classifier doc's [migration path](./classifier.md#migration-path).
+
+### 1. Pin pip versions
+
+`pip install fastapi==0.115.4 flask==3.0.3 ...` — every package gets a version. Either inline in `template.py` or via a `requirements-template.txt` the build copies in.
+
+Reproducibility is the surface reason. The deeper reason: an honest capability sheet says "this template provides fastapi 0.115.4," not "this template provides fastapi, whatever version was latest at build time." Pins also surface dep conflicts at build time (LangChain pin vs. fastapi pin) rather than weeks later in eval.
+
+### 2. Capability sheet authoring — two viable shapes
+
+**Option A — `manifest.yaml` next to `template.py`.** Hand-author the sheet; CI hashes both files together.
+
+```yaml
+template_id: utkrusht-python
+runtime: python3.12
+language_versions: { python: "3.12" }
+frameworks: [fastapi, flask, django, sqlalchemy, langchain, llama-index]
+datastores: []                # template-level; services come from task compose
+tools: [pytest, docker, psql, mysql, adminer, ttyd, code-server]
+needs_browser: false
+needs_gpu: false
+personas: [backend, data, mle, llm]
+build_cmd: "pip install --break-system-packages -r requirements.txt"
+test_cmd:  "python -m pytest -q --tb=short"
+```
+
+Pros: easy to start, reviewable in PR.
+Cons: two sources of truth (the .yaml and the .py); they will drift between rebuilds.
+
+**Option B — single-source-of-truth Python in `template.py`.** Declare apt/pip packages as Python collections; `template.py` *both* builds the image and emits the manifest. Sheet and image cannot diverge by construction.
+
+```python
+APT_PACKAGES = ["ca-certificates", "curl", ..., "default-mysql-client"]
+PIP_PACKAGES = {"fastapi": "0.115.4", "flask": "3.0.3", "langchain": "0.3.7", ...}
+TOOLS_BAKED  = ["ttyd@1.7.7", "code-server@4.96.4", "adminer@4.8.1", "docker", "psql", "mysql"]
+PERSONAS     = ["backend", "data", "mle", "llm"]
+
+template = (
+    AsyncTemplate()
+    .from_python_image("3.12")
+    .run_cmd(f"apt-get install -y {' '.join(APT_PACKAGES)}")
+    .run_cmd(f"pip install {' '.join(f'{k}=={v}' for k, v in PIP_PACKAGES.items())}")
+    ...
+)
+
+MANIFEST = {
+    "template_id":       "utkrusht-python",
+    "runtime":           "python3.12",
+    "language_versions": {"python": "3.12"},
+    "frameworks":        [k for k in PIP_PACKAGES if k in WEB_OR_ORM_OR_LLM_KEYS],
+    "tools":             TOOLS_BAKED + ["pytest", "docker"],
+    "personas":          PERSONAS,
+    "apt":               APT_PACKAGES,
+    "pip":               PIP_PACKAGES,
+}
+```
+
+Pros: image and sheet cannot disagree; refactoring once is cheaper now (one template) than later (five).
+Cons: requires touching `template.py` for the existing template.
+
+**Recommendation: Option B.** A is a stepping stone that becomes the drift problem the merged design exists to prevent. The refactor is roughly half a day for the existing `python/template.py`; doing it now (with one template) is much cheaper than retrofitting it onto a growing set.
+
+### 3. Emit manifest + hash at build time
+
+`build_prod.py` writes `MANIFEST` to `manifest.json`, hashes it, and updates the row:
+
+```python
+manifest_json = json.dumps(MANIFEST, sort_keys=True, indent=2)
+manifest_hash = hashlib.sha256(manifest_json.encode()).hexdigest()
+
+supabase.table("template_registry").update({
+    **MANIFEST,                                       # capability sheet columns
+    "manifest_hash":    manifest_hash,
+    "generated_at":     datetime.utcnow().isoformat(),
+    "registry_version": current_version + 1,
+}).eq("template_id", "utkrusht-python").execute()
+```
+
+Bumping `registry_version` invalidates cached classifications — see [cache invalidation](./classifier.md#cache-invalidation-has-two-keys).
+
+### 4. CI gate — the durability investment
+
+A check that runs on every PR touching `infra/e2b/templates/<name>/`:
+
+1. Import `MANIFEST` from the template's `template.py`.
+2. Compute its hash.
+3. Compare to `template_registry.manifest_hash` for that row.
+4. If different → fail the build with: "rebuild and re-upload the template, then update the registry row."
+
+**This is the single load-bearing investment** for the merged design's durability — see [the classifier doc's Step 3](./classifier.md#migration-path). Without it, capability sheets drift from reality within months; the LLM picks based on stale info; the merged design rots. With it, sheets cannot lie.
+
+### 5. Deduplicate `python-sql` and `python`
+
+Once `utkrusht-python` is verified end-to-end:
+
+```sql
+UPDATE template_registry SET status = 'deprecated' WHERE template_id = 'utkrusht-python-sql';
+```
+
+Then remove `infra/e2b/templates/python-sql/`. The row stays for cache validity but the LLM stops picking it. This is the smallest version of the [fragmentation policy](./classifier.md#sprawl-avoidance): two templates with 90% overlap aren't two templates, they're one template and one CVE-patch overhead.
+
+## Fat vs. composition — what the merged design resolves
+
+A previous draft of this doc went deep on "should we ship one fat template per runtime, or compose smaller leaves via E2B's `from_template()`?" The merged design dissolves this question into a different one: **how many distinct rows do we maintain in the registry?**
+
+- **Today:** one fat row (`utkrusht-python`) handles every Python task. The classifier doesn't need to distinguish `python-llm` from `python-web` because there's nothing to distinguish.
+- **Later:** if signal demands ([base bloat, over-serving, `no_match` clustering](./classifier.md#signals-that-justify-a-split)), `utkrusht-python` splits into siblings (`utkrusht-python-llm`, `utkrusht-python-web`, `utkrusht-python-nlp`). Each is a separate row with a distinctive capability sheet.
+
+The sibling pattern is preferred over E2B `from_template()` inheritance — see the classifier doc's [sibling vs inheritance](./classifier.md#sibling-templates-not-e2b-inheritance) note. Inheritance feels DRY but makes rebuild graphs ugly and CVE patching cascades; siblings are independently buildable / patchable.
+
+**Don't pre-split.** Three signals to wait for, before fragmenting:
+
+1. Build time on the base past ~60 s, or image size past some MB ceiling.
+2. Most tasks routed to the base also `pip install <heavy lib>` at sandbox boot.
+3. ≥5 `no_match` rows / month sharing the same `missing_capabilities`.
+
+Until then, one fat row is honest about what we deploy.
+
+## One template lineage — eval + deploy use the same image
+
+There is no separate "eval template" and "candidate template." The same image boots both contexts; the only difference is what gets run against it.
+
+| Why one lineage | Detail |
+|---|---|
+| **Production parity** | Anything that passes eval must run on what the candidate actually gets. A split re-introduces "eval template was fine, deploy template missing a library" bugs at the template layer. |
 | **Single source of truth** | Adding a Python package means updating one template, not two. |
-| **"Dead weight" cost is negligible** | Browser tools running during automated eval are background processes on a microVM. They cost nothing observable. |
-| **Boot time is fine for eval** | Even 5–10 s per eval is acceptable — eval runs at task-generation time, not per candidate request. |
+| **"Dead weight" cost is negligible** | Browser tools running during automated eval are background processes on a microVM — cost nothing observable. |
+| **Eval-gate boot time is fine** | Even 5–10 s per eval is acceptable; eval runs at task-generation time, not per candidate request. |
 
-The eval gate boots a sandbox from the same template the candidate would receive, copies the task code in, runs the test suite, captures pass/fail + stderr/stdout, then kills the sandbox. Candidates get the same template, with a longer idle timeout and the browser URLs exposed.
-
----
+The eval gate boots a sandbox from the same template the candidate would receive, copies the task code in, runs `build_cmd` → `test_cmd`, captures pass/fail, then kills the sandbox. Candidates get the same template with a longer idle timeout and the browser URLs exposed.
 
 ## E2B SDK capabilities — verified
 
 | Finding | Detail |
 |---|---|
-| **Template composition / inheritance** — YES | `AsyncTemplate().from_template("utkrusht-python-base")` chains from a parent. Plus layer-level cache sharing across templates within a team. |
-| **Multi-container natively** — NO | No first-class sidecar primitive. Documented pattern: Docker-in-Docker + the task's own compose. This is exactly what `python-sql` already does. |
-| **Account-level limits** — not a constraint | Pro tier: 100 concurrent sandboxes (expandable to 1100), 24-hour sessions, 20 GiB storage. 13 templates × ~1.5 GB fits comfortably. |
-| **Cold-start latency** — ~78–180 ms | Firecracker microVM snapshot boot. The "5–10 s" earlier drafts worried about is **start-cmd execution** (dockerd + ttyd + code-server initialising), not the snapshot itself. |
-| **Best-practice base image** | Use language-specific convenience methods (`from_python_image()`, `from_node_image()`, etc.), not the heavier `e2bdev/code-interpreter`. |
+| **`from_template()` inheritance** | Supported; chains from a parent template. **Sibling rows are still the recommended split shape** for the reasons in the classifier doc. |
+| **Multi-container natively** | No first-class sidecar primitive. Documented pattern: DinD + the task's own compose. |
+| **Account limits** | Pro tier: 100 concurrent sandboxes, 24-hour sessions, 20 GiB storage. ~12 templates × ~1.5–3 GiB fits. |
+| **Cold-start latency** | ~78–180 ms (Firecracker snapshot). The 3–8 s before "ready" is start-cmd (dockerd + ttyd + code-server) — independent of image size. |
+| **Base image** | Prefer language-specific convenience methods (`from_python_image()`, `from_node_image()`) over the heavier `e2bdev/code-interpreter`. `python/` already does this; `python-sql/` doesn't. |
 
-### Design consequences
+## Worked examples — TaskRuntime → template (under the merged model)
 
-1. **Use language-specific base methods**, not `e2bdev/code-interpreter`. Leaner.
-2. **Embrace `from_template()` for composition.** Build base templates once, derive leaves with ~20 LOC each.
-3. **DinD stays.** No design change; the task's own `docker-compose.yml` brings up its services.
-4. **Don't pre-optimise image size.** 20 GiB of headroom on Pro covers any reasonable shape.
-5. **Cold-start is dominated by start-cmd, not snapshot.** If eval-gate latency ever matters, profile `start.sh`; the VM boot itself is ~150 ms.
+After Step 4 of the migration the classifier returns `template_id` + `persona` directly. Sample matches:
 
----
-
-## Template picker — `TaskRuntime` → template name
-
-Mechanical mapping (lives in [`generators/task/runtime_resolver.py`](../../generators/task/runtime_resolver.py) via `template_name_for_runtime`):
-
-```python
-def pick_template(rt: TaskRuntime) -> str:
-    if rt.kind == "mobile" and rt.runtime == "flutter": return "utkrusht-flutter"
-    if rt.kind == "mobile" and rt.runtime == "node":    return "utkrusht-node-mobile"
-    if rt.kind == "testing" and rt.needs_browser:       return "utkrusht-playwright"
-    if rt.kind == "llm":                                return "utkrusht-python-llm"
-    if rt.runtime == "python" and "postgres" in rt.datastores:
-                                                        return "utkrusht-python-sql"
-    if rt.runtime == "python" and rt.frameworks:        return "utkrusht-python-web"
-    if rt.runtime == "node":                            return "utkrusht-node-web"
-    if rt.runtime == "java":                            return "utkrusht-java-spring"
-    if rt.runtime == "php":                             return "utkrusht-php-laravel"
-    if rt.runtime == "go":                              return "utkrusht-go-base"
-    if rt.runtime == "rust":                            return "utkrusht-rust-base"
-    raise ValueError(f"no template for {rt}")
-```
-
-Service containers are NOT a picker concern — they're brought by the task's compose file.
-
----
-
-## Polyglot exception — secondary runtime install at boot
-
-The "no pip/npm/apt at runtime" rule is the spine of how E2B templates work: every dependency is baked into the snapshot at build time, so the candidate's sandbox boots in ~150 ms with everything ready. Polyglot tasks (Rust+React, Python+Node, etc.) break that rule because no single template carries every runtime combination.
-
-### The decision (2026-05-26)
-
-Three options were on the table:
-
-1. **Refuse to generate polyglot tasks** until a dedicated template exists.
-2. **Install the secondary runtime(s) at the top of `run.sh`** — primary from the template, secondaries via `curl|apt|...` at session start.
-3. **Build a dedicated polyglot template per pair** (`utkrusht-rust-node`, etc.).
-
-We chose **option 2 for now**. It's the only path that ships working polyglot tasks today without building new templates, AND it keeps eval verification (the gate runs the same installs, so polyglot tasks get verified instead of skipped).
-
-### What it looks like in `run.sh`
-
-For a `(rust, node)` task on the `utkrusht-rust` template:
-
-```bash
-#!/usr/bin/env bash
-set -euo pipefail
-
-# === Polyglot prelude: secondary runtimes (Node, in this case) ===
-# This block is auto-generated for polyglot tasks. Single-runtime tasks skip it.
-curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
-apt-get install -y nodejs
-node --version  # verify
-
-# === Task starts here ===
-(cd backend  && cargo build --release && ./target/release/server &)
-(cd frontend && npm ci && npm run dev)
-```
-
-The prelude block is opaque to the candidate — they shouldn't need to touch it. Their work lives below it.
-
-### The `runtime_installer` table
-
-A small sibling to `template_registry` that records "how to install runtime X when it's NOT the primary in this sandbox":
-
-| column | type | example |
-|---|---|---|
-| `runtime` | `text` PK | `node`, `rust`, `python`, … |
-| `install_cmd` | `text` | `curl -fsSL https://deb.nodesource.com/setup_20.x \| bash - && apt-get install -y nodejs` |
-| `estimated_seconds` | `int` | 30 |
-| `verify_cmd` | `text` | `node --version` — asserted after install |
-
-Seed:
-
-| runtime | est. sec | install_cmd (abbreviated) |
-|---|---|---|
-| `node` | 30 | `setup_20.x \| bash && apt install nodejs` |
-| `rust` | 60 | `curl rustup.rs \| sh -s -- -y` |
-| `python` | 15 | `apt install python3 python3-pip` |
-| `go` | 20 | `curl go.dev/dl/go1.23.0.linux-amd64.tar.gz \| tar -C /usr/local -xz` |
-| `java` | 45 | `apt install openjdk-17-jdk maven` |
-| `php` | 30 | `apt install php8.2 composer` |
-| `ruby` | 30 | `apt install ruby-full bundler` |
-| `flutter` | — | **`polyglot_unsupported`** — too heavy to install at boot |
-
-`flutter` (and likely `scala` if we add it) are flagged as unsupported for polyglot mode — the install is too heavy to be reasonable mid-boot. Tasks classified with these as secondary runtimes get refused upstream.
-
-### Eval gate behavior
-
-The gate runs the same prelude. For `(rust, node)`:
-
-```text
-boot utkrusht-rust              ~150 ms
-run install_cmd(node)           ~30 s
-run cargo build                 ~20 s   (in backend/)
-run npm ci                      ~15 s   (in frontend/)
-run cargo test                  ~10 s
-run npm test                    ~10 s
-total                           ~1.5 min
-```
-
-Compare to a single-runtime Python eval (~30 s end-to-end). Polyglot eval is ~3× slower — acceptable, but build a per-task hard timeout (e.g. 5 min) so a flaky install doesn't burn 10 min on retries.
-
-### Honest risks
-
-1. **Install latency dominates eval-gate time.** Plan for ~3 min per polyglot eval. Set a hard 5 min cap; on hit, mark the row `polyglot_timeout` for review.
-2. **Install failures = new false-negative class.** `nodesource.com` down briefly = eval fails on code that's actually fine. Mitigation: retry the install once before declaring the task broken; distinguish `install_failed` from `test_failed` in the gate output.
-3. **Version drift.** `setup_20.x` pulls whatever Node 20.minor is current the day you eval. A candidate scoring Tuesday vs Friday might hit different patch versions. Don't pre-pin — only when a real drift bug bites.
-4. **The "no install at boot" rule is now polyglot-exempt.** This entire section IS the documentation of that exception. Future readers who only skim the "Polyglot exception" header should still know the rule.
-
-### When to upgrade to Option 3 (dedicated polyglot template)
-
-Trigger: ≥3 customer-generated tasks asking for the *same* runtime pair. The data lives in the classification registry — query it:
-
-```sql
-SELECT runtimes, count(*) AS combo_count
-FROM competency_combo_classification c
-JOIN tasks t ON t.combo_key = c.combo_key
-WHERE array_length(c.runtimes, 1) > 1
-GROUP BY runtimes
-ORDER BY combo_count DESC;
-```
-
-When `(node, python)` or `(node, rust)` hits 3+, build the fat polyglot template, register it in `template_registry`, and the picker upgrades automatically — no code change beyond a single INSERT.
-
-Until that data exists, paying the 30–60 s install cost is cheaper than guessing which polyglot template to build.
-
----
-
-## What changes in generated task content
-
-The prompt generator used to instruct the LLM to produce `run.sh` and `kill.sh` that install Docker, install the language runtime, install system packages, then bring up services. That made sense for the droplet target (bare VM). For the E2B target, **most of that boilerplate is already in the template** and should be stripped.
-
-`run.sh` and `kill.sh` themselves **stay** — they remain the contract between task and platform. What goes inside them changes.
-
-### Before (droplet-shaped)
-
-```bash
-# run.sh
-apt-get update
-apt-get install -y python3 python3-pip postgresql-client docker.io
-pip install -r requirements.txt
-docker compose up -d
-psql -h localhost -U postgres < seed.sql
-python app/main.py
-```
-
-### After (sandbox-aware — template provides infra)
-
-```bash
-# run.sh
-docker compose up -d              # task's own compose for postgres-server
-psql -h localhost -U postgres < seed.sql
-python app/main.py
-```
-
-Same shape for `kill.sh` — drop the uninstall steps; keep `docker compose down`.
-
-### Where this lands in the prompt-generator
-
-The HARD CONSTRAINT block in [`generators/prompts/agent.py`](../../generators/prompts/agent.py) now reads:
-
-```
-The TaskRuntime fields determine the generated content:
-  • runtime, frameworks, libraries — already pre-installed by the E2B template.
-    Do NOT include apt-get install, pip install, or npm install for these in run.sh.
-  • datastores — generate a docker-compose.yml that brings up these service
-    containers (Postgres, Redis, Mongo, …). run.sh does `docker compose up`,
-    kill.sh does `docker compose down`.
-  • kind="mobile" — no Dockerfile, no compose; the template ships the SDK.
-    run.sh runs the runtime's native test command (e.g. `flutter test`).
-  • needs_browser — the template (utkrusht-playwright) already ships chromium;
-    do NOT install it in run.sh.
-```
-
-The classifier output drives this. See [Task Classifier](./classifier.md) for the upstream side.
-
----
-
-## Worked examples — TaskRuntime → Template
-
-| Task | TaskRuntime | Template | Task's compose |
+| Task | template_id | persona | Task's compose |
 |---|---|---|---|
-| `Python - FastAPI` | runtime=python, frameworks=(fastapi,), kind=app | `utkrusht-python-web` | (none) |
-| `Python - FastAPI + Postgres` | runtime=python, frameworks=(fastapi,), datastores=(postgres,), kind=app | `utkrusht-python-sql` | postgres-server |
-| `Flutter` | runtime=flutter, kind=mobile | `utkrusht-flutter` | (none) |
-| `Golang, Redis` | runtime=go, datastores=(redis,), kind=app | `utkrusht-go-base` | redis-server |
-| `Playwright` | runtime=node, kind=testing, needs_browser=True | `utkrusht-playwright` | (none) |
-| `Python + LlamaIndex` | runtime=python, frameworks=(llama-index,), kind=llm | `utkrusht-python-llm` | (none) |
-| `Java + Spring Boot + Postgres` | runtime=java, frameworks=(spring-boot,), datastores=(postgres,), kind=app | `utkrusht-java-spring` | postgres-server |
-| `MySQL` (alone) | runtime=none, datastores=(mysql,), kind=db_only | `utkrusht-python-sql` (reused; has psql client + Adminer) | mysql-server |
-| `MERN Stack` | runtime=node, frameworks=(express, react), datastores=(mongo,), kind=app | `utkrusht-node-web` | mongo-server |
-| `Firebase + React Native` | runtime=node, frameworks=(react-native, firebase), kind=mobile | `utkrusht-node-mobile` | (none) |
+| `Python - FastAPI` | `utkrusht-python` | `backend` | (none) |
+| `Python - FastAPI + Postgres` | `utkrusht-python` | `backend` | postgres-server |
+| `Python + LlamaIndex` | `utkrusht-python` | `llm` | (none) |
+| `MySQL` (alone) | `utkrusht-python` | `dba` | mysql-server |
+| `Helm chart for a microservice` | **no_match** — `suggested_template: utkrusht-infra`, `missing_capabilities: ["helm","kubectl"]` | n/a | n/a |
+| `Flutter mobile app` | **no_match** — `suggested_template: utkrusht-flutter`, `missing_capabilities: ["dart","flutter-sdk"]` | n/a | n/a |
 
-Ten wildly different tasks, all assembled from **~11 templates + each task's own compose**.
+The first four pick the same template, different personas — that's the [personas-as-list](./classifier.md#personas-are-a-list-not-a-scalar) decision in action. The last two surface as structured `no_match` rows — those are the [template roadmap signal](./classifier.md#wire-the-no_match-path).
 
----
+## Implementation status (2026-05-27)
 
-## Implementation status (2026-05-26)
-
-| Component | Status | Where |
-|---|---|---|
-| `template_registry` table (B6) | **Shipped** — migration + python seed row | [migration](../../migrations/2026-05-25-create-template-registry.sql) |
-| `template_registry.status` column + rows for every runtime | **Shipped (2026-05-26)** — python=built, node/java/php/go/rust/flutter/ruby/scala=proposed | [migration](../../migrations/2026-05-26-template-registry-add-status-and-proposed-rows.sql) |
-| `template_name_for_runtime` helper | **Shipped** | [`generators/task/runtime_resolver.py`](../../generators/task/runtime_resolver.py) |
-| `e2b_flow/sandbox_eval.py` reads template name from registry | **Shipped** | — |
-| `e2b_flow/sandbox_eval.py` reads `build_cmd`/`test_cmd`/`compile_cmd` from registry | **Proposed** (today hardcoded — see "What we should do") | — |
-| E2B build/test gate (Python only — `utkrusht-python`) | **Shipped** | [`e2b_flow/sandbox_eval.py`](../../e2b_flow/sandbox_eval.py) |
-| Additional templates (node-web / node-mobile / java-spring / php-laravel / go-base / rust-base / flutter / playwright / python-llm) | **Proposed** — design only | — |
-| `from_template()` composition (base + leaves) | **Proposed** — depends on building the templates | — |
-| `from_python_image()` etc. base-method migration | **Proposed** — replace `e2bdev/code-interpreter` in `python-sql` | — |
-
----
+| Component | Status |
+|---|---|
+| `template_registry` table — `runtime` PK, build/test/compile columns | **Shipped** |
+| `template_registry.status` column + `proposed` rows for all runtimes | **Shipped** |
+| `utkrusht-python` template (fat Python, only `built` row) | **Shipped** |
+| `utkrusht-python-sql` template (legacy, narrow lib set) | **Shipped — to be deprecated** once `utkrusht-python` is verified |
+| `sandbox_eval` reads `template_name` from registry | **Shipped** |
+| `sandbox_eval` reads `build_cmd` / `test_cmd` from registry | **Proposed** (~15 LOC; first step) |
+| Capability sheet columns on `template_registry` (`personas`, `frameworks`, `datastores`, `tools`, etc.) | **Proposed — classifier doc Step 1** |
+| `manifest_hash` / `generated_at` / `registry_version` columns | **Proposed — classifier doc Step 1** |
+| Pip version pinning in `template.py` | **Proposed** |
+| `MANIFEST` const in `template.py` (single source of truth — Option B) | **Proposed** |
+| Manifest emission in `build_prod.py` (writes `manifest.json` + updates row) | **Proposed** |
+| CI gate (manifest hash matches row) | **Proposed — the durability gate** |
+| Switch PK from `runtime` to `template_id` | **Proposed — classifier doc Step 2** |
+| Deprecate `utkrusht-python-sql` | **Proposed** — once `utkrusht-python` is verified |
+| Additional templates (node, java, php, go, rust, flutter, infra, playwright) | **Proposed** — build only when `no_match` clusters justify |
 
 ## What we should do next
 
-1. **Wire `sandbox_eval` to read commands from `template_registry`** (~15 LOC). This is the small change that turns the registry from "stored but unused" into "actively consumed." It also validates the pattern before you're under pressure to add a second runtime. See "Why do we need a `template_registry` table?" above for the case.
-2. **Build the second template** (`utkrusht-node-base` + a leaf like `utkrusht-node-web`). This forces the multi-runtime path to work end-to-end and exercises the registry for real.
-3. **Decide on the merged-model direction.** Before building the second template, consider the open proposal in the classifier doc to [merge classifier output and template registry into one decision](./classifier.md#proposed-evolution-merge-taskruntime-and-template_registry-into-one-decision). If you go that way, the second template should land with `personas: text[]` and a generated `manifest_hash` from day one — both are prerequisites for the merge, and retrofitting them onto a growing template set is harder than starting with them.
-4. **Defer the full ~11-template buildout** until you have demand. The current single-template setup handles the largest task chunk (Python).
-5. **Profile `start.sh` if eval-gate latency becomes a problem.** The microVM boot is ~150 ms; everything above that is start-cmd (dockerd warm-up, etc.). Don't pre-optimise image size — 20 GiB headroom on Pro covers anything reasonable.
-6. **Once `kind="infra"` becomes a real need** (K8s / Helm / Terraform tasks), build a `utkrusht-infra` template with `kubectl`, `helm`, `terraform`, and a fake/lightweight cluster (kind / k3d) for validation. The gate then runs `helm lint` / `kubectl --dry-run` / `terraform validate` instead of pytest. *(If the merged-model proposal has shipped by then, this template's row will be a no-match's `suggested_template` — the doc-driven roadmap becomes data-driven.)*
+The sequence below is the template-side prerequisites for the classifier doc's [migration path](./classifier.md#migration-path). Order matters; Step 4 of this list is the gate without which the design rots.
 
----
+1. **Wire `sandbox_eval` to read `build_cmd` / `test_cmd` from `template_registry`** (~15 LOC). Turns the registry from "stored but unused" into "actively consumed." Cheapest validation of the pattern.
+2. **Pin pip versions in `infra/e2b/templates/python/template.py`.** Honest capability sheet starts here. Rebuilds `utkrusht-python` once.
+3. **Refactor `template.py` to Option B** (single-source-of-truth Python with `APT_PACKAGES`, `PIP_PACKAGES`, `MANIFEST` constants). Half a day with one template; harder with five.
+4. **Add manifest emission to `build_prod.py`** — writes `manifest.json`, hashes it, updates `template_registry.manifest_hash` and the capability sheet columns. Lands together with the schema ALTER in the classifier doc's Step 1.
+5. **Build the CI gate** that fails on `template.py` ↔ row hash mismatch. **This is the durability investment.** Without it, no rewriteable second template should land.
+6. **Deprecate `utkrusht-python-sql`** once `utkrusht-python` is verified end-to-end. Then remove the directory.
+7. **Build the second template (`utkrusht-node-base`) with the new shape from day one** — pinned versions, MANIFEST const, generated `manifest_hash`. Retrofitting these onto a growing set is harder than starting with them.
+
+Steps 4–7 of the classifier doc's migration (LLM emits `template_id`, `task_template_match` table, no_match wiring, dropping `Runtime` Literal) land after the registry can carry honest capability sheets — i.e., after this doc's steps 1–5.
 
 ## Out of scope (for now)
 
-- E2B SDK capability verification beyond what's listed above — separate spike if anything new in the SDK surfaces.
-- Building the ~10 additional templates — separate epic, designs above.
-- The droplet → E2B deploy migration for tasks already running on droplets — outside this doc's concern.
-- v2 multi-tenancy on templates (per-org template forks) — not on the roadmap, would only make sense if a customer needed an org-specific lib set.
+- E2B SDK capability verification beyond what's listed above — separate spike if anything new surfaces.
+- Building the proposed-but-not-built rows (`utkrusht-node`, etc.) — let `no_match` clusters drive the order.
+- The droplet → E2B deploy migration for tasks already running on droplets — outside this doc's concern (droplet path was retired 2026-05-25).
+- v2 multi-tenancy on templates (per-org template forks) — not on the roadmap; would only make sense if a customer needed an org-specific lib set.
