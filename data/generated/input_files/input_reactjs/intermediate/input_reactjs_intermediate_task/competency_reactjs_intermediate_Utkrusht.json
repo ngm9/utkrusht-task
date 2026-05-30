@@ -1,0 +1,11 @@
+[
+    {
+        "competency_id": "a1b2c3d4-e5f6-4g7h-8i9j-0k1l2m3n4o5p",
+        "created_at": "2024-11-13T00:00:00+00:00",
+        "proficiency": "INTERMEDIATE",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "ReactJs",
+        "scope": "An individual with INTERMEDIATE proficiency in React has 3-6 years of experience and a solid grasp of React's core concepts. They can create functional and class components, manage state and props, and understand component lifecycle methods. Familiar with state management libraries like Redux or MobX, they proficiently use hooks—including custom hooks—for better code reusability. They implement routing with React Router, handle forms and validation using libraries like Formik or Yup, and integrate APIs using fetch or Axios. Skilled in styling techniques, they utilize CSS-in-JS libraries and ensure responsive design. They optimize performance through memoization and lazy loading, and write unit tests using Jest and React Testing Library. Familiar with build tools like Webpack and Babel, they can deploy applications to platforms like Netlify or AWS Amplify. They collaborate effectively using Git, participate in code reviews, and are accustomed to Agile methodologies.",
+        "long_scope": null
+    }
+]

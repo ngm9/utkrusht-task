@@ -18,4 +18,5 @@ fastapi
 uvicorn[standard]
 sse-starlette
 httpx
+boto3
 

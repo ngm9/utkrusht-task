@@ -26,7 +26,11 @@ from generators.task.evaluator import (
 from generators.task.gate import GateOutcome, run_gate_for_attempt
 from generators.task.persistence import (
     create_answer_github_repo,
+    delete_github_repo,
     init_supabase,
+    insert_draft_task,
+    mark_task_failed,
+    mark_task_ready,
     upload_answer_files_to_repo,
     upload_files_to_github,
 )
@@ -52,7 +56,11 @@ __all__ = [
     "run_gate_for_attempt",
     # persistence
     "create_answer_github_repo",
+    "delete_github_repo",
     "init_supabase",
+    "insert_draft_task",
+    "mark_task_failed",
+    "mark_task_ready",
     "upload_answer_files_to_repo",
     "upload_files_to_github",
     # creator

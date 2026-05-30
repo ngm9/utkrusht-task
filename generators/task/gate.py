@@ -23,6 +23,7 @@ from typing import Dict, Optional, Tuple
 
 from infra.logger_config import logger
 
+from infra import metrics
 from infra.e2b.sandbox_eval import run_sandbox_eval, sandbox_eval_enabled
 from generators.task.evaluator import build_retry_feedback
 from generators.task.runtime_resolver import ResolvedPlan
@@ -54,6 +55,7 @@ def run_gate_for_attempt(
     gate existed.
     """
     if not sandbox_eval_enabled():
+        metrics.inc("gate_outcome_total", outcome="disabled")
         return GateOutcome.DISABLED, ""
 
     logger.info("Running E2B sandbox build/test gate")
@@ -63,11 +65,17 @@ def run_gate_for_attempt(
     sb_result = run_sandbox_eval(candidate.get("code_files", {}), plan)
     candidate_eval["sandbox_eval"] = sb_result.as_dict()
 
+    runtime_label = (plan.match.template_id or plan.match.suggested_template or "unknown") if plan else "unknown"
     if sb_result.skipped:
         logger.info(f"  sandbox gate skipped: {sb_result.detail}")
+        metrics.inc(
+            "gate_outcome_total", outcome="skipped",
+            runtime=runtime_label, reason=(sb_result.detail or "no_reason")[:40],
+        )
         return GateOutcome.SKIPPED, ""
 
     if not sb_result.passed:
+        metrics.inc("gate_outcome_total", outcome="retry", runtime=runtime_label)
         logger.warning(
             f"Attempt {attempt}: sandbox gate FAILED "
             f"({sb_result.verdict}) — {sb_result.detail}"
@@ -86,4 +94,5 @@ def run_gate_for_attempt(
         )
         return GateOutcome.RETRY, feedback
 
+    metrics.inc("gate_outcome_total", outcome="pass", runtime=runtime_label)
     return GateOutcome.PASS, ""

@@ -1,0 +1,56 @@
+# Compose entry for the task-builder admin-panel backend.
+#
+# Two services that share the .env file:
+#
+#   task-builder-web    — FastAPI HTTP API (port 8000)
+#   task-builder-worker — Postgres-backed job runner (no port)
+#
+# Local quickstart:
+#
+#   cp .env.example .env   # fill INTERNAL_PROXY_TOKEN + Supabase + OPENAI + GitHub
+#   docker compose -f docker-compose.task-builder.yml up --build
+#
+# The web tier binds 8000:8000 on the host. To deploy alongside the Utkrushta
+# backend's docker-compose.yml: copy these two services into that file (or
+# include this one with `-f utkrushta/docker-compose.yml -f
+# utkrusht-task/docker-compose.task-builder.yml`).
+
+services:
+  task-builder-web:
+    build:
+      context: .
+      dockerfile: task_builder/Dockerfile
+    image: utkrusht/task-builder-web:dev
+    container_name: task-builder-web
+    ports:
+      - "${TASK_BUILDER_HOST_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      # Bind explicit; override .env if it's missing.
+      PORT: 8000
+      TASK_BUILDER_HOST: 0.0.0.0
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3).status==200 else sys.exit(1)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  task-builder-worker:
+    build:
+      context: .
+      dockerfile: infra/jobs/Dockerfile
+    image: utkrusht/task-builder-worker:dev
+    container_name: task-builder-worker
+    env_file:
+      - .env
+    environment:
+      # Worker doesn't accept HTTP, so it doesn't need the proxy token.
+      INTERNAL_PROXY_TOKEN: ""
+    restart: unless-stopped
+    # Per-run scratch in /tmp/utkrusht-runs/<job_id>/ is in-container; the
+    # worker cleans it up itself. No bind-mount needed.
+    depends_on:
+      task-builder-web:
+        condition: service_healthy

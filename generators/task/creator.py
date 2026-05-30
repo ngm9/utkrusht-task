@@ -60,8 +60,12 @@ from generators.task.persistence import (
     GITHUB_UTKRUSHTAPPS_TOKEN,
     REPO_OWNER,
     create_answer_github_repo,
+    delete_github_repo,
     fetch_existing_task_titles,
     init_supabase,
+    insert_draft_task,
+    mark_task_failed,
+    mark_task_ready,
     upload_answer_files_to_repo,
     upload_files_to_github,
 )
@@ -286,9 +290,30 @@ def create_task(
 
         created_at = datetime.datetime.now(datetime.timezone.utc)
 
-        logger.info(f"Loading scenarios from: {scenarios_file}")
-        scenarios = load_relevant_scenarios(competencies, scenarios_file)
-        logger.info(f"Loaded {len(scenarios)} relevant scenarios")
+        # B4: DB-first lookup. The JSON file path is kept as a fallback for
+        # combos that haven't been backfilled into `generated_scenarios` yet.
+        from generators.scenarios import repository as scenario_repo
+        from infra.utils import build_scenario_key
+
+        combo_key_for_lookup = build_scenario_key(competencies)
+        proficiency_for_lookup = (
+            competencies[0].get("proficiency", "BASIC").upper()
+            if competencies else "BASIC"
+        )
+        scenarios = scenario_repo.load_scenarios_for_combo(
+            env=env,
+            combo_key=combo_key_for_lookup,
+            proficiency=proficiency_for_lookup,
+        )
+        if scenarios:
+            logger.info(
+                "Loaded %d scenarios from DB for key=%r prof=%s",
+                len(scenarios), combo_key_for_lookup, proficiency_for_lookup,
+            )
+        else:
+            logger.info(f"DB returned no scenarios; falling back to JSON: {scenarios_file}")
+            scenarios = load_relevant_scenarios(competencies, scenarios_file)
+            logger.info(f"Loaded {len(scenarios)} relevant scenarios from JSON")
         logger.info(f"Scenarios: {scenarios}")
 
         existing_titles = fetch_existing_task_titles(competencies, env=env)
@@ -439,72 +464,17 @@ def create_task(
         if task_data is None or eval_info is None:
             raise EvalGateError(max_attempts, last_failure)
 
-        # ────────────────────────── persistence ─────────────────────────────
+        # ────────────────────────── persistence (B5) ─────────────────────────
+        # New lifecycle: INSERT draft → build GitHub artifacts → UPDATE ready.
+        # Any failure between INSERT and UPDATE leaves the row marked 'failed'
+        # and best-effort cleans up the partial GitHub repos so the reconciler
+        # has a clear surface to scan.
         task_type = determine_task_type(competencies, task_data)
         logger.info(f"Determined task type: {task_type}")
 
         logger.info("Generating solution code and steps")
         solutions_data = generate_answer_code_and_steps(task_data)
 
-        repo_name_base = (
-            task_data.get("resources", {}).get("github_repo", "").split("/")[-1]
-        )
-        if not repo_name_base:
-            repo_name_base = slugify(task_data.get("name", "assessment-task"))
-        # GitHub repo names cap at ~100 chars; keep well below that.
-        if len(repo_name_base) > 50:
-            repo_name_base = repo_name_base[:50].rstrip("-")
-
-        logger.info("Creating public GitHub template repository")
-        repo_name = create_github_template_repo(repo_name_base, is_private=True)
-        github_repo_url = f"https://github.com/{REPO_OWNER}/{repo_name}"
-
-        logger.info("Creating answer repository")
-        # ``-answers`` (8 chars) gets appended — keep the base ≤42.
-        answer_base_name = task_data.get("name", "assessment-task")
-        if len(answer_base_name) > 42:
-            answer_base_name = answer_base_name[:42].rstrip("-")
-        answer_repo_name = create_answer_github_repo(answer_base_name)
-        answer_repo_url = f"https://github.com/{REPO_OWNER}/{answer_repo_name}"
-
-        logger.info("Uploading solution files to answer repository")
-        upload_answer_files_to_repo(answer_repo_name, solutions_data)
-
-        solutions_for_db = {
-            "steps": solutions_data.get("steps", []),
-            "answer_repo": answer_repo_url,
-        }
-
-        if "resources" not in task_data:
-            task_data["resources"] = {}
-        task_data["resources"]["github_repo"] = github_repo_url
-
-        logger.info("Saving files locally...")
-        local_task_dir = save_files_locally(repo_name, task_data)
-        logger.info(f"Files saved locally to: {local_task_dir}")
-
-        logger.info("Uploading files to GitHub repository...")
-        upload_files_to_github(repo_name, task_data)
-
-        gist_url = None
-        if GITHUB_GIST_TOKEN:
-            try:
-                gist_url = create_gist_from_template(
-                    repo_url=github_repo_url,
-                    repo_token=GITHUB_UTKRUSHTAPPS_TOKEN,
-                    gist_token=GITHUB_GIST_TOKEN,
-                    description=task_data.get("name", repo_name),
-                    public=False,
-                )
-                if gist_url:
-                    task_data["resources"]["gist_url"] = gist_url
-                    logger.info(f"Gist created: {gist_url}")
-            except Exception as e:
-                logger.warning(f"Gist creation skipped or failed: {e}")
-        else:
-            logger.warning("No GITHUB_GIST_TOKEN for gist; skipping gist creation")
-
-        logger.info("Storing task in Supabase...")
         # Drive is_shared_infra_required purely from whether the generated
         # repo carries Docker / docker-compose artifacts. The previous
         # heuristic marked every "backend" task True regardless of Docker,
@@ -518,7 +488,9 @@ def create_task(
             f"(task_type: {task_type}, has_docker: {has_docker})"
         )
 
-        task_data_for_db = {
+        # Step 1 — INSERT the minimal draft row, get task_id BEFORE any
+        # external side effect.
+        draft_payload = {
             "created_at": created_at.isoformat(),
             "pre_requisites": format_pre_requisites(task_data.get("pre_requisites", "")),
             "answer": task_data.get("answer", ""),
@@ -528,68 +500,145 @@ def create_task(
                 "title": task_data.get("title", "") or task_data.get("name", ""),
                 "definitions": task_data.get("definitions", {}),
                 "hints": task_data.get("hints", ""),
-                "resources": dict(
-                    {"github_repo": github_repo_url},
-                    **({"github_gist": gist_url} if gist_url else {}),
-                ),
+                # resources patched in by mark_task_ready once repos exist.
+                "resources": {},
                 "outcomes": format_outcomes(task_data.get("outcomes", "")),
                 "question": task_data.get("question", ""),
                 "short_overview": format_outcomes(task_data.get("short_overview", "")),
             },
             "is_shared_infra_required": is_shared_infra_required,
-            "readme_content": parse_markdown_to_json(code_data.get("README.md", "")),
-            "eval_info": eval_info,
-            "solutions": solutions_for_db,
-            # ``task_type`` is a text[] consumed by the backend's
-            # /end_task_session handler — if it's empty/missing the handler
-            # 400s before queueing kill.sh / repo cleanup, leaving droplets
-            # dirty. Default to ['BUILD']; PR-review and design-review flows
-            # set their own values.
             "task_type": ["BUILD"],
-            # task_intent is per-task USE of the matched template. The full
-            # intent (datastores, protocols_used, eval_method,
-            # secondary_runtimes, persona_override) is emitted later by the
-            # content-generation LLM in a follow-up phase. For now we stamp
-            # an empty intent so the column is never null.
             "task_intent": {},
         }
-
-        supabase = init_supabase(env)
-        result = supabase.table("tasks").insert(task_data_for_db).execute()
-        if not result.data or len(result.data) == 0:
-            raise Exception("Failed to insert task into Supabase - no data returned")
-
-        supabase_task = result.data[0]
-        task_id = supabase_task.get("id") or supabase_task.get("task_id")
-
-        for criteria in task_data["criterias"]:
-            competency_id = criteria.get("competency_id")
-            if competency_id:
-                try:
-                    supabase.table("task_competencies").insert({
-                        "task_id": task_id,
-                        "competency_id": competency_id,
-                    }).execute()
-                except Exception as e:
-                    logger.error(
-                        f"Failed to insert task-competency relationship: {str(e)}"
-                    )
-
-        task_data.update(supabase_task)
+        task_id = insert_draft_task(draft_payload, env=env)
         task_data["task_id"] = task_id
 
-        # Optionally rename local directory to use actual task ID.
+        # Step 2 — build the GitHub artifacts under a try/except that
+        # marks the row failed + cleans up partial repos.
+        repo_name: str | None = None
+        answer_repo_name: str | None = None
+        local_task_dir = None
         try:
-            new_local_task_dir = local_task_dir.parent / str(task_id)
-            if local_task_dir != new_local_task_dir:
-                shutil.move(str(local_task_dir), str(new_local_task_dir))
-                logger.info(
-                    f"Renamed local directory to use task ID: {new_local_task_dir}"
-                )
-        except Exception as e:
-            logger.info(f"Could not rename local directory to task ID: {str(e)}")
+            repo_name_base = (
+                task_data.get("resources", {}).get("github_repo", "").split("/")[-1]
+            )
+            if not repo_name_base:
+                repo_name_base = slugify(task_data.get("name", "assessment-task"))
+            if len(repo_name_base) > 50:
+                repo_name_base = repo_name_base[:50].rstrip("-")
 
-        return task_data
+            logger.info("Creating public GitHub template repository")
+            repo_name = create_github_template_repo(repo_name_base, is_private=True)
+            github_repo_url = f"https://github.com/{REPO_OWNER}/{repo_name}"
+
+            logger.info("Creating answer repository")
+            answer_base_name = task_data.get("name", "assessment-task")
+            if len(answer_base_name) > 42:
+                answer_base_name = answer_base_name[:42].rstrip("-")
+            answer_repo_name = create_answer_github_repo(answer_base_name)
+            answer_repo_url = f"https://github.com/{REPO_OWNER}/{answer_repo_name}"
+
+            logger.info("Uploading solution files to answer repository")
+            upload_answer_files_to_repo(answer_repo_name, solutions_data)
+
+            solutions_for_db = {
+                "steps": solutions_data.get("steps", []),
+                "answer_repo": answer_repo_url,
+            }
+
+            task_data.setdefault("resources", {})
+            task_data["resources"]["github_repo"] = github_repo_url
+
+            logger.info("Saving files locally...")
+            local_task_dir = save_files_locally(repo_name, task_data)
+            logger.info(f"Files saved locally to: {local_task_dir}")
+
+            logger.info("Uploading files to GitHub repository...")
+            upload_files_to_github(repo_name, task_data)
+
+            gist_url = None
+            if GITHUB_GIST_TOKEN:
+                try:
+                    gist_url = create_gist_from_template(
+                        repo_url=github_repo_url,
+                        repo_token=GITHUB_UTKRUSHTAPPS_TOKEN,
+                        gist_token=GITHUB_GIST_TOKEN,
+                        description=task_data.get("name", repo_name),
+                        public=False,
+                    )
+                    if gist_url:
+                        task_data["resources"]["gist_url"] = gist_url
+                        logger.info(f"Gist created: {gist_url}")
+                except Exception as e:
+                    logger.warning(f"Gist creation skipped or failed: {e}")
+            else:
+                logger.warning("No GITHUB_GIST_TOKEN for gist; skipping gist creation")
+
+            # Step 3 — flip the row to ready with the final payload.
+            ready_task_blob = {
+                "title": draft_payload["task_blob"]["title"],
+                "definitions": draft_payload["task_blob"]["definitions"],
+                "hints": draft_payload["task_blob"]["hints"],
+                "resources": dict(
+                    {"github_repo": github_repo_url},
+                    **({"github_gist": gist_url} if gist_url else {}),
+                ),
+                "outcomes": draft_payload["task_blob"]["outcomes"],
+                "question": draft_payload["task_blob"]["question"],
+                "short_overview": draft_payload["task_blob"]["short_overview"],
+            }
+
+            ready_row = mark_task_ready(
+                task_id,
+                env=env,
+                task_blob=ready_task_blob,
+                solutions=solutions_for_db,
+                eval_info=eval_info,
+                readme_content=parse_markdown_to_json(code_data.get("README.md", "")),
+                is_shared_infra_required=is_shared_infra_required,
+            )
+
+            # task_competencies junction — non-fatal on individual failure.
+            sb = init_supabase(env)
+            for criteria in task_data["criterias"]:
+                competency_id = criteria.get("competency_id")
+                if competency_id:
+                    try:
+                        sb.table("task_competencies").insert({
+                            "task_id": task_id,
+                            "competency_id": competency_id,
+                        }).execute()
+                    except Exception as e:
+                        logger.error(
+                            f"Failed to insert task-competency relationship: {str(e)}"
+                        )
+
+            task_data.update(ready_row)
+            task_data["task_id"] = task_id
+
+            # Optionally rename local directory to use actual task ID.
+            if local_task_dir is not None:
+                try:
+                    new_local_task_dir = local_task_dir.parent / str(task_id)
+                    if local_task_dir != new_local_task_dir:
+                        shutil.move(str(local_task_dir), str(new_local_task_dir))
+                        logger.info(
+                            f"Renamed local directory to use task ID: {new_local_task_dir}"
+                        )
+                except Exception as e:
+                    logger.info(f"Could not rename local directory to task ID: {str(e)}")
+
+            return task_data
+        except Exception as build_exc:
+            logger.error(
+                "Mid-flight failure after draft INSERT for task %s: %s",
+                task_id, build_exc,
+            )
+            mark_task_failed(task_id, env=env, error=str(build_exc))
+            for partial in (repo_name, answer_repo_name):
+                if partial:
+                    delete_github_repo(partial)
+            raise
 
     except EvalGateError:
         # Distinct from generic failures — nothing was committed; the caller

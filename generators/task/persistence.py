@@ -7,11 +7,14 @@ Owns the side-effecting writes that complete a task:
 * :func:`create_answer_github_repo` — create the (public) answer/solution repo
 * :func:`upload_answer_files_to_repo` — push solution files + SOLUTION.md
 
-Module-level GitHub credentials are read once at import time.
+B5 transactional-create lifecycle helpers:
 
-The transactional-create + reconciler from plan phase B5 (insert row first,
-then artifacts, then mark ready; cleanup on failure) lands here in a
-follow-up step.
+* :func:`insert_draft_task`   — INSERT minimal draft row, return ``task_id``
+* :func:`mark_task_ready`     — UPDATE status='ready' once artifacts exist
+* :func:`mark_task_failed`    — UPDATE status='failed' on mid-flight failure
+* :func:`delete_github_repo`  — best-effort cleanup of an orphaned repo
+
+Module-level GitHub credentials are read once at import time.
 """
 from __future__ import annotations
 
@@ -34,13 +37,21 @@ GITHUB_GIST_TOKEN = os.getenv("GITHUB_GIST_TOKEN")
 
 
 def init_supabase(env: str = "dev") -> Client:
-    """Initialise a Supabase client for the dev or prod environment."""
-    if env == "dev":
-        url = os.getenv("SUPABASE_URL_APTITUDETESTSDEV")
-        key = os.getenv("SUPABASE_API_KEY_APTITUDETESTSDEV")
-    else:
-        url = os.getenv("SUPABASE_URL_APTITUDETESTS")
-        key = os.getenv("SUPABASE_API_KEY_APTITUDETESTS")
+    """Initialise a Supabase client for the dev or prod environment.
+
+    Prefers the ``service_role`` key when present — it bypasses RLS, which
+    is needed for the v1 task-builder tables (``conversations``,
+    ``generation_jobs``, ``generated_scenarios``, ``templates``,
+    ``task_template_match``) that carry ``service_role_all`` policies.
+    Falls back to the anon key for environments where the service-role key
+    isn't provisioned (CI smoke tests, contributors without prod access).
+    """
+    suffix = "DEV" if env == "dev" else ""
+    url = os.getenv(f"SUPABASE_URL_APTITUDETESTS{suffix}")
+    key = (
+        os.getenv(f"SUPABASE_SERVICE_ROLE_KEY_APTITUDETESTS{suffix}")
+        or os.getenv(f"SUPABASE_API_KEY_APTITUDETESTS{suffix}")
+    )
 
     if not url or not key:
         raise ValueError(f"Missing Supabase credentials for environment: {env}")
@@ -104,6 +115,121 @@ def fetch_existing_task_titles(
     except Exception as exc:
         logger.warning(f"fetch_existing_task_titles failed (env={env}): {exc}")
         return []
+
+
+def insert_draft_task(
+    task_data_for_db: Dict,
+    env: str = "dev",
+) -> str:
+    """B5 — INSERT the draft row before any GitHub call.
+
+    The row is marked ``status='draft'``. Once GitHub artifacts exist, call
+    :func:`mark_task_ready` to flip it to ``ready`` and patch in the resources.
+
+    Returns:
+        The newly-created ``task_id`` (uuid as string).
+
+    Raises:
+        Exception: when Supabase returns no row — fatal, caller aborts.
+    """
+    sb = init_supabase(env)
+    draft = dict(task_data_for_db)
+    draft["status"] = "draft"
+    # Resources / gist are not known yet; default to whatever the caller
+    # has so far. mark_task_ready will overwrite these.
+    result = sb.table("tasks").insert(draft).execute()
+    if not result.data:
+        raise Exception("Failed to insert draft task row into Supabase")
+    row = result.data[0]
+    task_id = row.get("id") or row.get("task_id")
+    if not task_id:
+        raise Exception("Draft task row missing id/task_id field")
+    logger.info("Inserted draft task row id=%s", task_id)
+    return str(task_id)
+
+
+def mark_task_ready(
+    task_id: str,
+    *,
+    env: str = "dev",
+    task_blob: Dict | None = None,
+    solutions: Dict | None = None,
+    eval_info: Dict | None = None,
+    readme_content: Dict | None = None,
+    is_shared_infra_required: bool | None = None,
+    task_intent: Dict | None = None,
+) -> Dict:
+    """B5 — flip a draft row to ``ready`` once all artifacts exist.
+
+    Only patches the fields supplied; anything ``None`` is left untouched.
+    The status flip happens atomically with the artifact fields so a reader
+    never sees a ``ready`` row missing its ``task_blob.resources``.
+    """
+    update: Dict = {"status": "ready"}
+    if task_blob is not None:
+        update["task_blob"] = task_blob
+    if solutions is not None:
+        update["solutions"] = solutions
+    if eval_info is not None:
+        update["eval_info"] = eval_info
+    if readme_content is not None:
+        update["readme_content"] = readme_content
+    if is_shared_infra_required is not None:
+        update["is_shared_infra_required"] = is_shared_infra_required
+    if task_intent is not None:
+        update["task_intent"] = task_intent
+
+    sb = init_supabase(env)
+    result = sb.table("tasks").update(update).eq("id", task_id).execute()
+    if not result.data:
+        raise Exception(f"Failed to mark task {task_id} ready — row missing or unchanged")
+    logger.info("Marked task %s ready", task_id)
+    return result.data[0]
+
+
+def mark_task_failed(
+    task_id: str,
+    *,
+    env: str = "dev",
+    error: str | None = None,
+) -> None:
+    """B5 — flip a draft / running row to ``failed`` on mid-flight error.
+
+    ``error`` is stored on ``task_blob.error`` so the existing schema doesn't
+    need an extra column. Best-effort: a failure here is logged and swallowed
+    because we're already in an error path.
+    """
+    try:
+        sb = init_supabase(env)
+        update: Dict = {"status": "failed"}
+        if error:
+            update["task_blob"] = {"error": error[:2000]}
+        sb.table("tasks").update(update).eq("id", task_id).execute()
+        logger.info("Marked task %s failed", task_id)
+    except Exception as exc:
+        logger.error("Failed to mark task %s failed: %s", task_id, exc)
+
+
+def delete_github_repo(repo_name: str) -> None:
+    """B5 — best-effort cleanup. Used during mid-flight failure to delete
+    a repo that was created but never had its starter files uploaded.
+
+    Errors are logged and swallowed — the caller is already failing.
+    """
+    if not repo_name or not GITHUB_UTKRUSHTAPPS_TOKEN:
+        return
+    try:
+        github = Github(GITHUB_UTKRUSHTAPPS_TOKEN)
+        try:
+            repo_obj = github.get_user().get_repo(repo_name)
+        except Exception:
+            if not REPO_OWNER:
+                return
+            repo_obj = github.get_repo(f"{REPO_OWNER}/{repo_name}")
+        repo_obj.delete()
+        logger.info("Cleaned up partial GitHub repo %s", repo_name)
+    except Exception as exc:
+        logger.warning("Could not delete partial GitHub repo %s: %s", repo_name, exc)
 
 
 def upload_files_to_github(repo: str, code_data: Dict) -> None:
