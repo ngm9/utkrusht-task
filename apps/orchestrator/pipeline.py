@@ -313,7 +313,7 @@ def _stage_prompts(brief: dict[str, Any], workspace: Path, env: str) -> StageRes
     ]
 
     def runner():
-        from generators.prompts.__main__ import main as prompts_cli
+        from generators.prompts.__main__ import cli as prompts_cli
         return prompts_cli.main(args=args, standalone_mode=False)
 
     _, err = _capture_stdout_and_run(log_path, runner)
