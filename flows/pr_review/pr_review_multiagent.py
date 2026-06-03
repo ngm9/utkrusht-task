@@ -28,6 +28,11 @@ from flows.pr_review.prompts.pr_generation_prompts import (
 )
 from flows.pr_review.pr_review_evals import eval_base_repo, eval_pr_and_answer_key
 from flows.pr_review.pr_review_github import create_pr_review_repo
+from task_validation import (
+    PRReviewTaskDAO,
+    TaskValidationError,
+    TaskWriteError,
+)
 from flows.pr_review.pr_review_utils import (
     slugify_branch_name,
     parse_pr_review_scenario,
@@ -427,24 +432,15 @@ def create_pr_review_task(
         "solutions": solutions_for_db,
     }
 
-    result = supabase.table("tasks").insert(task_data_for_db).execute()
-    if not result.data:
-        raise RuntimeError("Failed to insert task into Supabase")
-
-    supabase_task = result.data[0]
-    task_id = supabase_task.get("id") or supabase_task.get("task_id")
-
-    # Insert task-competency relationships
-    for criteria in criterias_for_db:
-        comp_id = criteria.get("competency_id")
-        if comp_id:
-            try:
-                supabase.table("task_competencies").insert({
-                    "task_id": task_id,
-                    "competency_id": comp_id,
-                }).execute()
-            except Exception as e:
-                logger.error(f"Failed to insert task-competency: {e}")
+    try:
+        supabase_task = PRReviewTaskDAO(supabase).validate_and_insert(
+            task_data_for_db, env=env
+        )
+    except (TaskValidationError, TaskWriteError) as e:
+        logger.error(str(e))
+        print(format_cost_summary(usage_by_model))
+        raise
+    task_id = supabase_task.get("task_id") or supabase_task.get("id")
 
     # -- Summary --
     print(f"\n{'='*70}")

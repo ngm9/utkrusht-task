@@ -65,6 +65,7 @@ from generators.task.persistence import (
     upload_files_to_github,
 )
 from generators.task.runtime_resolver import resolve_plan
+from task_validation import BaseTaskDAO, TaskValidationError, TaskWriteError
 
 
 # ---------------------------------------------------------------------------
@@ -524,26 +525,15 @@ def create_task(
         }
 
         supabase = init_supabase(env)
-        result = supabase.table("tasks").insert(task_data_for_db).execute()
-        if not result.data or len(result.data) == 0:
-            raise Exception("Failed to insert task into Supabase - no data returned")
+        try:
+            supabase_task = BaseTaskDAO(supabase).validate_and_insert(
+                task_data_for_db, env=env
+            )
+        except (TaskValidationError, TaskWriteError) as e:
+            logger.error(str(e))
+            raise
 
-        supabase_task = result.data[0]
-        task_id = supabase_task.get("id") or supabase_task.get("task_id")
-
-        for criteria in task_data["criterias"]:
-            competency_id = criteria.get("competency_id")
-            if competency_id:
-                try:
-                    supabase.table("task_competencies").insert({
-                        "task_id": task_id,
-                        "competency_id": competency_id,
-                    }).execute()
-                except Exception as e:
-                    logger.error(
-                        f"Failed to insert task-competency relationship: {str(e)}"
-                    )
-
+        task_id = supabase_task.get("task_id") or supabase_task.get("id")
         task_data.update(supabase_task)
         task_data["task_id"] = task_id
 

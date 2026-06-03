@@ -39,6 +39,12 @@ from non_tech_utils import (
 from non_tech_evals import run_evaluations
 from google_utils import upload_resources_to_google
 
+from task_validation import (
+    NonTechTaskDAO,
+    TaskValidationError,
+    TaskWriteError,
+)
+
 # Load environment variables
 load_dotenv()
 
@@ -227,29 +233,17 @@ def create_test_task(competency_file: Path, background_file: Path, scenarios_fil
             # Convert all empty strings to None
             task_data_for_db = convert_empty_to_none(task_data_for_db)
             
-            # Insert into Supabase 
-            logger.info(f"Inserting task into Supabase: {task_id}")
-            result = supabase.table("tasks").insert(task_data_for_db).execute()
-            
-            if not result.data:
-                logger.error("Failed to insert task into Supabase")
+            # Validate + insert via DAO (FK pre-flight check + task_competencies linkage)
+            logger.info(f"Validating and inserting task into Supabase: {task_id}")
+            try:
+                supabase_task = NonTechTaskDAO(supabase).validate_and_insert(
+                    task_data_for_db, env=env
+                )
+            except (TaskValidationError, TaskWriteError) as e:
+                logger.error(str(e))
                 continue
-            
-            # Get the task_id from Supabase response
-            supabase_task = result.data[0]
-            db_task_id = supabase_task.get("id") or supabase_task.get("task_id")
-            
-            # Insert task-competency relationships
-            for criteria in criterias_for_db:
-                competency_id_for_relationship = criteria.get("competency_id")
-                if competency_id_for_relationship:
-                    try:
-                        supabase.table("task_competencies").insert({
-                            "task_id": db_task_id,
-                            "competency_id": competency_id_for_relationship
-                        }).execute()
-                    except Exception as e:
-                        logger.error(f"Failed to insert task-competency relationship: {str(e)}")
+
+            db_task_id = supabase_task.get("task_id") or supabase_task.get("id")
             
             # Save task data locally for reference
             task_data["task_id"] = db_task_id
