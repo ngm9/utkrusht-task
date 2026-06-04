@@ -9,8 +9,9 @@ A ``ResolvedPlan`` carries two things:
   • ``match``    — the classifier's ``TaskTemplateMatch`` (template_id + persona)
   • ``template`` — the hydrated ``TemplateSpec`` (build/test/install + capabilities)
 
-Per-task ``TaskIntent`` does NOT live here — it's emitted later by the
-content-generation LLM and stored on ``tasks.task_intent``.
+Per-task ``TaskIntent`` does NOT live here — see
+``infra/classifier/runtime.TaskIntent`` for that model (in-memory only;
+the ``tasks.task_intent`` column was dropped pending a live consumer).
 """
 from __future__ import annotations
 
@@ -68,7 +69,8 @@ class ResolvedPlan:
 
     Carries the match decision (cached per combo) + the hydrated template
     spec. Does NOT carry ``task_intent`` — that's emitted later by the
-    content-generation LLM and lives on ``tasks.task_intent``.
+    content-generation LLM (model exists in
+    ``infra/classifier/runtime.TaskIntent`` but isn't persisted today).
 
     On classifier failure, ``match`` is None — callers skip persona
     routing and skip the gate. On no_match, ``template`` is None but
@@ -100,10 +102,19 @@ def make_combo_key(competencies: Iterable[Competency]) -> str:
 def _build_supabase_client():
     """Lazy import + init the Supabase dev client. Tests inject via the
     ``supabase`` kwarg on ``resolve_plan``; production paths get None and
-    we build one here."""
+    we build one here.
+
+    Prefers ``SUPABASE_SERVICE_ROLE_KEY_APTITUDETESTSDEV`` over the anon key
+    so RLS-protected tables (``task_template_match``, ``tasks``, etc.) are
+    readable here. Falls back to anon for environments without a service-role
+    key.
+    """
     from supabase import create_client  # local import keeps this file importable without supabase installed
     url = os.getenv("SUPABASE_URL_APTITUDETESTSDEV")
-    key = os.getenv("SUPABASE_API_KEY_APTITUDETESTSDEV")
+    key = (
+        os.getenv("SUPABASE_SERVICE_ROLE_KEY_APTITUDETESTSDEV")
+        or os.getenv("SUPABASE_API_KEY_APTITUDETESTSDEV")
+    )
     if not url or not key:
         raise RuntimeError("Missing SUPABASE_URL_APTITUDETESTSDEV / SUPABASE_API_KEY_APTITUDETESTSDEV")
     return create_client(url, key)

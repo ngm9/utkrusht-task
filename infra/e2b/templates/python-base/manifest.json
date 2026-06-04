@@ -1,0 +1,59 @@
+{
+  "build_cmd": "pip install --break-system-packages -r requirements.txt",
+  "capabilities": {
+    "datastores": [
+      "postgres",
+      "mysql",
+      "mongo",
+      "redis"
+    ],
+    "frameworks": [],
+    "language_versions": {
+      "python": "3.12"
+    },
+    "protocols": [
+      "rest"
+    ],
+    "requires": {
+      "browser": false,
+      "gpu": false
+    },
+    "tags": [
+      "python-base",
+      "family-root"
+    ],
+    "tools": [
+      "pytest",
+      "pytest-asyncio",
+      "docker",
+      "docker-compose",
+      "git",
+      "jq",
+      "postgresql-client",
+      "default-mysql-client",
+      "psycopg2-binary",
+      "pymongo",
+      "redis",
+      "httpx",
+      "requests",
+      "pandas",
+      "numpy",
+      "ttyd",
+      "code-server",
+      "adminer"
+    ]
+  },
+  "compile_cmd": "python -m compileall -q .",
+  "description": "Lean Python 3.12 base \u2014 apt + Docker + DB clients + pytest. No web frameworks, no LLM ecosystem. Substrate for the Python template family (python-web, python-ai-agent, ...). Each member layers its own framework set on this base via the shared ``base_python_template()`` helper.",
+  "eval_methods": [
+    "test_suite"
+  ],
+  "install_cmd": "apt-get install -y python3 python3-pip",
+  "install_seconds": 15,
+  "install_verify": "python3 --version",
+  "personas": [],
+  "primary_runtime": "python",
+  "status": "built",
+  "template_id": "utkrusht-python-base",
+  "test_cmd": "python -m pytest -q --tb=short"
+}

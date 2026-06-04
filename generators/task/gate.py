@@ -23,7 +23,15 @@ from typing import Dict, Optional, Tuple
 
 from infra.logger_config import logger
 
-from infra import metrics
+# ``infra.metrics`` was dropped with the deployment layer. This no-op stub keeps
+# the ``metrics.inc(...)`` call sites working without the metrics subsystem.
+class _Metrics:
+    def inc(self, *args, **kwargs) -> None:
+        pass
+
+
+metrics = _Metrics()
+
 from infra.e2b.sandbox_eval import run_sandbox_eval, sandbox_eval_enabled
 from generators.task.evaluator import build_retry_feedback
 from generators.task.runtime_resolver import ResolvedPlan
@@ -58,11 +66,17 @@ def run_gate_for_attempt(
         metrics.inc("gate_outcome_total", outcome="disabled")
         return GateOutcome.DISABLED, ""
 
-    logger.info("Running E2B sandbox build/test gate")
+    logger.info("Running E2B run.sh readiness gate")
     # ``plan`` carries both the runtime AND the template recipe
     # (``plan.template.build_cmd`` / ``test_cmd`` / ``compile_cmd``) so the
-    # gate runs runtime-specific commands without any hardcoded mapping.
-    sb_result = run_sandbox_eval(candidate.get("code_files", {}), plan)
+    # gate falls back to the legacy build/test path cleanly if ``run.sh``
+    # is absent. The primary gate is the candidate's own ``run.sh`` (LLM-free
+    # at the gate, key-gated ping in their session).
+    sb_result = run_sandbox_eval(
+        candidate.get("code_files", {}),
+        plan,
+        run_sh=candidate.get("run_script"),
+    )
     candidate_eval["sandbox_eval"] = sb_result.as_dict()
 
     runtime_label = (plan.match.template_id or plan.match.suggested_template or "unknown") if plan else "unknown"

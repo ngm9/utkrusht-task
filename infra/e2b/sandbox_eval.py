@@ -1,22 +1,47 @@
-"""E2B build/test gate — the deterministic correctness check.
+"""E2B ``run.sh`` readiness gate — the deployability check.
 
 After the LLM eval critics pass a generated task, this gate boots an E2B
-sandbox, writes the generated code into it, and verifies the test suite
-actually COMPILES and RUNS. It catches the F12 failure class: generated test
-files that look right to an LLM critic but don't compile (the Flutter task in
-``.task_agent_runs/FOLLOWUPS.md`` that passed both LLM evals with a test file
-full of `implements dynamic` / missing-import errors).
+sandbox, writes the generated code (``code_files``) AND the candidate's
+``run.sh`` into it, then runs ``run.sh``. Exit 0 = the task deploys cleanly
+and a candidate can start coding. Non-zero = retry generation with feedback.
 
-Scope (v1): ``runtime == "python"`` only (the ``utkrusht-python`` template).
-Other runtimes are SKIPPED — logged, not failed — until their templates exist.
+This is a deliberate replacement for the older build/test/compile-cmd trio:
+
+* ``build_cmd`` (``pip install -r requirements.txt``) — ``run.sh`` already
+  does this; the per-template recipe duplicates it.
+* ``test_cmd`` (``python -m pytest -q --tb=short``) — pytest is the wrong
+  gate for agent tasks. A "make these failing tests pass" task has no
+  single blessed reference, and a real LLM in a non-deterministic run turns
+  a probabilistic invariant suite into a coin-flip. Per the AI-engineering
+  plan (2026-05-27), invariants live in the candidate's self-check and the
+  reviewer rubric, NOT in a generation-time gate.
+* ``compile_cmd`` (``python -m compileall -q .``) — handled implicitly by
+  ``run.sh``'s ``python -m <module> --selfcheck`` shape: the import step IS
+  the compile check for a no-running-service agent task.
+
+The new contract:
+
+* ``run.sh`` is the single source of truth. It's the candidate-facing boot
+  script the candidate runs in their session, AND the deployability check
+  the gate runs at generation.
+* LLM-free at the gate: no key in the sandbox at generation, so any
+  ``run.sh`` ping that calls a model is skipped. The first real model call
+  happens later, on the candidate's key.
+* Legacy fallback: if a task has no ``run.sh`` (an older task shape) and
+  the template carries ``build_cmd``/``test_cmd``, fall through to the old
+  build+test path. Once every task ships ``run.sh``, the fallback deletes
+  cleanly.
+
+Scope (v1): ``runtime == "python"`` only. Other runtimes are SKIPPED — logged,
+not failed — until their templates exist.
 
 Gated behind the ``SANDBOX_EVAL_ENABLED`` env flag. Pipeline runs
-(``run_pipeline.py`` and the task-builder) default it ON; a raw ``multiagent.py``
-call leaves it off unless the flag is set.
+(``run_pipeline.py`` and the task-builder) default it ON; a raw
+``multiagent.py`` call leaves it off unless the flag is set.
 
 Every gate run logs a structured, ``[e2b-gate]``-prefixed block — boot, file
-write, ``docker compose``, ``pip``, ``pytest``, the tail of each command's
-output, and the final verdict — so the run is readable in the stage log.
+write, ``run.sh`` execution, the tail of ``run.sh``'s output, and the final
+verdict — so the run is readable in the stage log.
 """
 from __future__ import annotations
 
@@ -37,7 +62,8 @@ from infra.logger_config import logger
 
 _TASK_DIR = "/home/user/task"
 _SANDBOX_TIMEOUT_S = 300
-_CMD_TIMEOUT_S = 240
+_RUN_SH_TIMEOUT_S = int(os.getenv("E2B_RUNSH_GATE_TIMEOUT", "300"))
+_RUN_SH_FILENAME = "run.sh"
 
 # Prefix on every gate log line, so the block is greppable and visually grouped.
 _GATE = "[e2b-gate]"
@@ -48,8 +74,9 @@ class SandboxEvalResult:
     """Outcome of one sandbox-eval pass.
 
     ``skipped`` means the gate did not run a verdict (no template for the
-    runtime, no code, or an E2B infra failure) — callers must treat a skip as
-    NEITHER pass nor fail: never block a task because our infra flaked.
+    runtime, no code, no run.sh and no legacy build/test recipe, or an E2B
+    infra failure) — callers must treat a skip as NEITHER pass nor fail:
+    never block a task because our infra flaked.
     """
 
     passed: bool = True
@@ -75,13 +102,13 @@ def sandbox_eval_enabled() -> bool:
     return os.getenv("SANDBOX_EVAL_ENABLED", "").strip().lower() in ("1", "true", "yes")
 
 
-def _run(sb, cmd: str, *, timeout: int = _CMD_TIMEOUT_S,
+def _run(sb, cmd: str, *, timeout: int = _RUN_SH_TIMEOUT_S,
          cwd: str | None = None) -> tuple[int, str, str]:
     """Run a command in the sandbox; return (exit_code, stdout, stderr).
 
     E2B's ``commands.run`` raises ``CommandExitException`` on a non-zero exit.
-    The gate needs the exit code (pytest exit 1 = tests failed = still a valid
-    run), so this wrapper normalises both paths into a plain tuple.
+    The gate needs the exit code (``run.sh`` exit 1 = readiness failure), so
+    this wrapper normalises both paths into a plain tuple.
     """
     from e2b import CommandExitException
     try:
@@ -96,12 +123,58 @@ def _run(sb, cmd: str, *, timeout: int = _CMD_TIMEOUT_S,
             code = int(m.group(1)) if m else 1
             err = err or str(e)
         return code, out, err
+    except Exception as exc:  # noqa: BLE001 — E2B raises a TimeoutError-ish when the wall-clock trips
+        # ``commands.run(timeout=...)`` can raise on the SDK side rather than
+        # returning a non-zero exit; surface it as a clean timeout verdict
+        # so the gate's caller sees one shape, not a crash.
+        if "timeout" in str(exc).lower() or "deadline" in str(exc).lower():
+            return 124, "", str(exc)
+        raise
+
+
+def _log_output(label: str, output: str, lines: int = 30) -> None:
+    """Log the tail of a sandbox command's output, indented for readability."""
+    tail = [ln for ln in output.splitlines() if ln.strip()][-lines:]
+    if not tail:
+        return
+    logger.info(f"{_GATE}   ── {label} (last {len(tail)} lines) ──")
+    for ln in tail:
+        logger.info(f"{_GATE}   | {ln}")
+
+
+def _verdict_label(result: SandboxEvalResult) -> str:
+    """PASS / FAIL / SKIP — the one-word outcome class for a result."""
+    if result.skipped:
+        return "SKIP"
+    return "PASS" if result.passed else "FAIL"
+
+
+def _finish(result: SandboxEvalResult) -> SandboxEvalResult:
+    """Log the final gate verdict and return the result unchanged.
+
+    Every ``run_sandbox_eval`` return path funnels through here, so the verdict
+    line is always emitted and the log block is always closed.
+    """
+    logger.info(f"{_GATE} verdict: {result.verdict} [{_verdict_label(result)}] "
+                f"— {result.detail}")
+    logger.info(f"{_GATE} {'─' * 60}")
+    return result
+
+
+# ---------------------------------------------------------------------------
+# Legacy build/test/compile path — kept for tasks that don't yet ship run.sh.
+# Every new build-it task (per docs/plans/2026-05-27-ai-engineering-task-
+# category.html) ships run.sh, so this path shrinks over time. It is NOT
+# removed in this change — the contract is "run.sh if present, else build/
+# test if the template has a recipe, else skip". Deleting the legacy path
+# is a separate cleanup once every existing task is re-generated with run.sh.
+# ---------------------------------------------------------------------------
 
 
 def _classify_pytest(exit_code: int, output: str) -> SandboxEvalResult:
-    """Map a pytest run to a gate verdict.
+    """Map a pytest exit code (legacy test_suite path) to a gate verdict.
 
-    The gate does NOT require tests to PASS — a generated starter ships
+    The legacy gate does NOT require tests to PASS — a generated starter ships
     by-design failing tests (the candidate's job is to make them green). It
     fails only when the suite cannot COMPILE or RUN.
 
@@ -109,8 +182,6 @@ def _classify_pytest(exit_code: int, output: str) -> SandboxEvalResult:
     · 3 internal-error · 4 usage-error · 5 no-tests-collected.
     """
     low = output.lower()
-    # A collection error == a test (or imported source) file failed to
-    # parse/import. This is the F12 bug class.
     if "error collecting" in low or "errors during collection" in low:
         return SandboxEvalResult(
             passed=False, verdict="collection_error",
@@ -133,56 +204,173 @@ def _classify_pytest(exit_code: int, output: str) -> SandboxEvalResult:
     return SandboxEvalResult(
         passed=False, verdict="test_run_error",
         detail=f"pytest exited with code {exit_code} — the suite did not run "
-               f"cleanly.",
+               "cleanly.",
         stdout_tail=output[-2000:],
     )
 
 
-def _verdict_label(result: SandboxEvalResult) -> str:
-    """PASS / FAIL / SKIP — the one-word outcome class for a result."""
-    if result.skipped:
-        return "SKIP"
-    return "PASS" if result.passed else "FAIL"
+def _run_legacy_build_test(
+    sb,
+    template_spec: Any,
+    code_files: dict,
+    names: set[str],
+) -> SandboxEvalResult:
+    """The pre-run.sh gate: build_cmd → test_cmd, compile_cmd as no-tests fallback.
 
-
-def _log_output(label: str, output: str, lines: int = 30) -> None:
-    """Log the tail of a sandbox command's output, indented for readability."""
-    tail = [ln for ln in output.splitlines() if ln.strip()][-lines:]
-    if not tail:
-        return
-    logger.info(f"{_GATE}   ── {label} (last {len(tail)} lines) ──")
-    for ln in tail:
-        logger.info(f"{_GATE}   | {ln}")
-
-
-def _finish(result: SandboxEvalResult) -> SandboxEvalResult:
-    """Log the final gate verdict and return the result unchanged.
-
-    Every ``run_sandbox_eval`` return path funnels through here, so the verdict
-    line is always emitted and the log block is always closed.
+    Used only when ``run.sh`` is absent AND the template carries build_cmd +
+    test_cmd. New tasks don't hit this path.
     """
-    logger.info(f"{_GATE} verdict: {result.verdict} [{_verdict_label(result)}] "
-                f"— {result.detail}")
-    logger.info(f"{_GATE} {'─' * 60}")
-    return result
+    build_cmd = template_spec.build_cmd
+    test_cmd = template_spec.test_cmd
+    compile_cmd = template_spec.compile_cmd or "python -m compileall -q ."
+
+    # If the task brings service containers, start them before tests run.
+    if any(n == "docker-compose.yml" or n.endswith("/docker-compose.yml")
+           for n in names):
+        ts = time.time()
+        code, out, err = _run(sb, "docker compose up -d --wait",
+                              cwd=_TASK_DIR, timeout=240)
+        ok = code == 0
+        logger.info(f"{_GATE} docker compose up… "
+                    f"{'ok' if ok else f'FAILED exit={code}'} "
+                    f"({time.time() - ts:.1f}s)")
+        if not ok:
+            _log_output("docker compose output", out + err)
+            return SandboxEvalResult(
+                passed=False, verdict="compose_failed",
+                detail="`docker compose up` failed — the task's service "
+                       "containers do not start.",
+                stdout_tail=(out + err)[-3000:])
+
+    # Install the task's declared Python deps (the template pre-installs the
+    # common set; this tops up anything task-specific).
+    if "requirements.txt" in names:
+        ts = time.time()
+        code, out, err = _run(sb, build_cmd, cwd=_TASK_DIR, timeout=240)
+        ok = code == 0
+        logger.info(f"{_GATE} build_cmd ({build_cmd!r})… "
+                    f"{'ok' if ok else f'FAILED exit={code}'} "
+                    f"({time.time() - ts:.1f}s)")
+        if not ok:
+            _log_output("build output", out + err)
+            return SandboxEvalResult(
+                passed=False, verdict="pip_failed",
+                detail=f"`{build_cmd}` failed.",
+                stdout_tail=(out + err)[-3000:])
+
+    ts = time.time()
+    code, out, err = _run(sb, test_cmd, cwd=_TASK_DIR, timeout=240)
+    combined = out + "\n" + err
+    logger.info(f"{_GATE} test_cmd ({test_cmd!r})… "
+                f"exit={code} ({time.time() - ts:.1f}s)")
+    _log_output("test output", combined)
+
+    if code == 5:
+        # No tests collected — fall back to a compile check so a task that
+        # legitimately ships no tests still gets a parse gate.
+        ts = time.time()
+        cc_code, cc_out, cc_err = _run(sb, compile_cmd,
+                                       cwd=_TASK_DIR, timeout=60)
+        logger.info(f"{_GATE} no tests collected — compile_cmd "
+                    f"({compile_cmd!r})… exit={cc_code} "
+                    f"({time.time() - ts:.1f}s)")
+        if cc_code == 0:
+            return SandboxEvalResult(
+                passed=True, verdict="no_tests_compile_ok",
+                detail="task ships no tests, but every source file compiles")
+        _log_output("compile output", cc_out + cc_err)
+        return SandboxEvalResult(
+            passed=False, verdict="compile_error",
+            detail=f"task ships no tests and `{compile_cmd}` found a "
+                   "syntax error.",
+            stdout_tail=(cc_out + cc_err)[-3000:])
+
+    return _classify_pytest(code, combined)
 
 
-def run_sandbox_eval(code_files: dict, plan: Any) -> SandboxEvalResult:
-    """Boot a sandbox, write the generated code in, verify it compiles + runs.
+# ---------------------------------------------------------------------------
+# The run.sh gate — the new default.
+# ---------------------------------------------------------------------------
+
+
+def _run_runsh(
+    sb,
+    run_sh: str,
+    template_spec: Any,
+) -> SandboxEvalResult:
+    """Run the task's ``run.sh`` in the sandbox; map the exit code to a verdict.
+
+    Wall-clock bounded by ``_RUN_SH_TIMEOUT_S``; an SDK-side timeout is
+    surfaced as ``runsh_timeout`` (not a crash). LLM-free at the gate:
+    no key is set in the sandbox, so any key-gated ping inside ``run.sh``
+    short-circuits to the static-check path and exits 0.
+    """
+    ts = time.time()
+    code, out, err = _run(
+        sb,
+        f"chmod +x {_RUN_SH_FILENAME} && bash {_RUN_SH_FILENAME}",
+        cwd=_TASK_DIR,
+        timeout=_RUN_SH_TIMEOUT_S,
+    )
+    combined = out + "\n" + err
+    logger.info(f"{_GATE} run.sh… exit={code} ({time.time() - ts:.1f}s)")
+    _log_output("run.sh output", combined)
+
+    if code == 124:
+        return SandboxEvalResult(
+            passed=False, verdict="runsh_timeout",
+            detail=(f"run.sh exceeded the {_RUN_SH_TIMEOUT_S}s gate wall-clock "
+                    "— likely a hang in `docker compose up` or a service "
+                    "readiness wait. Tighten the readiness probe."),
+            stdout_tail=combined[-3000:],
+        )
+    if code == 0:
+        return SandboxEvalResult(
+            passed=True, verdict="ready",
+            detail="run.sh exited 0 — scaffold + services load, task is "
+                   "deployable; a candidate can start coding.",
+            stdout_tail=combined[-1000:],
+        )
+    return SandboxEvalResult(
+        passed=False, verdict="runsh_failed",
+        detail=f"run.sh exited {code} — the scaffold or its services did not "
+               "come up cleanly. Fix the scaffold so the readiness selfcheck "
+               "passes (without filling the candidate stubs).",
+        stdout_tail=combined[-3000:],
+    )
+
+
+def run_sandbox_eval(
+    code_files: dict,
+    plan: Any,
+    run_sh: str | None = None,
+) -> SandboxEvalResult:
+    """Boot a sandbox, write the code + ``run.sh`` in, verify readiness.
+
+    Contract:
+
+    * If ``run_sh`` is provided (the new build-it contract), it is the gate.
+      Exit 0 = ready, non-zero = ``runsh_failed``, wall-clock = ``runsh_timeout``.
+      ``run.sh`` MUST be LLM-free at the gate (the sandbox has no API key
+      here; only the candidate's session has one).
+    * If ``run_sh`` is absent and the template carries ``build_cmd`` +
+      ``test_cmd``, fall through to the legacy build/test path. Used by
+      older tasks until they're re-generated.
+    * Otherwise skip (``no_runsh``) — a skip never blocks a task.
+    * Skip also on no template, no code, or E2B infra failure.
 
     ``plan`` is a ``ResolvedPlan`` (or any object exposing a ``.template``
     with ``.template_id``/``.primary_runtime``/``.build_cmd``/``.test_cmd``);
     ``None`` is also accepted and treated as an explicit no-template skip.
-    Returns ``skipped=True`` when the plan has no template, no code is
-    provided, or E2B infra fails — a skip never blocks the task.
     """
     template_spec = getattr(plan, "template", None)
     template = template_spec.template_id if template_spec is not None else None
     runtime = template_spec.primary_runtime if template_spec is not None else None
 
     logger.info(f"{_GATE} {'─' * 60}")
-    logger.info(f"{_GATE} E2B build/test gate — runtime={runtime!r} "
-                f"template={template or '<none>'} files={len(code_files or {})}")
+    logger.info(f"{_GATE} E2B run.sh readiness gate — runtime={runtime!r} "
+                f"template={template or '<none>'} files={len(code_files or {})} "
+                f"has_runsh={bool(run_sh)}")
 
     if template is None:
         return _finish(SandboxEvalResult(
@@ -192,13 +380,6 @@ def run_sandbox_eval(code_files: dict, plan: Any) -> SandboxEvalResult:
         return _finish(SandboxEvalResult(
             skipped=True, verdict="no_code",
             detail="no code_files to evaluate — gate skipped"))
-
-    # Pulled from the ResolvedPlan so a future Java/Node/Go runtime gets its
-    # own build/test/compile recipe without code changes here — the recipe
-    # lives in ``templates``.
-    build_cmd = template_spec.build_cmd
-    test_cmd = template_spec.test_cmd
-    compile_cmd = template_spec.compile_cmd or "python -m compileall -q ."
 
     from e2b import Sandbox
 
@@ -217,73 +398,45 @@ def run_sandbox_eval(code_files: dict, plan: Any) -> SandboxEvalResult:
         for path, content in code_files.items():
             dest = f"{_TASK_DIR}/{str(path).lstrip('/')}"
             sb.files.write(dest, content if isinstance(content, str) else str(content))
-        logger.info(f"{_GATE} wrote {len(code_files)} file(s) to {_TASK_DIR}")
+        # ``run.sh`` is the gate's primary input. Write it (if supplied) as
+        # an executable at the task root so the candidate-facing shape and
+        # the gate's shape are identical: same script, same exit semantics.
+        if run_sh:
+            sb.files.write(
+                f"{_TASK_DIR}/{_RUN_SH_FILENAME}",
+                run_sh if isinstance(run_sh, str) else str(run_sh),
+            )
+            sb.commands.run(
+                f"chmod +x {_TASK_DIR}/{_RUN_SH_FILENAME}",
+                timeout=10,
+                user="root",
+            )
+        logger.info(f"{_GATE} wrote {len(code_files)} code file(s) "
+                    f"+ {'run.sh' if run_sh else 'no run.sh'} to {_TASK_DIR}")
 
+        # Path A — new default: run.sh IS the gate.
+        if run_sh:
+            return _finish(_run_runsh(sb, run_sh, template_spec))
+
+        # Path B — legacy fallback for tasks that don't yet ship run.sh.
+        # Collapses to ``no_runsh`` once every task is re-generated with
+        # the new build-it shape (per docs/plans/2026-05-27-ai-engineering-
+        # task-category.html).
         names = {str(p).lstrip("/") for p in code_files}
+        has_legacy_recipe = bool(
+            getattr(template_spec, "build_cmd", None)
+            and getattr(template_spec, "test_cmd", None)
+        )
+        if has_legacy_recipe:
+            logger.info(f"{_GATE} no run.sh — falling back to legacy "
+                        f"build_cmd/test_cmd path for template={template}")
+            return _finish(_run_legacy_build_test(sb, template_spec, code_files, names))
 
-        # If the task brings service containers, start them before tests run.
-        if any(n == "docker-compose.yml" or n.endswith("/docker-compose.yml")
-               for n in names):
-            ts = time.time()
-            code, out, err = _run(sb, "docker compose up -d --wait",
-                                  cwd=_TASK_DIR, timeout=240)
-            ok = code == 0
-            logger.info(f"{_GATE} docker compose up… "
-                        f"{'ok' if ok else f'FAILED exit={code}'} "
-                        f"({time.time() - ts:.1f}s)")
-            if not ok:
-                _log_output("docker compose output", out + err)
-                return _finish(SandboxEvalResult(
-                    passed=False, verdict="compose_failed",
-                    detail="`docker compose up` failed — the task's service "
-                           "containers do not start.",
-                    stdout_tail=(out + err)[-3000:]))
-
-        # Install the task's declared Python deps (the template pre-installs
-        # the common set; this tops up anything task-specific). ``build_cmd``
-        # comes from the ResolvedPlan / template_registry row.
-        if "requirements.txt" in names:
-            ts = time.time()
-            code, out, err = _run(sb, build_cmd, cwd=_TASK_DIR, timeout=240)
-            ok = code == 0
-            logger.info(f"{_GATE} build_cmd ({build_cmd!r})… "
-                        f"{'ok' if ok else f'FAILED exit={code}'} "
-                        f"({time.time() - ts:.1f}s)")
-            if not ok:
-                _log_output("build output", out + err)
-                return _finish(SandboxEvalResult(
-                    passed=False, verdict="pip_failed",
-                    detail=f"`{build_cmd}` failed.",
-                    stdout_tail=(out + err)[-3000:]))
-
-        ts = time.time()
-        code, out, err = _run(sb, test_cmd, cwd=_TASK_DIR, timeout=240)
-        combined = out + "\n" + err
-        logger.info(f"{_GATE} test_cmd ({test_cmd!r})… "
-                    f"exit={code} ({time.time() - ts:.1f}s)")
-        _log_output("test output", combined)
-
-        if code == 5:
-            # No tests collected — fall back to a compile check so a task that
-            # legitimately ships no tests still gets a parse gate.
-            ts = time.time()
-            cc_code, cc_out, cc_err = _run(sb, compile_cmd,
-                                           cwd=_TASK_DIR, timeout=60)
-            logger.info(f"{_GATE} no tests collected — compile_cmd "
-                        f"({compile_cmd!r})… exit={cc_code} "
-                        f"({time.time() - ts:.1f}s)")
-            if cc_code == 0:
-                return _finish(SandboxEvalResult(
-                    passed=True, verdict="no_tests_compile_ok",
-                    detail="task ships no tests, but every source file compiles"))
-            _log_output("compile output", cc_out + cc_err)
-            return _finish(SandboxEvalResult(
-                passed=False, verdict="compile_error",
-                detail=f"task ships no tests and `{compile_cmd}` found a "
-                       "syntax error.",
-                stdout_tail=(cc_out + cc_err)[-3000:]))
-
-        return _finish(_classify_pytest(code, combined))
+        return _finish(SandboxEvalResult(
+            skipped=True, verdict="no_runsh",
+            detail="task ships no run.sh and the template has no build/test "
+                   "recipe — gate skipped (caller should generate a task with "
+                   "run.sh per the AI-engineering plan)."))
     except Exception as exc:  # noqa: BLE001 — unexpected; treat as an infra skip
         logger.warning(f"{_GATE} unexpected error: {exc}")
         return _finish(SandboxEvalResult(

@@ -1,9 +1,14 @@
 """Structured runtime spec for a generated task.
 
-Three concepts, three places:
+Three concepts:
   1. Capability sheet  → ``templates`` row (jsonb capabilities; read by LLM)
   2. Match decision    → ``task_template_match`` row (TaskTemplateMatch)
-  3. Per-task intent   → ``tasks.task_intent`` column (TaskIntent)
+  3. Per-task intent   → ``TaskIntent`` model (defined here, NOT persisted)
+
+The ``tasks.task_intent`` column was dropped after it landed with no live
+reader; the Pydantic model is kept here because the content-generation
+LLM is expected to emit it in a future change, at which point the column
+will be re-added by the same PR that wires up the reader.
 
 See ``docs/plans/2026-05-27-unified-classifier-template-schema.md`` for
 the full architecture.
@@ -50,12 +55,14 @@ class DatastoreRef(BaseModel):
 class TaskIntent(BaseModel):
     """Per-task USE of the matched template's capabilities.
 
-    Lives on ``tasks.task_intent``. Emitted by the content-generation LLM
-    (which already sees the scenario), NOT by the classifier — see
-    "Why scenario is NOT passed to the classifier" in the plan doc.
+    Emitted by the content-generation LLM (which already sees the
+    scenario), NOT by the classifier — see "Why scenario is NOT passed
+    to the classifier" in the plan doc.
 
-    All fields have safe defaults so an empty intent ``{}`` is valid for
-    existing tasks backfilled by the schema migration.
+    Currently in-memory only — see module docstring for why the
+    ``tasks.task_intent`` column was dropped.
+
+    All fields have safe defaults so an empty intent ``{}`` is valid.
     """
 
     model_config = ConfigDict(frozen=True)

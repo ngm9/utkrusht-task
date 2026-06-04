@@ -249,6 +249,46 @@ def generate_answer_code_and_steps(task_data: Dict) -> Dict:
 
 
 # ---------------------------------------------------------------------------
+# Scenario resolution
+# ---------------------------------------------------------------------------
+
+def resolve_scenarios(
+    competencies: List[Dict],
+    scenarios_file: Path,
+    *,
+    env: str = "dev",
+) -> List[str]:
+    """Load the candidate scenario pool for a competency combo.
+
+    DB-first (``generated_scenarios`` keyed by combo + proficiency), falling
+    back to the JSON file for combos not yet backfilled into the DB. Shared
+    by :func:`create_task` (to feed the generator) and the orchestrator's
+    scenario stage (to surface the selectable list to the human).
+    """
+    from generators.scenarios import repository as scenario_repo
+    from infra.utils import build_scenario_key
+
+    combo_key = build_scenario_key(competencies)
+    proficiency = (
+        competencies[0].get("proficiency", "BASIC").upper()
+        if competencies else "BASIC"
+    )
+    scenarios = scenario_repo.load_scenarios_for_combo(
+        env=env, combo_key=combo_key, proficiency=proficiency,
+    )
+    if scenarios:
+        logger.info(
+            "Loaded %d scenarios from DB for key=%r prof=%s",
+            len(scenarios), combo_key, proficiency,
+        )
+    else:
+        logger.info(f"DB returned no scenarios; falling back to JSON: {scenarios_file}")
+        scenarios = load_relevant_scenarios(competencies, scenarios_file)
+        logger.info(f"Loaded {len(scenarios)} relevant scenarios from JSON")
+    return scenarios
+
+
+# ---------------------------------------------------------------------------
 # The main orchestration
 # ---------------------------------------------------------------------------
 
@@ -257,6 +297,7 @@ def create_task(
     background_file: Path,
     scenarios_file: Path | None = None,
     env: str = "dev",
+    selected_scenarios: List[str] | None = None,
 ) -> Dict:
     """Generate an intelligent assessment task.
 
@@ -268,6 +309,11 @@ def create_task(
 
     Args:
         env: Supabase environment to store the task in — ``"dev"`` or ``"prod"``.
+        selected_scenarios: When provided (the scenario(s) a human picked in
+            the UI), the generator uses exactly these and skips the pool
+            lookup. A single entry hard-locks generation to that scenario.
+            When ``None``/empty, the full candidate pool is resolved and the
+            scenario-lock prompt picks one.
     """
     try:
         if scenarios_file is None:
@@ -290,30 +336,19 @@ def create_task(
 
         created_at = datetime.datetime.now(datetime.timezone.utc)
 
-        # B4: DB-first lookup. The JSON file path is kept as a fallback for
-        # combos that haven't been backfilled into `generated_scenarios` yet.
-        from generators.scenarios import repository as scenario_repo
-        from infra.utils import build_scenario_key
-
-        combo_key_for_lookup = build_scenario_key(competencies)
-        proficiency_for_lookup = (
-            competencies[0].get("proficiency", "BASIC").upper()
-            if competencies else "BASIC"
-        )
-        scenarios = scenario_repo.load_scenarios_for_combo(
-            env=env,
-            combo_key=combo_key_for_lookup,
-            proficiency=proficiency_for_lookup,
-        )
-        if scenarios:
+        # Human-in-the-loop: when the caller passes an explicit selection
+        # (the scenario the user picked in the UI), use exactly that and skip
+        # the pool lookup — the generator is then hard-locked to it. Otherwise
+        # resolve the candidate pool (DB-first, JSON fallback) and let the
+        # scenario-lock prompt pick one.
+        if selected_scenarios:
+            scenarios = list(selected_scenarios)
             logger.info(
-                "Loaded %d scenarios from DB for key=%r prof=%s",
-                len(scenarios), combo_key_for_lookup, proficiency_for_lookup,
+                "Using %d human-selected scenario(s); skipping pool lookup",
+                len(scenarios),
             )
         else:
-            logger.info(f"DB returned no scenarios; falling back to JSON: {scenarios_file}")
-            scenarios = load_relevant_scenarios(competencies, scenarios_file)
-            logger.info(f"Loaded {len(scenarios)} relevant scenarios from JSON")
+            scenarios = resolve_scenarios(competencies, scenarios_file, env=env)
         logger.info(f"Scenarios: {scenarios}")
 
         existing_titles = fetch_existing_task_titles(competencies, env=env)
@@ -508,7 +543,6 @@ def create_task(
             },
             "is_shared_infra_required": is_shared_infra_required,
             "task_type": ["BUILD"],
-            "task_intent": {},
         }
         task_id = insert_draft_task(draft_payload, env=env)
         task_data["task_id"] = task_id

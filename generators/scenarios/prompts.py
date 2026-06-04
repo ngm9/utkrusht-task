@@ -5,6 +5,10 @@ All prompts used by scenario_generator.py for generating and evaluating
 task scenarios across different technology categories and proficiency levels.
 """
 
+import logging
+
+_log = logging.getLogger(__name__)
+
 # ============================================================================
 # SYSTEM PROMPTS
 # ============================================================================
@@ -167,6 +171,90 @@ EXAMPLE OF A WELL-CALIBRATED INTERMEDIATE SCENARIO:
 **Current Implementation:** A SaaS analytics dashboard's GET /api/reports/daily endpoint takes 8 seconds because it runs 3 sequential queries against a PostgreSQL events table (50M rows) with no indexes on event_type or created_at, uses synchronous psycopg2 with a new connection per request, and returns uncompressed JSON payloads averaging 2MB.
 **Your Task:** Add composite indexes on (event_type, created_at) and (created_at) columns. Refactor the 3 sequential queries into a single CTE-based query. Switch to asyncpg with a connection pool (min=5, max=20). Add a 5-minute TTL cache for the report data. Implement response compression.
 **Success Criteria:** Response time drops from 8s to under 800ms, connection pool eliminates per-request connection overhead, and cache hit rate exceeds 80% for repeated queries within the TTL window.""",
+
+    "ADVANCED": """PROFICIENCY LEVEL: ADVANCED (6+ years of experience — senior IC scope)
+TIME LIMIT: 45-55 minutes
+
+WHAT TO GENERATE:
+- Cross-cutting production-grade work on a realistic agent system: reliability,
+  observability, cost, safety, and policy enforcement woven together.
+- Each scenario should feel like an on-call ticket for a senior engineer who
+  owns an agent in production — multiple interacting concerns, but ONE coherent
+  problem statement.
+- Max 7 bullet points in the "Your Task" section
+- Keep the entire scenario under 400 words
+- Pin a primary framework in the scenario header when relevant, e.g.
+  `**Stack:** LangGraph + LiteLLM (Anthropic primary, OpenAI fallback)`
+
+ALLOWED CONCEPTS (combine many per scenario — that is the point of ADVANCED):
+- Production agent architecture: orchestrator + tool services + data stores
+- Model routing and fallback via LiteLLM (Anthropic primary, OpenAI/OSS fallback)
+- Retries, idempotency keys, resumable step state, dead-letter behaviour
+- Cost ceilings enforced PRE-CALL (projected-cost reject) and per-session caps
+- Bounded loop / max-step guards in a LangGraph / ReAct graph
+- Structured tracing, request_id/trace_id propagation, prompt + tool version tags
+- Token-aware context trimming, rolling summary, top-k retrieval with re-rank
+- Tool output schema validation, typed tool args, free-form-string tool rejection
+- Approval gates for high-risk actions (refunds, scheduling, PII export)
+- Prompt-injection defenses: untrusted input delimiters, instruction hierarchy,
+  output sanitization, no tool invocation from document-sourced text
+- Observability + eval: golden-set regression runs, LLM-as-judge, SLO dashboards
+- Caching of tool results and normalized model responses, with cache-key discipline
+- LLM-as-judge eval harness for quality + safety scoring
+
+FORBIDDEN — DO NOT include any of these:
+- One-line bug fixes, single-function tweaks, or "fix the typo" tasks
+- Tutorial-style "wire your first chain" prompts
+- "Set up the project from scratch" without a broken production state
+- Conceptual / trivia questions about LLM or framework internals
+- Anything that does NOT take place in a live, multi-component system
+- Long, unfocused enumerations that mix unrelated subsystems
+
+QUALITY BAR (read carefully — this is what the evaluator enforces):
+- The scenario must describe a CONCRETE failure mode (logs, metrics, error
+  message, ticket subject) and the resulting production impact (cost overrun,
+  duplicate writes, cross-tenant leakage, unsafe action, eval drift).
+- The "Your Task" must demand an ARCHITECTURAL FIX, not a one-file patch.
+- The "Success Criteria" must be MEASURABLE: latency p95 < Xs, $ per ticket
+  < $Y, eval pass-rate ≥ N%, false-positive rate ≤ M%, p99 prompt tokens
+  ≤ K, etc. No soft "the agent behaves better".
+- The scenario must reveal trade-offs the candidate has to make (latency vs
+  cost, recall vs safety, throughput vs determinism) — the goal is to see
+  their judgement, not just whether they read the spec.
+
+DOMAINS (use varied ones across the set):
+fintech, healthcare, logistics, e-commerce, SaaS, edtech, travel, food
+delivery, media/streaming, HR/recruiting, real estate, IoT.
+
+EXAMPLE OF A WELL-CALIBRATED ADVANCED SCENARIO:
+**Stack:** LangGraph + LiteLLM (Anthropic primary, OpenAI fallback)
+**Domain:** customer-support reply agent for an e-commerce SaaS
+
+**Current Implementation:** The support reply agent behind `POST /api/support/reply`
+runs an unbounded LangGraph loop. `policy.py` is stubbed (NotImplementedError),
+the agent hard-crashes when the primary model returns 529, retries are not
+idempotent so duplicate replies have hit production, and there is no cost
+ceiling — last week's bill jumped 3.2x on a 5K-token outlier. Logs only
+store the final assistant message; there is no `trace_id`, no prompt version,
+and no per-tool latency. Tickets are 5–20 turns deep.
+
+**Your Task:**
+- Bound the LangGraph loop (max 6 model calls per ticket) and surface a
+  clear `handoff_to_human` exit.
+- Implement `enforce_cost_ceiling()` in `agent/policy.py` — projected per-call
+  cost is rejected PRE-CALL (no swallowing in a try/except).
+- Configure LiteLLM router so primary 5xx falls back to the secondary model
+  with a logged `model_used` and reason.
+- Add structured traces (`trace_id`, prompt version, tool name, latency,
+  tokens, cost, fallback path) without storing full ticket bodies.
+- Add a 10-case golden eval in `tests/test_golden.py` and a per-ticket cost
+  assertion ≤ $0.05.
+
+**Success Criteria:** Loop terminates in ≤ 6 model calls; on primary 529 the
+router uses the secondary and a reply is produced; projected >$0.05 calls
+are blocked pre-call; ≥ 8/10 fixture tickets get a non-empty, on-policy
+reply; trace_id ties one request end-to-end from ingress to tool call to
+final response.""",
 }
 
 
@@ -539,6 +627,7 @@ Evaluate EACH scenario STRICTLY against these criteria:
 5. SCOPE: Can a competent {proficiency}-level developer REALISTICALLY complete this within the time limit?
    - BEGINNER/BASIC: 20-30 minutes
    - INTERMEDIATE: 30-40 minutes
+   - ADVANCED: 45-55 minutes
    - Count the number of distinct changes required. If there are more than the bullet-point limit allows, FAIL.
 
 For each scenario, return pass or fail with a brief reason if failing. Be STRICT — reject any scenario that is even slightly over-scoped for the proficiency level."""
@@ -609,11 +698,55 @@ PROFICIENCY_LIMITS = {
     "BEGINNER": {"max_words": 150, "max_bullets": 2, "max_chars": 1200},
     "BASIC":    {"max_words": 200, "max_bullets": 3, "max_chars": 1800},
     "INTERMEDIATE": {"max_words": 300, "max_bullets": 5, "max_chars": 3000},
+    "ADVANCED":  {"max_words": 450, "max_bullets": 7, "max_chars": 4500},
 }
 
 
-def get_proficiency_guardrails(proficiency: str) -> str:
-    """Return the guardrails block for the given proficiency level."""
+# Competencies whose ADVANCED guardrail is the agent-engineering one. Keyed on
+# the COMPETENCY, not the proficiency tier — so a future non-agent ADVANCED
+# competency is not force-fed the agent-architecture guardrail (which today is
+# the only ADVANCED block). See docs/plans/2026-06-04-branch-consolidation.md.
+AGENT_COMPETENCY_NAMES = frozenset({
+    "Production Agent Engineering",
+    "Multi-Agent Systems",
+    "Context Engineering",
+    "Tool Use for Agents",
+    "Multi-Modal Agent Engineering",
+    "AI Evaluation",
+})
+
+
+def is_agent_competency(competency_hint: str) -> bool:
+    """True if any agent competency name appears in ``competency_hint``.
+
+    The hint is free-form (a comma-separated name list, or a combo / tech-stack
+    string), so we substring-match case-insensitively rather than parse.
+    """
+    if not competency_hint:
+        return False
+    hint = competency_hint.lower()
+    return any(name.lower() in hint for name in AGENT_COMPETENCY_NAMES)
+
+
+def get_proficiency_guardrails(proficiency: str, competency_hint: str = "") -> str:
+    """Return the guardrails block for the given proficiency level.
+
+    The ADVANCED block is agent-engineering-specific. To avoid "ADVANCED
+    silently means agent", a non-agent ADVANCED competency falls back to the
+    INTERMEDIATE guardrail rather than the agent block. When ``competency_hint``
+    is empty the legacy behaviour is preserved (backward-compatible).
+    """
+    if (
+        proficiency == "ADVANCED"
+        and competency_hint
+        and not is_agent_competency(competency_hint)
+    ):
+        _log.warning(
+            "ADVANCED guardrail is agent-specific; competency %r is non-agent — "
+            "falling back to INTERMEDIATE guardrail.",
+            competency_hint,
+        )
+        return PROFICIENCY_GUARDRAILS["INTERMEDIATE"]
     return PROFICIENCY_GUARDRAILS.get(proficiency, PROFICIENCY_GUARDRAILS["BASIC"])
 
 
@@ -687,7 +820,7 @@ def build_generation_prompt(
     if is_non_code:
         guardrails = PROFICIENCY_GUARDRAILS_NON_CODE.get(proficiency, PROFICIENCY_GUARDRAILS_NON_CODE["BASIC"])
     else:
-        guardrails = get_proficiency_guardrails(proficiency)
+        guardrails = get_proficiency_guardrails(proficiency, competency_hint=competency_names)
 
     scope_block = build_assessment_scope_block(background)
     focus_block = build_focus_areas_block(focus_areas)
@@ -764,7 +897,7 @@ def build_eval_prompt(
             scope_text=scope_text,
             proficiency_guardrails=guardrails,
         )
-    guardrails = get_proficiency_guardrails(proficiency)
+    guardrails = get_proficiency_guardrails(proficiency, competency_hint=tech_stack)
     return SCENARIO_EVAL_PROMPT.format(
         proficiency=proficiency,
         tech_stack=tech_stack,

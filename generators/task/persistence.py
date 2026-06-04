@@ -157,7 +157,6 @@ def mark_task_ready(
     eval_info: Dict | None = None,
     readme_content: Dict | None = None,
     is_shared_infra_required: bool | None = None,
-    task_intent: Dict | None = None,
 ) -> Dict:
     """B5 — flip a draft row to ``ready`` once all artifacts exist.
 
@@ -176,11 +175,9 @@ def mark_task_ready(
         update["readme_content"] = readme_content
     if is_shared_infra_required is not None:
         update["is_shared_infra_required"] = is_shared_infra_required
-    if task_intent is not None:
-        update["task_intent"] = task_intent
 
     sb = init_supabase(env)
-    result = sb.table("tasks").update(update).eq("id", task_id).execute()
+    result = sb.table("tasks").update(update).eq("task_id", task_id).execute()
     if not result.data:
         raise Exception(f"Failed to mark task {task_id} ready — row missing or unchanged")
     logger.info("Marked task %s ready", task_id)
@@ -204,7 +201,7 @@ def mark_task_failed(
         update: Dict = {"status": "failed"}
         if error:
             update["task_blob"] = {"error": error[:2000]}
-        sb.table("tasks").update(update).eq("id", task_id).execute()
+        sb.table("tasks").update(update).eq("task_id", task_id).execute()
         logger.info("Marked task %s failed", task_id)
     except Exception as exc:
         logger.error("Failed to mark task %s failed: %s", task_id, exc)
