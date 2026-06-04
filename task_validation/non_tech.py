@@ -26,7 +26,7 @@ class NonTechTaskBlob(BaseModel):
     definitions: Dict
     hints: Optional[str] = None
     resources: Dict
-    outcomes: Optional[Union[str, List[str]]] = None
+    outcomes: List[str]
     question: str
     task_overview: List[str]
 
@@ -37,9 +37,9 @@ class NonTechTaskBlob(BaseModel):
             raise ValueError("must not be empty")
         return v
 
-    @field_validator("task_overview")
+    @field_validator("task_overview", "outcomes")
     @classmethod
-    def task_overview_strict_list(cls, v: List[str]) -> List[str]:
+    def list_not_empty(cls, v: List[str]) -> List[str]:
         if not isinstance(v, list):
             raise ValueError("must be a list of strings, not a string")
         if not v:

@@ -65,6 +65,7 @@ from generators.task.persistence import (
     upload_files_to_github,
 )
 from generators.task.runtime_resolver import resolve_plan
+from task_quality import run_quality_for_attempt
 from task_validation import BaseTaskDAO, TaskValidationError, TaskWriteError
 
 
@@ -398,10 +399,28 @@ def create_task(
                     last_failure = candidate_eval
                     feedback = gate_feedback
                     continue
+
+                # Content-quality eval (spec 003) — single LLM call judges
+                # the candidate AND rewrites every failing field in place
+                # (title shape, short_overview shape + count, bullet
+                # hygiene, question length, framing + relevance). Autofix,
+                # not a retry-gate: the (possibly-patched) candidate moves
+                # straight to persistence. Infra errors during the call
+                # propagate up and abort the attempt without artifacts.
+                candidate, quality_report = run_quality_for_attempt(
+                    candidate, attempt,
+                )
+                if quality_report.rewrites_applied:
+                    logger.info(
+                        f"Attempt {attempt}: quality eval autofixed "
+                        f"{len(quality_report.rewrites_applied)} field(s): "
+                        f"{sorted(quality_report.rewrites_applied.keys())}"
+                    )
+
                 task_data = candidate
                 eval_info = candidate_eval
                 logger.info(
-                    f"Attempt {attempt}: evals passed - proceeding to storage"
+                    f"Attempt {attempt}: evals + gate passed (quality applied) - proceeding to storage"
                 )
                 break
 

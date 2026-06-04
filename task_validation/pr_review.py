@@ -1,13 +1,15 @@
 """PR review variant — model + DAO.
 
-PR review tasks share the ``tasks`` table but have a different blob shape:
+PR review tasks share the ``tasks`` table. As of spec 003 (content-quality
+evals), the bullet-shaped fields use the SAME shapes as the coding flow:
+
   - ``task_blob.task_type`` is fixed to ``"pr_review"``
-  - ``task_blob.short_overview`` and ``task_blob.outcomes`` are STRINGS
-    (the coding flow uses ``List[str]`` for both)
+  - ``task_blob.short_overview`` and ``task_blob.outcomes`` are ``List[str]``
+    (matches the coding flow exactly)
   - ``task_blob.resources`` must contain both ``github_repo`` and
     ``github_pr`` (the coding flow only requires ``github_repo``)
   - ``task_blob.hints`` and ``task_blob.definitions`` may be empty
-  - top-level ``pre_requisites`` is a STRING (hardcoded in the flow)
+  - top-level ``pre_requisites`` is ``List[str]`` (matches coding)
   - top-level ``answer`` may be empty (the answer key lives in
     ``solutions``)
   - ``solutions`` carries flaw-key fields instead of ``answer_repo``
@@ -29,17 +31,29 @@ class PRReviewTaskBlob(BaseModel):
     title: str
     task_type: str
     question: str
-    short_overview: str
-    outcomes: str
+    short_overview: List[str]
+    outcomes: List[str]
     resources: Dict[str, str]
     hints: str
     definitions: Dict[str, str]
 
-    @field_validator("title", "question", "short_overview", "outcomes")
+    @field_validator("title", "question")
     @classmethod
     def not_empty(cls, v: str) -> str:
         if not v or not v.strip():
             raise ValueError("must not be empty")
+        return v
+
+    @field_validator("short_overview", "outcomes")
+    @classmethod
+    def list_not_empty(cls, v: List[str]) -> List[str]:
+        if not isinstance(v, list):
+            raise ValueError("must be a list of strings, not a string")
+        if not v:
+            raise ValueError("must not be an empty list")
+        for item in v:
+            if not isinstance(item, str) or not item.strip():
+                raise ValueError("every entry must be a non-empty string")
         return v
 
     @field_validator("task_type")
@@ -62,7 +76,7 @@ class PRReviewTaskForDB(BaseModel):
     model_config = {"strict": True}
 
     created_at: str
-    pre_requisites: str
+    pre_requisites: List[str]
     answer: str
     criterias: List[CriteriaEntry]
     is_deployed: bool
@@ -72,11 +86,23 @@ class PRReviewTaskForDB(BaseModel):
     eval_info: Dict
     solutions: Dict
 
-    @field_validator("created_at", "pre_requisites")
+    @field_validator("created_at")
     @classmethod
     def not_empty(cls, v: str) -> str:
         if not v or not v.strip():
             raise ValueError("must not be empty")
+        return v
+
+    @field_validator("pre_requisites")
+    @classmethod
+    def pre_requisites_strict_list(cls, v: List[str]) -> List[str]:
+        if not isinstance(v, list):
+            raise ValueError("must be a list of strings, not a string")
+        if not v:
+            raise ValueError("must not be an empty list")
+        for item in v:
+            if not isinstance(item, str) or not item.strip():
+                raise ValueError("every entry must be a non-empty string")
         return v
 
     @field_validator("criterias")
