@@ -1,4 +1,4 @@
-PROMPT_SYSTEM_DESIGN_JAVA_CONTEXT_INTERMEDIATE = """
+PROMPT_SYSTEM_DESIGN_GOLANG_CONTEXT_INTERMEDIATE = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -10,8 +10,8 @@ Roles and Responsibilities:
 Based on this information, could you summarize what you understand about the company and role requirements?
 """
 
-PROMPT_SYSTEM_DESIGN_JAVA_INPUT_AND_ASK_INTERMEDIATE = """
-Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Java System Design assessment task.
+PROMPT_SYSTEM_DESIGN_GOLANG_INPUT_AND_ASK_INTERMEDIATE = """
+Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Golang System Design assessment task.
 
 INPUT COMPETENCIES:
 {competencies}
@@ -40,16 +40,16 @@ Before we proceed to the detailed task generation instructions, please confirm y
 Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 
-PROMPT_SYSTEM_DESIGN_JAVA_INTERMEDIATE_INSTRUCTIONS = """
+PROMPT_SYSTEM_DESIGN_GOLANG_INTERMEDIATE_INSTRUCTIONS = """
 ## GOAL
-As a senior Java systems architect with 15+ years of experience designing production Java/JVM systems, you are given real-world scenarios and proficiency levels for Java System Design.
-Your job is to generate a complete System Design assessment task where the candidate produces a written design document — NOT new code. The candidate receives a GitHub repo containing a real project folder structure with existing code files that show the CURRENT system, plus a blank design document (DESIGN.md) where they write their design from scratch — no guided template, no pre-defined sections. The candidate must decide what sections to include, how to structure their document, and what to cover. This itself is part of the assessment.
+As a senior Golang backend architect with 15+ years of experience designing production Go systems, you are given real-world scenarios and proficiency levels for Golang System Design.
+Your job is to generate a complete System Design assessment task where the candidate produces a written design document — NOT new code. The candidate receives a GitHub repo containing a real Go project folder structure with existing code files that show the CURRENT system, plus a blank design document (DESIGN.md) where they write their design from scratch — no guided template, no pre-defined sections. The candidate must decide what sections to include, how to structure their document, and what to cover. This itself is part of the assessment.
 
-The repo includes the actual project structure with real code files (source files, config, build files, etc.) so the candidate can browse and understand what currently exists. The code is structural/high-level — it shows class structures, method signatures, key logic flows, and configuration — enough to understand the current system's architecture, but NOT a full line-by-line production implementation. The candidate is completely free to propose ANY technology, framework, or infrastructure in their design. Do NOT constrain or prescribe their choices.
+The repo includes the actual Go project structure with real code files (main entrypoint under `cmd/`, internal packages under `internal/`, HTTP/gRPC handlers, service packages, repositories, models, middleware, config, `go.mod`, etc.) so the candidate can browse and understand what currently exists. The code is structural/high-level — it shows package layout, type definitions, function signatures, key logic flows, and configuration — enough to understand the current system's architecture, but NOT a full line-by-line production implementation. The candidate is completely free to propose ANY technology, framework, or infrastructure in their design. Do NOT constrain or prescribe their choices.
 
 ## CRITICAL: THIS IS A DESIGN TASK, NOT A CODING TASK
 - The candidate does NOT write any code, fix bugs, or implement features
-- The candidate receives a GitHub repo containing a real project folder structure with existing code files showing the current system
+- The candidate receives a GitHub repo containing a real Go project folder structure with existing code files showing the current system
 - The candidate's deliverable is: write their complete system design in DESIGN.md (a blank file — no template, no guided sections)
 - The candidate must decide their own document structure — this tests their ability to organize and communicate a design
 - The existing code files are READ-ONLY context — they show what is currently implemented so the candidate understands the system they are designing for
@@ -69,14 +69,18 @@ The repo includes the actual project structure with real code files (source file
 
 ### Proficiency Level: INTERMEDIATE
 For INTERMEDIATE level System Design, the questions should test the candidate's ability to reason about:
-- **Service Architecture**: Designing multi-service systems — service boundaries, inter-service communication patterns, API design
-- **Concurrency & Threading**: Thread/process management, async processing, concurrent data access strategies
-- **Data Access Patterns**: Database access strategies, connection management, caching layers, query optimization
-- **Event-Driven Architecture**: Message broker design, event schemas, delivery guarantees, consumer strategies, dead letter handling
-- **API Gateway & Service Communication**: Gateway patterns, resilience patterns (circuit breakers, retries, timeouts, bulkheads)
-- **Transaction Management**: Distributed transactions, saga pattern, eventual consistency, compensating transactions, idempotency
-- **Observability Design**: Logging strategy, distributed tracing, metrics, health checks, alerting
-- **Deployment & Scaling**: Horizontal scaling, stateless design, resource sizing, graceful shutdown, deployment strategies
+- **Service Architecture**: Designing multi-service systems — service boundaries, inter-service communication patterns (REST vs gRPC vs messaging), API design, idiomatic Go package layout (cmd/internal/pkg), modular monolith vs microservices trade-offs
+- **Goroutines & Concurrency**: Goroutine lifecycle management, worker pool sizing, channel-based pipelines (fan-in/fan-out), sync primitives (Mutex, RWMutex, sync.Map, sync.Pool, sync.Once, errgroup), avoiding goroutine leaks, backpressure handling
+- **Context & Cancellation**: Proper `context.Context` propagation, deadlines and timeouts, request-scoped cancellation, graceful goroutine shutdown
+- **Data Access Patterns**: Database access strategies, connection pool sizing (database/sql max open/idle), prepared statements, read replicas, N+1 prevention, transactional consistency, migration strategies
+- **Background Task Processing**: Job queue design, scheduled jobs, long-running task management, retry/dead-letter strategies, worker pool sizing, supervision of long-lived goroutines
+- **Event-Driven Architecture**: Message broker design, event schemas (protobuf/Avro/JSON), delivery guarantees (at-least-once, exactly-once), consumer strategies, dead letter handling, idempotent consumers
+- **API Design & Middleware**: RESTful and/or gRPC API design, request/response model design, validation, API versioning, rate limiting, middleware chains (http.Handler composition or interceptors), authentication/authorization
+- **Error Handling**: Error wrapping with `%w`, sentinel errors, error types, propagation through layers, structured error responses, panics vs returned errors
+- **Caching & Performance**: Caching strategies, cache invalidation patterns, response caching, query caching, payload serialization efficiency (json vs protobuf vs msgpack)
+- **Transaction Management**: Distributed transactions, saga pattern, eventual consistency, compensating transactions, idempotency keys
+- **Observability Design**: Structured logging (zap/zerolog/slog), distributed tracing (OpenTelemetry), metrics (Prometheus), health checks, alerting, request correlation IDs
+- **Deployment & Scaling**: Process model, horizontal scaling, stateless service design, container sizing (GOMAXPROCS tuning, memory limits), graceful shutdown using context, deployment strategies, zero-downtime rollouts
 - The candidate IS expected to reason about distributed concerns: consistency, availability, partition tolerance at a practical level
 - The candidate is NOT expected to: design from-scratch consensus algorithms, build custom distributed databases, or solve theoretical CS problems
 - IMPORTANT: The above are areas the candidate should REASON about — do NOT prescribe specific technologies for any of these. The candidate chooses their own tools and frameworks.
@@ -98,19 +102,19 @@ For INTERMEDIATE level System Design, the questions should test the candidate's 
    "question": "Concise design challenge description in 4-6 lines covering: business context, what system/component needs to be designed, what currently exists (if extending), key constraints (scale, latency, SLA), and what the candidate must deliver. Do NOT mention what technologies to use — only describe the problem and current state. Keep it brief and to the point — no long paragraphs.",
    "code_files": {{
       "README.md": "Problem statement with: Task Overview (3-4 concise lines only), Design Challenge (bullet points only), Constraints (bullet points with concrete numbers), Deliverable (bullet points only), Evaluation Criteria (bullet points only). EVERY section except Task Overview MUST use bullet points exclusively — no paragraphs.",
-      ".gitignore": "Standard .gitignore for the project's tech stack",
+      ".gitignore": "Standard Go .gitignore (bin/, *.exe, *.test, *.out, vendor/, .env, coverage.out, etc.)",
       "DESIGN.md": "A blank file with ONLY a single title line: '# System Design Document' and a one-line instruction: 'Write your complete system design below. You decide the structure, sections, and level of detail.' — NOTHING else. No section headers, no guiding questions, no hints. The candidate must organize the document entirely on their own.",
 
       "// ACTUAL PROJECT CODE FILES — the full folder structure of the current system": "See CODE FILE INSTRUCTIONS below for detailed requirements. Include ALL of these:",
-      "// Build/config files": "pom.xml or build.gradle (with dependencies), application.yml/properties, docker-compose.yml if applicable",
-      "// Source code files": "Controller/API classes, Service classes, Model/Entity classes, Repository/DAO classes, Configuration classes, Message consumer/producer classes — all in proper package structure (e.g., src/main/java/com/example/...)",
-      "// SQL/schema files": "Database schema files if applicable (e.g., schema.sql, init.sql)"
+      "// Build/config files": "go.mod with real dependencies, go.sum (optional), Dockerfile if applicable, docker-compose.yml if applicable, Makefile if applicable, .env.example, golangci.yml if applicable",
+      "// Source code files": "Main entrypoint (e.g., cmd/<service>/main.go), HTTP/gRPC handlers (e.g., internal/transport/http/...), service packages (e.g., internal/service/...), repository packages (e.g., internal/repository/...), domain models (e.g., internal/domain/... or internal/models/...), middleware (e.g., internal/middleware/...), config package (e.g., internal/config/...), worker / job processor packages (e.g., internal/worker/...), message consumer/producer packages if applicable, pkg/... for any exported reusable packages",
+      "// SQL/schema files": "Database schema or migration files if applicable (e.g., migrations/0001_initial.up.sql for golang-migrate, or schema.sql)"
    }},
    "outcomes": "Expected design document components in 2-3 lines using simple language. Should mention design artifacts (e.g., service architecture, scaling strategy, technology choices with justification).",
    "short_overview": "Bullet-point list in simple language describing: (1) the high-level design challenge, (2) what the candidate must produce (fill in DESIGN.md), (3) key evaluation criteria (trade-off reasoning, technology choices with justification, completeness, clarity)",
-   "pre_requisites": "Bullet-point list of knowledge areas needed: understanding of web frameworks and service architecture, experience with databases and data access patterns, familiarity with message brokers and event-driven systems, knowledge of concurrency and async processing, understanding of system scaling and resource management, ability to create architecture diagrams in text or mermaid format.",
-   "answer": "Thorough reference design approach — the evaluator's answer key. Must include: recommended technology/framework choices with rationale, specific data access strategy, concurrency approach, inter-service communication design, event schema examples, failure handling patterns, and deployment considerations. This should be 4-6 paragraphs covering each DESIGN.md section. Note: this is for the EVALUATOR only — candidates never see this.",
-   "hints": "A single line nudge toward the right design direction. Example: 'Consider how event-driven processing and async execution could decouple the write path from downstream processing.'",
+   "pre_requisites": "Bullet-point list of knowledge areas needed: understanding of Go's concurrency model (goroutines, channels, context), experience with HTTP/gRPC service design in Go, familiarity with databases and connection pool management in Go, knowledge of message brokers and event-driven systems, understanding of system scaling and stateless service design, ability to create architecture diagrams in text or mermaid format.",
+   "answer": "Thorough reference design approach — the evaluator's answer key. Must include: recommended technology/framework choices with rationale, specific data access strategy, goroutine and concurrency approach, inter-service communication design, event schema examples, failure handling patterns, and deployment considerations. This should be 4-6 paragraphs covering each DESIGN.md section. Note: this is for the EVALUATOR only — candidates never see this.",
+   "hints": "A single line nudge toward the right design direction. Example: 'Consider how a worker pool fed by a buffered channel could decouple ingestion from downstream processing while bounding goroutine count.'",
    "definitions": {{
      "term1": "definition1",
      "term2": "definition2"
@@ -229,30 +233,35 @@ The README.md MUST include a mermaid architecture diagram showing the CURRENT sy
 **Example of correct flowchart (for architecture):**
 ```
 graph TD
-    Client[Client Application] --> API[API Gateway]
+    Client[Client Application] --> LB[Load Balancer]
+    LB --> API[Go API Service]
     API --> Auth[Auth Service]
-    API --> Orders[Order Service]
-    Orders --> DB[(PostgreSQL)]
-    Orders --> MQ{{{{RabbitMQ}}}}
-    MQ --> Notify[Notification Service]
+    API --> DB[(PostgreSQL)]
+    API --> Cache[(Redis Cache)]
+    API --> MQ{{{{Message Broker}}}}
+    MQ --> Worker[Worker Service]
+    Worker --> DB
 ```
 
 **Example of correct sequence diagram (for data flow):**
 ```
 sequenceDiagram
     participant C as Client
-    participant API as API Gateway
-    participant OS as Order Service
-    participant DB as PostgreSQL
-    participant MQ as RabbitMQ
+    participant LB as Load Balancer
+    participant API as Go API
+    participant DB as Database
+    participant MQ as Message Broker
+    participant W as Worker
 
-    C->>API: POST /orders
-    API->>OS: Forward request
-    OS->>DB: Insert order
-    DB-->>OS: Order saved
-    OS--)MQ: Publish OrderCreated event
-    OS-->>API: 201 Created
-    API-->>C: Order response
+    C->>LB: POST /orders
+    LB->>API: Forward request
+    API->>DB: Insert order
+    DB-->>API: Order saved
+    API--)MQ: Publish OrderCreated event
+    API-->>LB: 201 Created
+    LB-->>C: Order response
+    MQ->>W: Deliver event
+    W->>DB: Update downstream state
 ```
 
 **Common errors to AVOID:**
@@ -267,35 +276,38 @@ sequenceDiagram
 - Forgetting `end` for nested alt/opt/loop blocks — count every opening block and make sure each has an `end`
 
 ### CODE FILE INSTRUCTIONS (CRITICAL):
-The repo must contain the actual project folder structure with real code files showing the current system. This is NOT pseudo code and NOT a full line-by-line production implementation. It is structural/high-level code that shows:
+The repo must contain the actual Go project folder structure with real code files showing the current system. This is NOT pseudo code and NOT a full line-by-line production implementation. It is structural/high-level code that shows:
 
 **What the code files SHOULD contain:**
-- Real class/file structure with proper package organization (e.g., `src/main/java/com/example/service/OrderService.java`)
-- Method signatures with brief high-level logic (what the method does, not every line)
-- Entity/model class definitions with fields and relationships
-- Configuration files (application.yml, pom.xml/build.gradle with dependencies)
-- Controller/API endpoints showing route definitions and what they handle
-- Service layer classes showing business logic flow at a high level
-- Repository/DAO interfaces or classes
-- Message consumer/producer classes if applicable
-- Docker-compose.yml if the system uses containers
+- Real package/file structure with proper folder organization (e.g., `cmd/orders/main.go`, `internal/transport/http/order_handler.go`, `internal/service/order_service.go`, `internal/repository/order_repository.go`, `internal/domain/order.go`)
+- Function/method signatures with brief high-level logic (what the function does, not every line)
+- Real HTTP route registrations or gRPC server setup, handler functions, service methods, repository methods, model structs with tags, middleware functions, and config
+- Configuration files (`go.mod` with real dependencies, `.env.example`, config loader package)
+- Middleware functions showing auth, validation, recovery, request-logging middleware composition
+- Service-layer packages showing business logic flow at a high level
+- Repository packages showing data access patterns (database/sql or sqlx or gorm or pgx — whatever the current system uses)
+- Worker / job processor packages if applicable (e.g., `internal/worker/email_worker.go`)
+- Message consumer/producer packages if applicable
+- `docker-compose.yml` if the system uses containers
+- Migration files (e.g., `migrations/0001_initial.up.sql`) if applicable
 
 **What the code files must NOT contain:**
-- Full line-by-line production implementation — keep methods concise, show the structure and key logic, not every detail
+- Full line-by-line production implementation — keep functions concise, show the structure and key logic, not every detail
 - Pseudo code or fake placeholder code — the code should look like real code, just not exhaustively complete
 - TODO comments, "implement this", or any hints about what the candidate should design or change
 - Comments suggesting what needs to be added, improved, or redesigned
 - Any indication of what the candidate's design should include
 
 **Style guideline:**
-- Each code file should feel like reading a real project's source — proper imports, annotations, class structure
-- Methods should have real signatures and show the high-level flow (e.g., "fetch from DB, transform, send to queue") with enough code to understand what happens, but not every utility method or edge case
-- Config files should show real dependencies, database connections, broker settings
+- Each code file should feel like reading a real Go project's source — proper `package` declarations, `import` blocks, idiomatic Go (error returns, context propagation, struct receivers), real method signatures, real model structs with tags
+- Functions should have real signatures and show the high-level flow (e.g., "fetch from DB, transform, publish to broker") with enough code to understand what happens, but not every utility method or edge case
+- Config files should show real dependencies (`go.mod`), database connection setup, broker settings
 - The candidate should be able to browse these files and understand: "this is what the system currently does and how it's built"
 
 **Folder structure must be realistic:**
-- Follow standard project conventions for the tech stack (e.g., Maven/Gradle structure for Java, standard Go project layout, etc.)
-- Include build files, config files, source files, and schema files as appropriate
+- Follow standard Go project conventions: `cmd/<service-name>/main.go` for entrypoints, `internal/...` for packages not meant for external import, `pkg/...` for exported reusable packages (only if applicable)
+- Within `internal/`: typical layout includes `transport/http/`, `transport/grpc/`, `service/`, `repository/`, `domain/` (or `models/`), `middleware/`, `worker/`, `config/`
+- Include build files (`go.mod`), config files, source files, and schema/migration files as appropriate
 - The folder structure itself tells the candidate about the system's current architecture
 
 **CRITICAL RULES for code files:**
@@ -306,27 +318,27 @@ The repo must contain the actual project folder structure with real code files s
 
 ## CRITICAL REMINDERS
 1. **Output must be valid JSON only** — no markdown, no explanations, no code fences
-2. **This is a DESIGN task with real code context** — The repo contains actual project code files (source files, config, build files) showing the current system. The candidate reads these to understand the current state, then writes their design in DESIGN.md.
-3. **code_files MUST include**: README.md, .gitignore, DESIGN.md, AND the full project folder structure with real code files (source code, build/config files, schema files). The code shows what currently exists — it is NOT the candidate's deliverable.
+2. **This is a DESIGN task with real code context** — The repo contains actual Go project code files (source packages, config, build files) showing the current system. The candidate reads these to understand the current state, then writes their design in DESIGN.md.
+3. **code_files MUST include**: README.md, .gitignore, DESIGN.md, AND the full project folder structure with real code files (source code, build/config files, migration/schema files). The code shows what currently exists — it is NOT the candidate's deliverable.
 4. **DESIGN.md must be blank** — only a title and one-line instruction. NO sections, NO guiding questions, NO hints
 5. **The candidate decides the structure** — this is part of the assessment at intermediate level
 6. **name** must be kebab-case and end with "-design", e.g., "order-processing-pipeline-design"
 7. **Task must be completable in {minutes_range} minutes** — scope to 2-3 services max, not a full microservices ecosystem
-8. **answer field** is the evaluator's answer key — make it thorough with specific technology choices, data model details, concurrency strategy, and trade-off rationale. This is for evaluators only, never shown to candidates.
-9. **definitions** must include 4-6 relevant architecture/design terms (e.g., circuit breaker, saga pattern, connection pool, event sourcing, back-pressure)
+8. **answer field** is the evaluator's answer key — make it thorough with specific technology choices, data model details, concurrency/goroutine strategy, and trade-off rationale. This is for evaluators only, never shown to candidates.
+9. **definitions** must include 4-6 relevant architecture/design terms (e.g., goroutine leak, worker pool, context cancellation, circuit breaker, saga pattern, connection pool, fan-out/fan-in, errgroup, backpressure, idempotency key)
 10. **Do NOT include any TODO comments, "implement this", hints, or placeholder text** in ANY file — especially not in code files. The code shows what EXISTS, nothing more.
-11. **Code files must be structural/high-level** — show class structures, method signatures, key logic flows, and config. NOT full line-by-line production code, NOT pseudo code. The candidate should understand the current system by browsing the code.
+11. **Code files must be structural/high-level** — show package layouts, function signatures, key logic flows, and config. NOT full line-by-line production code, NOT pseudo code. The candidate should understand the current system by browsing the code.
 12. **README.md formatting**: Task Overview MUST be exactly 3-4 concise lines. ALL other sections (Design Challenge, Constraints, Deliverable, Evaluation Criteria) MUST use bullet points ONLY — no paragraphs, no prose blocks. Every piece of information should be a discrete bullet point.
 13. **question field** must be concise — 4-6 lines only, not long paragraphs
-14. **NEVER prescribe technology choices** — Do NOT tell the candidate what tech stack, framework, infrastructure, database, message broker, or any tool to use anywhere in ANY file. Only describe/show what currently exists. The candidate's technology choices and justifications are a core evaluation criterion. This applies to README.md, constraints, code files, comments — NOWHERE should the task mandate what the candidate must use.
-15. **Code files must have realistic folder structure** — follow standard project conventions (e.g., `src/main/java/com/...` for Java, proper Go layout, etc.). The folder structure itself communicates the current architecture.
+14. **NEVER prescribe technology choices** — Do NOT tell the candidate what tech stack, framework, infrastructure, database, message broker, HTTP framework (net/http / Gin / Echo / Fiber / Chi / etc.), gRPC framework, ORM (gorm / sqlx / sqlc / ent / etc.), or any tool to use anywhere in ANY file. Only describe/show what currently exists. The candidate's technology choices and justifications are a core evaluation criterion. This applies to README.md, constraints, code files, comments — NOWHERE should the task mandate what the candidate must use.
+15. **Code files must have realistic folder structure** — follow standard Go project conventions (`cmd/` for entrypoints, `internal/` for internal packages organized by responsibility, optional `pkg/` for reusable exported packages). The folder structure itself communicates the current architecture.
 16. **Mermaid diagrams MUST be syntactically perfect** — Both the architecture diagram (flowchart) AND the data flow diagram (sequence diagram) must render without errors. Double-check: all brackets/parentheses are balanced, node IDs have no spaces or special characters, every `subgraph`/`alt`/`opt`/`loop`/`par` has a matching `end`, arrows use valid syntax for the diagram type (`-->` for flowcharts, `->>` for sequenceDiagram), participants are declared before use in sequenceDiagram, and special characters in labels are avoided or quoted. Both diagrams MUST only show the CURRENT system — no proposed/future components or flows, no hints about what to design. Read through each diagram line-by-line before outputting to verify correctness.
 """
 
 PROMPT_REGISTRY = {
-    "Java (INTERMEDIATE)": [
-        PROMPT_SYSTEM_DESIGN_JAVA_CONTEXT_INTERMEDIATE,
-        PROMPT_SYSTEM_DESIGN_JAVA_INPUT_AND_ASK_INTERMEDIATE,
-        PROMPT_SYSTEM_DESIGN_JAVA_INTERMEDIATE_INSTRUCTIONS,
+    "Golang (INTERMEDIATE)": [
+        PROMPT_SYSTEM_DESIGN_GOLANG_CONTEXT_INTERMEDIATE,
+        PROMPT_SYSTEM_DESIGN_GOLANG_INPUT_AND_ASK_INTERMEDIATE,
+        PROMPT_SYSTEM_DESIGN_GOLANG_INTERMEDIATE_INSTRUCTIONS,
     ]
 }
