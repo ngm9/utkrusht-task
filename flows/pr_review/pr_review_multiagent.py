@@ -28,6 +28,12 @@ from flows.pr_review.prompts.pr_generation_prompts import (
 )
 from flows.pr_review.pr_review_evals import eval_base_repo, eval_pr_and_answer_key
 from flows.pr_review.pr_review_github import create_pr_review_repo
+from task_quality import run_quality_for_attempt
+from task_validation import (
+    PRReviewTaskDAO,
+    TaskValidationError,
+    TaskWriteError,
+)
 from flows.pr_review.pr_review_utils import (
     slugify_branch_name,
     parse_pr_review_scenario,
@@ -45,6 +51,40 @@ GENERATION_MODEL = "gpt-5.1-2025-11-13"
 EVAL_MODEL = "gpt-5-nano-2025-08-07"
 MAX_RETRIES = 1
 REPO_OWNER = os.getenv("REPO_OWNER")
+
+
+def _run_quality_autofix_on_blob(task_data_for_db: dict) -> None:
+    """Run the content-quality judge on the assembled PR-review task and
+    splice any rewrites in place. Mutates ``task_data_for_db``.
+
+    PR-review puts the eval-relevant fields under ``task_blob.*`` while the
+    quality eval expects top-level keys, so we flatten before the call and
+    apply rewrites back to the right paths after. ``pre_requisites`` is
+    already top-level in this flow.
+    """
+    task_blob = task_data_for_db["task_blob"]
+    flat = {
+        "name": task_blob.get("title", ""),
+        "title": task_blob.get("title", ""),
+        "question": task_blob.get("question", ""),
+        "outcomes": task_blob.get("outcomes", []),
+        "short_overview": task_blob.get("short_overview", []),
+        "pre_requisites": task_data_for_db.get("pre_requisites", []),
+        "criterias": task_data_for_db.get("criterias", []),
+    }
+    patched, report = run_quality_for_attempt(flat, attempt=1)
+    if report.rewrites_applied:
+        logger.info(
+            f"PR-review quality eval autofixed "
+            f"{len(report.rewrites_applied)} field(s): "
+            f"{sorted(report.rewrites_applied.keys())}"
+        )
+    # Splice rewrites back into the correct paths in task_data_for_db.
+    for field in ("title", "question", "outcomes", "short_overview"):
+        if field in report.rewrites_applied:
+            task_blob[field] = patched[field]
+    if "pre_requisites" in report.rewrites_applied:
+        task_data_for_db["pre_requisites"] = patched["pre_requisites"]
 
 
 def init_supabase(env: str = "dev") -> Client:
@@ -402,18 +442,27 @@ def create_pr_review_task(
         "pr_description_issues": answer_key.get("pr_description_issues", []),
     }
 
+    # Build list-shaped fields (spec 003 — same shape as the coding flow).
+    pr_title_full = pr_data.get("pr_title", "")
+    flaw_categories = [f["category"] for f in answer_key.get("flaws", [])]
     task_data_for_db = {
         "created_at": created_at.isoformat(),
-        "pre_requisites": "GitHub account, familiarity with PR review workflow",
+        "pre_requisites": [
+            "A GitHub account with access to the linked task repository.",
+            "Familiarity with the GitHub PR review workflow (inline comments, approve / request-changes verdicts).",
+        ],
         "answer": "",
         "criterias": criterias_for_db,
         "is_deployed": False,
         "task_blob": {
-            "title": f"PR Review: {pr_data.get('pr_title', '')}",
+            "title": f"PR Review: {pr_title_full}",
             "task_type": "pr_review",
             "question": "Review the open PR and provide feedback -- approve, request changes, or leave line comments where you see issues.",
-            "short_overview": pr_intent,
-            "outcomes": f"Candidate identifies flaws in the PR including: {', '.join(f['category'] for f in answer_key.get('flaws', []))}",
+            "short_overview": [pr_intent] if pr_intent else ["PR review task."],
+            "outcomes": [
+                f"Candidate identifies the introduced flaw category: {category}."
+                for category in flaw_categories
+            ] or ["Candidate reviews the PR and identifies the introduced flaws."],
             "resources": {
                 "github_repo": repo_url,
                 "github_pr": pr_url,
@@ -427,24 +476,24 @@ def create_pr_review_task(
         "solutions": solutions_for_db,
     }
 
-    result = supabase.table("tasks").insert(task_data_for_db).execute()
-    if not result.data:
-        raise RuntimeError("Failed to insert task into Supabase")
+    # Content-quality eval (spec 003) — single LLM call judges the assembled
+    # task on every content-quality rule and autofixes failing fields in
+    # place. Same layer as the coding flow; we just adapt the field paths
+    # because PR-review's eval-relevant fields live under task_blob.*.
+    try:
+        _run_quality_autofix_on_blob(task_data_for_db)
+    except Exception as e:
+        logger.warning(f"Content-quality eval skipped due to infra error: {e}")
 
-    supabase_task = result.data[0]
-    task_id = supabase_task.get("id") or supabase_task.get("task_id")
-
-    # Insert task-competency relationships
-    for criteria in criterias_for_db:
-        comp_id = criteria.get("competency_id")
-        if comp_id:
-            try:
-                supabase.table("task_competencies").insert({
-                    "task_id": task_id,
-                    "competency_id": comp_id,
-                }).execute()
-            except Exception as e:
-                logger.error(f"Failed to insert task-competency: {e}")
+    try:
+        supabase_task = PRReviewTaskDAO(supabase).validate_and_insert(
+            task_data_for_db, env=env
+        )
+    except (TaskValidationError, TaskWriteError) as e:
+        logger.error(str(e))
+        print(format_cost_summary(usage_by_model))
+        raise
+    task_id = supabase_task.get("task_id") or supabase_task.get("id")
 
     # -- Summary --
     print(f"\n{'='*70}")

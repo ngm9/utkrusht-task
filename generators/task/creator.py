@@ -70,6 +70,8 @@ from generators.task.persistence import (
     upload_files_to_github,
 )
 from generators.task.runtime_resolver import resolve_plan
+from task_quality import run_quality_for_attempt
+from task_validation import BaseTaskDAO, TaskValidationError, TaskWriteError
 
 
 # ---------------------------------------------------------------------------
@@ -478,10 +480,28 @@ def create_task(
                     last_failure = candidate_eval
                     feedback = gate_feedback
                     continue
+
+                # Content-quality eval (spec 003) — single LLM call judges
+                # the candidate AND rewrites every failing field in place
+                # (title shape, short_overview shape + count, bullet
+                # hygiene, question length, framing + relevance). Autofix,
+                # not a retry-gate: the (possibly-patched) candidate moves
+                # straight to persistence. Infra errors during the call
+                # propagate up and abort the attempt without artifacts.
+                candidate, quality_report = run_quality_for_attempt(
+                    candidate, attempt,
+                )
+                if quality_report.rewrites_applied:
+                    logger.info(
+                        f"Attempt {attempt}: quality eval autofixed "
+                        f"{len(quality_report.rewrites_applied)} field(s): "
+                        f"{sorted(quality_report.rewrites_applied.keys())}"
+                    )
+
                 task_data = candidate
                 eval_info = candidate_eval
                 logger.info(
-                    f"Attempt {attempt}: evals passed - proceeding to storage"
+                    f"Attempt {attempt}: evals + gate passed (quality applied) - proceeding to storage"
                 )
                 break
 
@@ -544,6 +564,11 @@ def create_task(
             "is_shared_infra_required": is_shared_infra_required,
             "task_type": ["BUILD"],
         }
+        # Draft→ready lifecycle (branch design): insert a draft row first so a
+        # row survives partial artifact-build failure; mark_task_ready patches
+        # resources later. main's BaseTaskDAO.validate_and_insert (single,
+        # strict insert) is brought in by this merge but wired in separately
+        # (stage 2: validation layered into the draft→ready path).
         task_id = insert_draft_task(draft_payload, env=env)
         task_data["task_id"] = task_id
 
