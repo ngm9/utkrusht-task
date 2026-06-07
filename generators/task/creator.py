@@ -55,6 +55,11 @@ from generators.task.evaluator import (
     run_evaluations,
 )
 from generators.task.gate import GateOutcome, run_gate_for_attempt
+from generators.task.repository import (
+    TaskValidationError,
+    insert_task_competencies,
+    validate_task,
+)
 from generators.task.persistence import (
     GITHUB_GIST_TOKEN,
     GITHUB_UTKRUSHTAPPS_TOKEN,
@@ -71,7 +76,6 @@ from generators.task.persistence import (
 )
 from generators.task.runtime_resolver import resolve_plan
 from task_quality import run_quality_for_attempt
-from task_validation import BaseTaskDAO, TaskValidationError, TaskWriteError
 
 
 # ---------------------------------------------------------------------------
@@ -410,6 +414,26 @@ def create_task(
                 )
         eval_persona = match.persona if match else None
 
+        # Agent competencies are FREE-FORM by design: the candidate-facing
+        # scenario is invented by the generator, not locked to the input pool
+        # (the agent prompt explicitly designs its own domain). So Criterion 6
+        # DOMAIN ALIGNMENT must NOT fire for them — otherwise it deadlocks
+        # against the dedup "use a different domain" rule and fails every
+        # attempt. Passing scenarios=None below makes Criterion 6 pass
+        # vacuously (see infra/evals.py:_render_scenarios_block). Non-agent
+        # tasks keep their scenario pool, so DOMAIN ALIGNMENT stays enforced
+        # for them. Gate is keyed on the COMPETENCY, never the proficiency.
+        from generators.scenarios.prompts import is_agent_competency
+        agent_freeform = is_agent_competency(
+            ", ".join(c.get("name", "") for c in competencies)
+        )
+        if agent_freeform:
+            logger.info(
+                "Agent competency detected — free-form mode: Criterion 6 "
+                "DOMAIN ALIGNMENT disabled for eval (scenario is generator-"
+                "invented, not pool-locked)."
+            )
+
         max_attempts = MAX_EVAL_RETRIES + 1
         task_data = None
         eval_info = None
@@ -445,6 +469,21 @@ def create_task(
             candidate.setdefault("code_files", {})
             candidate["criterias"] = criterias
 
+            # Wire the generated run.sh into ``run_script`` so the gate runs the
+            # run.sh READINESS probe (exit 0/1) instead of falling back to legacy
+            # pytest on the unfilled stubs (which always "fails" for a build-it
+            # task). ``code_files`` is a flat path->contents map; match run.sh at
+            # the repo root or in any subdir.
+            if not candidate.get("run_script"):
+                _files = candidate.get("code_files") or {}
+                _run_sh = next(
+                    (v for k, v in _files.items()
+                     if k == "run.sh" or k.endswith("/run.sh")),
+                    None,
+                )
+                if _run_sh:
+                    candidate["run_script"] = _run_sh
+
             hollow, reasons = is_task_hollow(candidate)
             if hollow:
                 logger.warning(
@@ -463,9 +502,13 @@ def create_task(
             logger.info("Running task evaluations")
             # Thread `scenarios` into the eval critic so Criterion 6
             # (DOMAIN ALIGNMENT) can detect drift — task invented a new
-            # domain not present in the scenarios pool.
+            # domain not present in the scenarios pool. For agent competencies
+            # the scenario is free-form (generator-invented), so we pass None
+            # and Criterion 6 passes vacuously; non-agent tasks keep the pool.
             candidate_eval = run_evaluations(
-                candidate, persona=eval_persona, scenarios=scenarios,
+                candidate,
+                persona=eval_persona,
+                scenarios=None if agent_freeform else scenarios,
             )
             last_failure = candidate_eval
             t_pass = candidate_eval["task_eval"]["pass"]
@@ -545,10 +588,17 @@ def create_task(
 
         # Step 1 — INSERT the minimal draft row, get task_id BEFORE any
         # external side effect.
+        # `answer` is EVALUATOR-FACING free-form guidance; the agent prompt may
+        # emit it as a structured object, but the `tasks.answer` column is TEXT
+        # and the schema validator expects a string — serialize a dict to JSON
+        # so storage + validation agree.
+        _answer = task_data.get("answer", "")
+        if not isinstance(_answer, str):
+            _answer = json.dumps(_answer, indent=2, ensure_ascii=False)
         draft_payload = {
             "created_at": created_at.isoformat(),
             "pre_requisites": format_pre_requisites(task_data.get("pre_requisites", "")),
-            "answer": task_data.get("answer", ""),
+            "answer": _answer,
             "criterias": task_data["criterias"],
             "is_deployed": False,
             "task_blob": {
@@ -647,30 +697,55 @@ def create_task(
                 "short_overview": draft_payload["task_blob"]["short_overview"],
             }
 
+            # Ready-gate validation (main's task_validation, via the repository
+            # seam): validate the fully-assembled task BEFORE flipping to ready.
+            # A malformed task raises TaskValidationError, which the build
+            # try/except below turns into mark_task_failed + repo cleanup, so a
+            # bad task never reaches status='ready'. Agent tasks pass unchanged.
+            readme_content = parse_markdown_to_json(code_data.get("README.md", ""))
+            # Guard the regression where a repo ships an empty README (the
+            # parser returns blank sections when README.md lacks the
+            # `## Task Overview` / `## Objectives` headers — historically the
+            # case for agent tasks). Surface it loudly so a context-free readme
+            # never quietly reaches candidates.
+            if not (readme_content.get("task_overview") or "").strip() or not readme_content.get("objectives"):
+                logger.warning(
+                    "Task %s README is missing Task Overview/Objectives — "
+                    "readme_content parsed empty (check the generated README.md "
+                    "uses the required '## Task Overview'/'## Objectives' headers).",
+                    task_id,
+                )
+            ready_payload = {
+                "created_at": draft_payload["created_at"],
+                "pre_requisites": draft_payload["pre_requisites"],
+                "answer": draft_payload["answer"],
+                "criterias": draft_payload["criterias"],
+                "is_deployed": draft_payload["is_deployed"],
+                "task_blob": ready_task_blob,
+                "is_shared_infra_required": is_shared_infra_required,
+                "readme_content": readme_content,
+                "eval_info": eval_info,
+                "solutions": solutions_for_db,
+            }
+            validate_task(ready_payload, env=env)
+            logger.info("Task %s passed ready-gate schema validation", task_id)
+
             ready_row = mark_task_ready(
                 task_id,
                 env=env,
                 task_blob=ready_task_blob,
                 solutions=solutions_for_db,
                 eval_info=eval_info,
-                readme_content=parse_markdown_to_json(code_data.get("README.md", "")),
+                readme_content=readme_content,
                 is_shared_infra_required=is_shared_infra_required,
             )
 
-            # task_competencies junction — non-fatal on individual failure.
-            sb = init_supabase(env)
-            for criteria in task_data["criterias"]:
-                competency_id = criteria.get("competency_id")
-                if competency_id:
-                    try:
-                        sb.table("task_competencies").insert({
-                            "task_id": task_id,
-                            "competency_id": competency_id,
-                        }).execute()
-                    except Exception as e:
-                        logger.error(
-                            f"Failed to insert task-competency relationship: {str(e)}"
-                        )
+            # task_competencies junction — non-fatal per row (DAO handles errors).
+            insert_task_competencies(
+                task_id,
+                [c.get("competency_id") for c in task_data["criterias"] if c.get("competency_id")],
+                env=env,
+            )
 
             task_data.update(ready_row)
             task_data["task_id"] = task_id

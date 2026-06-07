@@ -1,5 +1,6 @@
 import json
 import os
+import re
 
 import httpx
 import openai
@@ -235,6 +236,71 @@ def _eval_failure(reason: str) -> dict:
     }
 
 
+# Eval response key (pass + blocking_issues) ordering in EVAL_RESPONSE_SCHEMA is
+# fixed: pass, then blocking_issues, THEN the long suggestions array. So a
+# response truncated by a reasoning-model output cap typically loses
+# `suggestions` but keeps `pass` + `blocking_issues`. F11: such a truncation
+# made `json.loads` raise and the whole eval defaulted to FAIL — silently
+# failing genuinely-passing tasks. _salvage_eval_fields recovers the verdict.
+def _salvage_eval_fields(raw: str | None) -> dict | None:
+    """Best-effort recovery of pass + blocking_issues from a truncated/partial
+    eval response. Conservative: only salvages a PASS when blocking_issues is
+    clearly empty; if blockers are present (or unparseable) it returns a fail so
+    a real blocker is never silently dropped. Returns None when even `pass`
+    can't be located (caller then falls back to a hard failure)."""
+    if not raw:
+        return None
+    m = re.search(r'"pass"\s*:\s*(true|false)', raw)
+    if not m:
+        return None
+    pass_v = m.group(1) == "true"
+    bm = re.search(r'"blocking_issues"\s*:\s*\[([^\]]*)', raw)
+    blockers_text = bm.group(1).strip() if bm else ""
+    if blockers_text:
+        return {
+            "pass": False,
+            "blocking_issues": ["eval flagged blocking issue(s); response truncated"],
+            "suggestions": [],
+        }
+    return {"pass": pass_v, "blocking_issues": [], "suggestions": []}
+
+
+def _parse_eval_response(raw_response: str | None, response, kind: str) -> dict:
+    """Parse + normalize an eval response, robust to reasoning-model truncation.
+
+    Logs the response status, length, and the PARSED verdict (pass + blocker
+    count) so a flaky verdict is diagnosable from the log alone. On a JSON parse
+    failure, attempts :func:`_salvage_eval_fields` before giving up."""
+    status = getattr(response, "status", None)
+    if status and status != "completed":
+        logger.warning(
+            "%s eval response status=%s incomplete_details=%s len=%d",
+            kind, status, getattr(response, "incomplete_details", None),
+            len(raw_response or ""),
+        )
+    try:
+        result = _normalize_eval_response(json.loads(raw_response))
+        logger.info(
+            "%s eval parsed: pass=%s blockers=%d (len=%d)",
+            kind, result["pass"], len(result["blocking_issues"]),
+            len(raw_response or ""),
+        )
+        return result
+    except json.JSONDecodeError as e:
+        logger.error(
+            "%s eval JSON parse failed: %s | len=%d | full=%r",
+            kind, e, len(raw_response or ""), raw_response,
+        )
+        salvaged = _salvage_eval_fields(raw_response)
+        if salvaged is not None:
+            logger.warning(
+                "%s eval: salvaged pass=%s from truncated/partial response",
+                kind, salvaged["pass"],
+            )
+            return _normalize_eval_response(salvaged)
+        return _eval_failure(f"Failed to parse {kind} evaluation response")
+
+
 # Cap on how much scenarios text we feed into the eval critic. The full
 # scenarios list can be quite long (7 scenarios × ~600 chars each ≈ 4 KB);
 # trim to keep the eval prompt bounded. Each scenario gets truncated to
@@ -325,6 +391,21 @@ covered by the 6 criteria above (e.g. "could be more challenging",
 "should test more concepts", "missing X feature"), that is a SUGGESTION,
 not a BLOCKER. Put it in suggestions. The task ships when the 6 criteria
 are met, even if it is not the "best possible" version of itself.
+
+CRITICAL GUARDRAIL — STUBS ARE THE TASK (the repo SHIPS incomplete BY DESIGN):
+This is a "build-it" assessment: the repo is intentionally unfinished. Candidate
+stub functions that `raise NotImplementedError`, invariant tests that fail until
+those stubs are filled, and a graph/agent that errors when invoked because a stub
+sits on the execution path are ALL INTENTIONAL — they ARE the task, not defects.
+NEVER write a blocking_issue such as "X raises NotImplementedError", "this
+prevents completion", "the invariant tests cannot run", or "the graph crashes on
+invoke" — a candidate implementing the stubs is precisely the assessment, and
+multi-stub tasks (e.g. a supervisor + a router + an arbitrator) are fine at this
+level when they form ONE coherent senior decision. Judge the task as if the
+candidate's work were done: it is correct when the scaffold loads (readiness /
+--selfcheck passes by IMPORTING, not calling, the stubs) AND a correct
+implementation of the stub(s) WOULD satisfy the invariants. Do not penalize a
+task for being unsolved — that is the candidate's job.
 
 TASK JSON:
 {task_json}
@@ -484,6 +565,7 @@ def llm_task_eval(task_json, proficiency, yoe, time_constraint, openai_client, m
             model=EVAL_MODEL,
             input=messages,
             reasoning={"effort": "low"},
+            max_output_tokens=16000,
             text={
                 "format": {
                     "type": "json_schema",
@@ -502,11 +584,7 @@ def llm_task_eval(task_json, proficiency, yoe, time_constraint, openai_client, m
 
         logger.info(f"Raw LLM task eval response: {raw_response[:200]}...")
 
-        return _normalize_eval_response(json.loads(raw_response))
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse task eval JSON response: {str(e)}")
-        logger.error(f"Raw response: {raw_response}")
-        return _eval_failure("Failed to parse evaluation response")
+        return _parse_eval_response(raw_response, response, "task")
     except Exception as e:
         logger.error(f"Unexpected error in task evaluation: {str(e)}")
         return _eval_failure(f"Evaluation error: {str(e)}")
@@ -545,6 +623,7 @@ def llm_code_eval(code_data, task_description, openai_client, model,
             model=EVAL_MODEL,
             input=messages,
             reasoning={"effort": "low"},
+            max_output_tokens=16000,
             text={
                 "format": {
                     "type": "json_schema",
@@ -563,11 +642,7 @@ def llm_code_eval(code_data, task_description, openai_client, model,
 
         logger.info(f"Raw LLM code eval response: {raw_response[:200]}...")
 
-        return _normalize_eval_response(json.loads(raw_response))
-    except json.JSONDecodeError as e:
-        logger.error(f"Failed to parse code eval JSON response: {str(e)}")
-        logger.error(f"Raw response: {raw_response}")
-        return _eval_failure("Failed to parse code evaluation response")
+        return _parse_eval_response(raw_response, response, "code")
     except Exception as e:
         logger.error(f"Unexpected error in code evaluation: {str(e)}")
         return _eval_failure(f"Code evaluation error: {str(e)}")

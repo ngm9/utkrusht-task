@@ -1,14 +1,14 @@
-# task_generation_prompts/Advanced/production_agent_engineering_advanced_prompt/production_agent_engineering_advanced_prompt.py
+# task_generation_prompts/Intermediate/production_agent_engineering_intermediate_prompt/production_agent_engineering_intermediate_prompt.py
 #
 # CURATED task-generation prompt module for AI-agent BUILD-IT tasks.
-# Competency: "Production Agent Engineering"  ·  Proficiency: ADVANCED
+# Competency: "Production Agent Engineering"  ·  Proficiency: INTERMEDIATE
 #
 # DROP-IN for infra/utils.py::_build_prompt_registry. The loader filesystem-walks
-# task_generation_prompts/<Level>/<slug>/<slug>.py (level "Advanced" IS in the
+# task_generation_prompts/<Level>/<slug>/<slug>.py (level "Intermediate" IS in the
 # walk: infra/utils.py:55) and calls registry.update(PROMPT_REGISTRY). Contract
 # (do NOT change without updating the loader):
 #   * Export a top-level dict named exactly  PROMPT_REGISTRY.
-#   * Key it exactly "Production Agent Engineering (ADVANCED)" — the
+#   * Key it exactly "Production Agent Engineering (INTERMEDIATE)" — the
 #     "<name> (<PROFICIENCY-UPPER>)" string get_task_prompt_by_technology_stack
 #     builds + sorts from the competency (infra/utils.py:449-451).
 #   * Value is a LIST of prompt strings, replayed as sequential user turns
@@ -32,7 +32,7 @@
 # competencies — the gen-LLM must NOT emit it. is_task_hollow requires only
 # title-or-name + question + code_files (evaluator.py:78-86).
 
-PROMPT_PRODUCTION_AGENT_ENGINEERING_ADVANCED_CONTEXT = """
+PROMPT_PRODUCTION_AGENT_ENGINEERING_INTERMEDIATE_CONTEXT = """
 Let me provide you with some context about the company and role.
 
 Company Context:
@@ -51,14 +51,19 @@ employer's domain. You are generating an assessment for a senior engineer who ha
 actually shipped production agents — calibrate accordingly.
 """
 
-PROMPT_PRODUCTION_AGENT_ENGINEERING_ADVANCED_INPUT_AND_ASK = """
-You are generating ONE realistic, ADVANCED "build-it" assessment task for a
-Production Agent Engineering candidate. The candidate clones a real agent
+PROMPT_PRODUCTION_AGENT_ENGINEERING_INTERMEDIATE_INPUT_AND_ASK = """
+You are generating ONE realistic, INTERMEDIATE "build-it" assessment task
+for a Production Agent Engineering candidate. The candidate clones a real agent
 repository, sets their own API key in `.env`, runs `./run.sh`, and writes
-~100-300 lines of code inside it using real agent frameworks. This is a coding
+~80-150 lines of code inside it using real agent frameworks. This is a coding
 session, NOT a write-a-memo / essay / quiz exercise. Debugging is just a
 build-it variant with a planted bug; the skill under test is architecture and
 operational JUDGMENT, never framework trivia.
+
+CALIBRATION: this sits ABOVE a standard intermediate task (it probes a genuine
+senior decision, not just framework wiring) but BELOW a full senior-IC advanced
+task — scope it to ONE clear senior decision (at most two tightly-related ones),
+never a sprawling multi-subsystem platform.
 
 INPUT COMPETENCIES:
 {competencies}
@@ -70,7 +75,7 @@ INPUT REAL-WORLD SCENARIOS:
 {real_world_task_scenarios}
 
 TIME EXPECTATION:
-The task must fit in {minutes_range} for a strong ADVANCED candidate. Budget it
+The task must fit in {minutes_range} for a strong INTERMEDIATE candidate. Budget it
 as: ~5-10 min setup (clone, .env, ./run.sh) + ~5-15 min reading/experimenting +
 20-30 min writing code. Hold "candidate writes" to 1-2 stub files, roughly
 60-150 lines, isolating ONE senior decision.
@@ -78,8 +83,7 @@ as: ~5-10 min setup (clone, .env, ./run.sh) + ~5-15 min reading/experimenting +
 QUESTION CALIBRATION SIGNAL:
 {question_prompt}
 
-CORE JOB — SCENARIO -> AGENT REPO.
-Each scenario is a free-form string with fields like:
+CORE JOB — BUILD ONE AGENT REPO from these fields:
   **Stack:** ...            (frameworks + provider, e.g. LangGraph + LiteLLM)
   **Domain:** ...           (the business setting)
   **Candidate writes:** ... (the stub file(s) the candidate fills)
@@ -87,20 +91,34 @@ Each scenario is a free-form string with fields like:
   **Invariants:** ...       (what a correct submission must satisfy)
   **Senior signal:** ...    (the one senior decision being probed)
 
-PICK EXACTLY ONE scenario and translate it FIELD-BY-FIELD into a runnable repo
-that is deliberately BROKEN as described:
+SCENARIO HANDLING — READ CAREFULLY:
+- If `REAL-WORLD SCENARIOS` above contains a concrete scenario (anything other
+  than "(none provided)"), you MUST BUILD THAT SCENARIO. Adopt its Stack, Domain,
+  Provided-broken, Candidate-writes, Invariants, and Senior-signal FIELD-BY-FIELD.
+  The provided scenario IS the spec — do NOT invent a different domain, a
+  different stack, or a different bug archetype, and do NOT fall back to a generic
+  "bound a runaway loop + cost ceiling" task when the scenario asks for something
+  else (e.g. supervisor/router orchestration, tool-schema/RAG routing, context
+  budgeting/memory). Honor the COMPETENCY ARCHETYPE block below.
+- ONLY when `REAL-WORLD SCENARIOS` is empty / "(none provided)" may you design
+  your own realistic domain + senior bug archetype — and even then it MUST fit the
+  COMPETENCY ARCHETYPE below.
+
+Translate the chosen fields FIELD-BY-FIELD into a runnable repo that is
+deliberately BROKEN:
   - **Stack**       -> the framework set + the files you generate against it
-  - **Domain**      -> the business setting (lock to it; never the employer's)
+  - **Domain**      -> the business setting (a self-standing product; never the
+                       employer's industry)
   - **Provided broken** -> the planted defect(s) in the working files
   - **Candidate writes** -> the NotImplementedError stub file(s)
   - **Invariants**  -> the candidate-facing pytest tests under invariants/
   - **Senior signal** -> the single decision the stub isolates
-Do not blend scenarios, invent a domain, or drift to the employer's domain.
-Honor the scenario's pinned **Stack** — the candidate is told the framework up
-front, so generate against that exact framework set.
+Keep the task to ONE coherent domain; do not drift into the employer's domain.
+Honor the pinned **Stack** exactly — the candidate is told the framework up front.
 
 Before generating, briefly internalize:
-1. Which single scenario you picked and why it suits an ADVANCED agent task.
+1. The scenario you are building (the provided one if present, else your own) and
+   why it fits this competency's archetype + an INTERMEDIATE agent task.
 2. The agent's TASK FAMILY (web service / agent-as-service / agent CLI-or-loop /
    agent-as-library / backing-store / graph-orchestration) — this dictates the
    run.sh readiness probe.
@@ -108,9 +126,9 @@ Before generating, briefly internalize:
    stubbed to create the senior decision.
 """
 
-PROMPT_PRODUCTION_AGENT_ENGINEERING_ADVANCED_INSTRUCTIONS = """
+PROMPT_PRODUCTION_AGENT_ENGINEERING_INTERMEDIATE_INSTRUCTIONS = """
 ## GOAL
-Generate ONE ADVANCED Production Agent Engineering "build-it" task: a real,
+Generate ONE INTERMEDIATE Production Agent Engineering "build-it" task: a real,
 runnable agent repository that is deliberately incomplete. It ships broken agent
 code plus candidate stubs that raise `NotImplementedError`, and the candidate
 makes it production-safe by filling those stubs and fixing the planted flaws.
@@ -192,21 +210,24 @@ parseable, quality >= baseline) ship as a CANDIDATE-FACING self-check under
 invariants/ for the candidate's own feedback — NOT as part of the readiness exit
 code, and NOT as a generation-time pytest gate.
 
-## SCENARIO LOCK (mandatory)
-- Pick EXACTLY ONE scenario from `real_world_task_scenarios`. The task's BUSINESS
-  DOMAIN must match it. Do NOT invent a new domain.
-- The broken implementation and the candidate's required work come from that
-  chosen scenario, adapted to Production Agent Engineering.
-- `organization_background` describes who is administering the assessment — it is
-  NOT automatically the task domain.
-- If you drift into a domain not in `real_world_task_scenarios`, STOP and restart
-  with one listed scenario.
-- If `real_world_task_scenarios` is empty or "(none provided)", explicitly state
-  which generic agent domain you picked and why. Do not silently default to the
-  employer's domain.
+## SCENARIO SOURCE
+- If `real_world_task_scenarios` contains a concrete scenario, it is the SPEC:
+  build it field-by-field (Stack / Domain / Provided-broken / Candidate-writes /
+  Invariants / Senior-signal). Do NOT swap the domain, stack, or bug archetype,
+  and do NOT collapse it into a generic loop+cost task — match what it asks and
+  the COMPETENCY ARCHETYPE below.
+- ONLY if it is empty / "(none provided)" do you design your own: pick ONE
+  concrete domain (e.g. fintech, healthcare, logistics, travel, e-commerce,
+  devtools) and ONE senior bug archetype that FITS THE COMPETENCY ARCHETYPE
+  below; state in a single line which domain + archetype you chose.
+- `organization_background` describes who is ADMINISTERING the assessment — do
+  NOT make the employer's industry the task domain. The domain must stand on its
+  own as a realistic product, distinct from the employer.
+- When designing your own, prefer a domain NOT already covered by any EXISTING
+  TASKS listed in `real_world_task_scenarios` (the de-dup block) — keep diverse.
 
 ## COMPETENCY SCOPE (center the chosen scenario on a senior decision drawn here)
-Production Agent Engineering at ADVANCED covers the full agent lifecycle:
+Production Agent Engineering at INTERMEDIATE covers the full agent lifecycle:
 - Architecture & orchestration: API layer, orchestrator, tools, workers, queues,
   datastores; ReAct, planner-executor, reflection/repair, multi-agent.
 - Multi-step planning, task decomposition, bounded reasoning loops.
@@ -223,9 +244,10 @@ Production Agent Engineering at ADVANCED covers the full agent lifecycle:
   verdicts, agreement checks.
 - Performance & cost: latency budgets, caching, parallel vs sequential tool
   calls, multi-model routing, per-task cost ceilings.
-Combine SEVERAL of these into ONE coherent build-it item (e.g. bounded loop +
-pre-call cost ceiling + router fallback; OR tool-arg validation + idempotency +
-compensation; OR retrieval freshness + memory contamination + escalation). The
+Pick ONE senior decision (at most two tightly-related ones) for a coherent
+build-it item (e.g. a bounded loop + a pre-call cost ceiling; OR tool-arg
+validation + a graceful fallback; OR relevance-keyed recall + memory isolation).
+Do NOT stack three-plus separate concerns — that tips into advanced sprawl. The
 senior signal is JUDGMENT not syntax: router fallback (not a try/except swallow),
 cost enforced BEFORE the call, bounded loop, relevance-keyed recall (not
 dump-all), routing with a confidence escape hatch (not keyword if/else).
@@ -265,8 +287,10 @@ A typical CLI/loop build-it repo:
 - `requirements.txt`, `.env.example` (e.g. `ANTHROPIC_API_KEY=` / `OPENAI_API_KEY=`).
 - `docker-compose.yml` ONLY if the task has a backing store (vector DB / tool
   server); if present, run.sh uses `docker compose up -d --wait` + a round-trip.
-- `README_task.md` with the candidate brief (states WHAT is broken + the
-  invariants, never HOW to fix).
+- `README.md` — the candidate-facing repo readme in the REQUIRED four-section
+  format (see "## README.md REQUIREMENTS"): system context + outcome-level
+  objectives. It must NOT name the stub files/functions, must NOT restate the
+  invariants as a checklist, and must NOT describe the fix.
 Include only files the candidate genuinely needs.
 
 ## DO NOT LEAK THE REFERENCE ANSWER INTO THE CANDIDATE REPO
@@ -278,7 +302,7 @@ The `code_files` are CANDIDATE-FACING and must be solution-free:
 - The repo must be runnable (`./run.sh` exits 0) but the graded behavior stays
   incomplete/incorrect until the candidate finishes.
 - The full solution, root causes, and expected fixes go ONLY in the `answer`
-  field (evaluator-facing), never in `code_files`, `README_task.md`, or comments.
+  field (evaluator-facing), never in `code_files`, `README.md`, or comments.
 
 ## OUTPUT ENVELOPE — EMIT EXACTLY THESE TOP-LEVEL KEYS (this is paramount)
 Output a SINGLE raw JSON object with EXACTLY these keys and no others:
@@ -305,17 +329,50 @@ pipeline injects it. Output raw JSON only — no markdown fences, no prose aroun
 `"question"` must read like a real ticket / incident-channel message from a
 teammate, and must:
 - open with a short realistic work-context message,
-- state the symptom (what's broken / unbounded / crashing),
-- name which file(s) the candidate must write and which are provided,
-- specify the concrete deliverables and the INVARIANTS the solution must satisfy
-  (e.g. "loop terminates in <= 6 model calls", "on a primary-model 5xx, fall back
-  via the router — not a swallowed try/except", "projected per-task cost <= $0.05
-  enforced BEFORE the call", ">= 8/10 cases get a non-empty on-policy result"),
-- state constraints (preserve behavior, respect safety policy, stay within the
-  latency/cost budget),
+- state the SYMPTOMS (what's observably broken / unbounded / crashing / costly in
+  production) — describe the failure, not the fix,
+- frame the high-level ask in business terms (what "fixed" looks like: "stops
+  running away", "stays within budget", "degrades gracefully when the model is
+  down") — do NOT name the stub files/functions, do NOT enumerate implementation
+  steps, and do NOT restate the invariant thresholds as a checklist. The candidate
+  DISCOVERS the stubs (they raise NotImplementedError) and the precise acceptance
+  bar (in `invariants/test_*.py`) themselves — that diagnosis is the senior signal,
+- state real constraints (preserve behavior, respect safety policy, stay within
+  the latency/cost budget),
 - tell the candidate to put their key in `.env` and run `./run.sh` (the first
   real model call happens on THEIR key),
 - contain NO hints (hints go only in the `hints` field).
+
+## README.md REQUIREMENTS — the candidate-facing repo readme
+`README.md` MUST use EXACTLY these four markdown section headers, in this order
+(the pipeline parses them into `readme_content`; ANY other shape parses to an
+EMPTY readme — this is non-negotiable):
+
+`## Task Overview` — a short context paragraph: what the system is (product +
+domain), how it's used, and what is OBSERVABLY going wrong in production (the
+symptoms). Frame the objective at a high level. Do NOT name the stub
+files/functions, do NOT say which functions to implement, do NOT list the
+invariants, do NOT describe the fix.
+
+`## Objectives` — 3-5 bullets describing WHAT must be true when the work is done:
+OUTCOMES, never instructions. Describe the "what", NEVER the "how".
+  GOOD: "- The agent stays within its per-task cost budget even under load."
+  BAD:  "- Implement enforce_budget() in agent/policy.py to block >$0.05 calls."
+Do NOT enumerate files, functions, or invariant thresholds as a checklist — the
+candidate discovers the stubs (NotImplementedError) and the right approach
+themselves; that diagnosis IS the senior signal.
+
+`## How to Verify` — 2-4 bullets on how the candidate checks their OWN work: put
+the API key in `.env`, run `./run.sh` (readiness), then run the provided
+`invariants/` tests and exercise the fixtures. Verification steps only — never
+the solution.
+
+`## Helpful Tips` — 2-3 light, non-revealing pointers (e.g. "trace the control
+flow in the provided graph before changing it"). Never name the fix, the function
+bodies, or the specific library calls that give away the approach.
+
+The README is CONTEXT + OUTCOMES, never a how-to and never a deliverables list.
+The reference fix, root causes, and expected approach live ONLY in `answer`.
 
 ## ANSWER REQUIREMENTS (evaluator-facing, never shipped to the candidate)
 `"answer"` summarizes: the root cause(s), the expected shape of a strong fix, the
@@ -331,19 +388,22 @@ up. Failures in the evidence must be plausible consequences of the planted flaws
 exposing the problem indirectly without handing over the answer. Include the
 single discriminating fixture that separates a senior fix from a shortcut.
 
-## DIFFICULTY CALIBRATION (ADVANCED)
-Combine several advanced concerns into ONE coherent work item. The candidate
-writes ~100-300 lines using real frameworks — never an entire platform from
-scratch. Solvable within {minutes_range}.
+## DIFFICULTY CALIBRATION (INTERMEDIATE)
+Isolate ONE senior decision (at most two tightly-related ones) into a coherent
+work item — NOT several stacked concerns and NOT a whole platform. The candidate
+writes ~80-150 lines using real frameworks. Pitch it harder than a standard
+intermediate task (it must probe real production judgment) but easier than a
+full senior-IC advanced task (no multi-subsystem sprawl). Solvable within
+{minutes_range}.
 
 ## REQUIRED OUTPUT EXAMPLE SHAPE (schema only — replace all values; every literal
 ## brace inside file contents must be escaped as the candidate needs)
 {{
   "name": "harden-support-reply-agent",
   "title": "Harden Support Reply Agent with Model Fallback and Cost Ceiling",
-  "question": "From: on-call channel\\n\\nThis support agent runs away on an unbounded loop and hard-crashes when the primary model 5xxes...\\n\\nYour task: bound the loop in agent/graph.py, implement enforce_budget() and choose_model() in agent/policy.py, add LiteLLM fallback...\\n\\nInvariants your fix must satisfy: loop terminates in <= 6 model calls; on a primary 5xx fall back via the router; projected per-ticket cost <= $0.05 enforced BEFORE the call; >= 8/10 tickets get a non-empty on-policy reply.\\n\\nPut your key in .env and run ./run.sh. The first real model call happens on YOUR key.",
+  "question": "From: on-call channel\\n\\nOur support reply agent is melting down in production: on some tickets it runs away and never returns, it has burned a chunk of our model budget on single tickets, and when the primary model 5xxes it hard-crashes instead of recovering. We need it production-safe before the next on-call rotation.\\n\\nMake it stop running away, keep it within a sane per-ticket budget, and let it ride out a primary-model outage gracefully while still returning on-policy replies. Clone the repo, set your key in .env, and run ./run.sh — the first real model call happens on YOUR key. (Read the code and the invariants/ tests to find what's incomplete.)",
   "code_files": {{
-    "README_task.md": "...what is broken + deliverables + invariants; NO fix...",
+    "README.md": "## Task Overview\\n<product + domain context, how it's used, and the production symptoms; NO file names, NO invariants, NO fix>\\n\\n## Objectives\\n- <outcome: what must be true when done>\\n- <another outcome — the what, never the how>\\n\\n## How to Verify\\n- Put your API key in .env and run ./run.sh\\n- Run the invariants/ tests and exercise the fixtures to check your work\\n\\n## Helpful Tips\\n- <light, non-revealing pointer>\\n",
     "agent/__main__.py": "import sys, os, json\\nfrom pathlib import Path\\n...selfcheck(): static checks; key-gated _ping_model()...",
     "agent/graph.py": "# LangGraph graph — loop node UNBOUNDED (candidate bounds it)\\n...",
     "agent/policy.py": "def enforce_budget(...):\\n    raise NotImplementedError(\\"enforce a per-ticket cost ceiling before the model call\\")\\n\\ndef choose_model(...):\\n    raise NotImplementedError(\\"select primary then fall back via the router\\")\\n",
@@ -376,23 +436,115 @@ scratch. Solvable within {minutes_range}.
 - Output raw JSON only — exactly the keys: name, title, question, code_files,
   answer, definitions, hints, outcomes, pre_requisites, short_overview. Do NOT
   emit `criterias` (the pipeline injects it).
-- Pick EXACTLY ONE scenario; honor its pinned Stack; map its fields field-by-field.
+- Use ONE coherent domain (adopt a listed scenario OR design your own); if you
+  adopt one, honor its pinned Stack and map its fields field-by-field.
 - Ship the defect UNFIXED + candidate stubs raising NotImplementedError in
   code_files; the reference fix lives ONLY in `answer`.
 - The run.sh readiness probe must match the TASK FAMILY and obey all five
   readiness invariants (no stub call, no candidate-work dependency, LLM-free at
   the gate, key-gated ping, never run the unbounded loop / hard-require the key).
 - Invariants ship as candidate-facing pytest tests, never as a generation gate.
+- README.md MUST use the four headers (## Task Overview / ## Objectives / ## How
+  to Verify / ## Helpful Tips) — context + OUTCOMES only; no file/function names,
+  no invariant checklist, no fix. (Any other shape → empty readme_content.)
 - `outcomes` must include one bullet on production-clean code (naming, error
   handling, logging, structure).
 - Never leak the reference answer into code_files.
-- Keep it ADVANCED, build-it, and solvable in {minutes_range}.
+- Keep it INTERMEDIATE, build-it, and solvable in {minutes_range}.
 """
 
+# ──────────────────────────────────────────────────────────────────────────
+# Per-competency ARCHETYPE packs. The base (CONTEXT + INPUT_AND_ASK +
+# INSTRUCTIONS) is shared; this competency-specific block is appended LAST so
+# the generated task matches the COMPETENCY's SHAPE — not a generic "bound a
+# runaway loop + cost ceiling" task for every competency. The base prompt
+# refers to "the COMPETENCY ARCHETYPE block"; these are it. (No {placeholders}
+# here — they pass through str.format() untouched.)
+# ──────────────────────────────────────────────────────────────────────────
+
+_ARCHETYPE_PRODUCTION_AGENT_ENGINEERING = """
+## COMPETENCY ARCHETYPE — Production Agent Engineering
+Center the task on PRODUCTION ROBUSTNESS of a single agent. Valid senior
+decisions: bound an unbounded reasoning/reflection loop; model fallback/routing
+via the LiteLLM router on a primary 5xx; a pre-call cost/budget ceiling; retry +
+idempotency for tool side-effects; structured error handling + observability.
+TASK FAMILY: agent-as-service / agent-CLI / graph. Readiness:
+`python -m agent --selfcheck` (or `curl -sf /health` for a service).
+"""
+
+_ARCHETYPE_MULTI_AGENT_SYSTEMS = """
+## COMPETENCY ARCHETYPE — Multi-Agent Systems
+This task MUST be genuinely MULTI-AGENT: more than one agent coordinated by a
+supervisor/router, OR a crew/pipeline of specialists. The senior decision is
+ORCHESTRATION, not single-agent hardening:
+- intent routing to the right specialist with a CONFIDENCE escape-hatch (route
+  ambiguous requests to a general fallback instead of guessing) — NOT keyword
+  if/else;
+- correct HANDOFF + state threading so a specialist's result flows back out
+  through the supervisor;
+- (or) a crew/pipeline where one agent's output feeds the next, with a real
+  arbitration / tie-break step that is NOT just another LLM call.
+TASK FAMILY: graph-orchestration. Readiness: `build_graph().compile()` resolves
+the whole topology (all specialist nodes import, edges resolve) WITHOUT running
+any node or calling a model.
+HARD RULE: a single-agent "bound the loop + cost ceiling" task does NOT satisfy
+this competency. There MUST be multiple coordinated agents/specialists.
+"""
+
+_ARCHETYPE_TOOL_USE = """
+## COMPETENCY ARCHETYPE — Tool Use for Agents
+Center the task on TOOLS at the boundary. Valid senior decisions:
+- tool-schema correctness (fix broken JSON-Schemas: required, types, enums);
+- argument VALIDATION before dispatch (reject malformed args with a structured
+  error, never pass them through);
+- a tool-call REPAIR loop (feed the structured tool error back to the model so it
+  self-corrects; bound retries; distinguish recoverable vs terminal errors);
+- RAG ROUTING over a large tool catalogue (return only the top-k relevant tools
+  via fastembed, not all-tools-in-context).
+TASK FAMILY: agent-CLI / agent-as-service. Readiness: import the tool modules +
+confirm the catalogue / eval fixtures load; do NOT validate the buggy schemas
+when fixing them IS the candidate's task.
+HARD RULE: the task MUST center on tool definitions / validation / routing /
+repair — NOT a generic loop+cost task.
+"""
+
+_ARCHETYPE_CONTEXT_ENGINEERING = """
+## COMPETENCY ARCHETYPE — Context Engineering
+Center the task on CONTEXT + MEMORY management. Valid senior decisions:
+- a context-budget middleware that counts tokens (tiktoken) and trims/compresses
+  to stay under a prompt-size ceiling while preserving answer quality;
+- relevance-keyed RETRIEVAL (fastembed top-k, scoped to the right tenant/session
+  — NOT dump-the-whole-corpus);
+- long-term MEMORY: recall + write-back with a dedup / staleness / freshness
+  policy (overwrite "address", don't append; drop stale facts);
+- cross-tenant isolation of memory.
+TASK FAMILY: agent-CLI with an IN-PROCESS store — fastembed embeddings are local
+(no server) and memory is a local JSON/SQLite file. STRONGLY PREFER no external
+vector-DB server and NO docker-compose: a docker backing store makes the
+readiness gate fragile (a mis-configured container healthcheck fails the gate).
+Readiness: `python -m agent --selfcheck` — imports the budget / retrieval /
+memory modules, dry-loads the KB + probe fixtures, confirms fastembed loads
+locally; key-free, no services, no docker.
+HARD RULE: the task MUST center on context / memory management — NOT a generic
+loop+cost task.
+"""
+
+# Shared base, replayed as sequential user turns; the per-competency archetype
+# is appended LAST so each competency gets a shape-specialized variant.
+_BASE_INTERMEDIATE = [
+    PROMPT_PRODUCTION_AGENT_ENGINEERING_INTERMEDIATE_CONTEXT,
+    PROMPT_PRODUCTION_AGENT_ENGINEERING_INTERMEDIATE_INPUT_AND_ASK,
+    PROMPT_PRODUCTION_AGENT_ENGINEERING_INTERMEDIATE_INSTRUCTIONS,
+]
+
+_ARCHETYPE_BY_COMPETENCY = {
+    "Production Agent Engineering": _ARCHETYPE_PRODUCTION_AGENT_ENGINEERING,
+    "Multi-Agent Systems": _ARCHETYPE_MULTI_AGENT_SYSTEMS,
+    "Tool Use for Agents": _ARCHETYPE_TOOL_USE,
+    "Context Engineering": _ARCHETYPE_CONTEXT_ENGINEERING,
+}
+
 PROMPT_REGISTRY = {
-    "Production Agent Engineering (ADVANCED)": [
-        PROMPT_PRODUCTION_AGENT_ENGINEERING_ADVANCED_CONTEXT,
-        PROMPT_PRODUCTION_AGENT_ENGINEERING_ADVANCED_INPUT_AND_ASK,
-        PROMPT_PRODUCTION_AGENT_ENGINEERING_ADVANCED_INSTRUCTIONS,
-    ]
+    f"{_competency} (INTERMEDIATE)": _BASE_INTERMEDIATE + [_archetype]
+    for _competency, _archetype in _ARCHETYPE_BY_COMPETENCY.items()
 }

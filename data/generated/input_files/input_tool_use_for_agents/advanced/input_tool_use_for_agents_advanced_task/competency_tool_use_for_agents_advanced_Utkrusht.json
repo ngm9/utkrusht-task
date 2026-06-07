@@ -1,0 +1,11 @@
+[
+    {
+        "competency_id": "8fc4a750-c0b7-414c-a775-937a0c1fa826",
+        "created_at": "2026-06-04T14:30:17.758643+00:00",
+        "proficiency": "ADVANCED",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Tool Use for Agents",
+        "scope": "A person with ADVANCED proficiency in Tool Use for Agents designs, validates, and operates the tool layer of production LLM agents: authoring correct JSON-Schema tool definitions, enforcing argument validation at the boundary, routing among large tool catalogues (including RAG over tools), and handling tool-call failures robustly. They distinguish recoverable from terminal tool errors, build bounded repair loops that feed the structured tool error back to the model for self-correction (not blind retry-same-args), cap retries, and fail gracefully. They instrument tool calls for observability and treat tool schemas + argument validation as a first-class reliability surface.",
+        "long_scope": "ADVANCED Tool Use for Agents covers the full reliability surface of agent tool use: (1) tool schema design — correct JSON-Schema types, required fields, enums vs free-text, and static validation that a schema bug cannot silently break dispatch; (2) function/tool calling mechanics across providers (Anthropic tool use, OpenAI function calling) via LiteLLM; (3) argument validation at the boundary before dispatch; (4) tool routing and RAG over large tool catalogues so only relevant tools enter context; (5) runtime error handling — classifying recoverable vs terminal tool errors, building a bounded repair loop that re-prompts the model WITH the structured error so it self-corrects, capping retries, and failing gracefully rather than crashing; (6) observability of tool calls (which tool, args, outcome, retries). The senior signal is feeding the error back for real self-correction vs blind retry, the recoverable-vs-terminal distinction, and a sane retry bound."
+    }
+]
