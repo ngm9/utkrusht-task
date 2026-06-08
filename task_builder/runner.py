@@ -139,10 +139,12 @@ def run_pipeline_for_brief(brief: TaskBrief, *, run_id: str, emit: EmitFn,
 
         comp_json, bg_json = _locate_input_files(names, level, t0)
 
+        # Thread --env so prod runs write scenarios to the prod DB (the CLI
+        # defaults to dev) — otherwise stage 4 (prod) reads an empty pool.
         scenario_cmd = [
             py, "-m", "generators.scenarios",
             "--competency-file", str(comp_json), "--background-file", str(bg_json),
-            "--count", str(brief.scenario_count), "--append",
+            "--count", str(brief.scenario_count), "--env", env, "--append",
         ]
         for area in brief.focus_areas:
             scenario_cmd += ["--focus-areas", area]

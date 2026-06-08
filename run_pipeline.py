@@ -256,11 +256,14 @@ def main() -> int:
     print(f"    background: {bg_json.relative_to(REPO_ROOT)}")
 
     # --- Stage 2: scenarios -----------------------------------------------
+    # `--env` MUST be threaded here too: generators.scenarios defaults to dev,
+    # so a `--env prod` run would otherwise write scenarios to the dev DB while
+    # stage 4 reads from prod — leaving stage 4 with an empty scenario pool.
     scenario_cmd = [
         py, "-m", "generators.scenarios",
         "--competency-file", str(comp_json),
         "--background-file", str(bg_json),
-        "--count", str(args.count), "--append",
+        "--count", str(args.count), "--env", args.env, "--append",
     ]
     for area in focus_areas:
         scenario_cmd += ["--focus-areas", area]

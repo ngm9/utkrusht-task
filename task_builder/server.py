@@ -4,11 +4,12 @@ A4 + B2 refactor (2026-05-29):
 
 * Conversations are persisted to Supabase (`conversations` table) instead of
   the in-memory ``SESSIONS`` dict — survives a process restart.
-* Generation runs are enqueued onto the ``generation_jobs`` table; an external
-  worker (``python -m infra.jobs.worker``) claims and runs them. The server
-  no longer spawns a thread per run.
-* The SSE endpoint polls the job row + tails the worker's per-stage log
-  file when the workspace path is exposed.
+* Generation runs are recorded in the ``generation_jobs`` table and executed
+  IN-PROCESS by a background daemon thread (``task_builder.jobs.enqueue_job``
+  → ``task_builder.runner``). The heavyweight ``infra.jobs`` queue + external
+  worker were retired in the 2026-06-04 consolidation; this is the lean path.
+* The SSE endpoint polls the job row, which the in-process runner keeps
+  current (stage / status / per-stage log tail).
 
 The chat-bot turn logic, slot validation, and competency lookup remain
 unchanged — those live in ``task_builder.conversation``.
@@ -29,8 +30,7 @@ from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from generators.input_files.generator import init_supabase as _init_competency_supabase
-from infra.jobs import enqueue_job, repository as jobs_repo
-from infra.jobs.models import JobStatus
+from task_builder.jobs import JobStatus, enqueue_job
 from task_builder.conversation import apply_turn, build_bot_client
 from task_builder.conversation_repo import (
     create_conversation,
@@ -281,8 +281,8 @@ def generate(req: GenerateRequest) -> dict:
     """Enqueue a pipeline run for a session whose brief is complete.
 
     Returns the `job_id` (which becomes the SSE stream key). The actual
-    work happens in a worker process — this endpoint never blocks on the
-    pipeline.
+    work runs in an in-process background thread (task_builder.jobs) — this
+    endpoint never blocks on the pipeline.
     """
     if req.env not in ("dev", "prod"):
         raise HTTPException(status_code=400, detail="env must be 'dev' or 'prod'")
