@@ -54,6 +54,7 @@ from generators.task.evaluator import (
     is_task_hollow,
     run_evaluations,
 )
+from generators.task.expected_ports import build_expected_ports
 from generators.task.gate import GateOutcome, run_gate_for_attempt
 from generators.task.repository import (
     TaskValidationError,
@@ -613,6 +614,19 @@ def create_task(
             },
             "is_shared_infra_required": is_shared_infra_required,
             "task_type": ["BUILD"],
+            # Pin the LLM classifier's chosen template as an IMMUTABLE per-task
+            # snapshot. The candidate app flags E2B-vs-droplet on this column and
+            # boots this image; the teardown DAG picks its kill path from it. It
+            # must NOT auto-follow a later re-classification — the task was built
+            # + gated against exactly this template. `match.template_id` is None
+            # only on no_match (unsupported combo). The classifier only returns
+            # template_ids from active built templates, so this can't dangle.
+            "template_id": match.template_id if match else None,
+            # Sandbox UI tabs, derived deterministically from the generated
+            # docker-compose.yml + run.sh. Written at draft time (insert is a
+            # raw payload insert) so the row carries it even if the build fails;
+            # mark_task_ready only patches other fields, leaving this intact.
+            "expected_ports": build_expected_ports(code_data),
         }
         # Draft→ready lifecycle (branch design): insert a draft row first so a
         # row survives partial artifact-build failure; mark_task_ready patches
