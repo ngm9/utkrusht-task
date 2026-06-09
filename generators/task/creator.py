@@ -596,6 +596,14 @@ def create_task(
         _answer = task_data.get("answer", "")
         if not isinstance(_answer, str):
             _answer = json.dumps(_answer, indent=2, ensure_ascii=False)
+        # `hints` is a single TEXT field — the candidate app's model treats it as
+        # string-or-null, NEVER a list. If the generator emits a bullet list,
+        # join it into a string so storage + the str schema agree.
+        _hints = task_data.get("hints", "")
+        if isinstance(_hints, list):
+            _hints = "\n".join(
+                f"- {h}" for h in _hints if isinstance(h, str) and h.strip()
+            )
         draft_payload = {
             "created_at": created_at.isoformat(),
             "pre_requisites": format_pre_requisites(task_data.get("pre_requisites", "")),
@@ -605,7 +613,7 @@ def create_task(
             "task_blob": {
                 "title": task_data.get("title", "") or task_data.get("name", ""),
                 "definitions": task_data.get("definitions", {}),
-                "hints": task_data.get("hints", ""),
+                "hints": _hints,
                 # resources patched in by mark_task_ready once repos exist.
                 "resources": {},
                 "outcomes": format_outcomes(task_data.get("outcomes", "")),

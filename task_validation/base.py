@@ -66,37 +66,18 @@ class TaskBlob(BaseModel):
 
     title: str
     definitions: Dict[str, str]
-    hints: str | List[str]
+    hints: str
     resources: Dict[str, str]
     outcomes: List[str]
     question: str
     short_overview: List[str]
 
-    @field_validator("title", "question")
+    @field_validator("title", "hints", "question")
     @classmethod
     def not_empty(cls, v: str) -> str:
         if not v or not v.strip():
             raise ValueError("must not be empty")
         return v
-
-    @field_validator("hints")
-    @classmethod
-    def hints_not_empty(cls, v: "str | List[str]") -> "str | List[str]":
-        # hints is a single string in the coding pipeline (the common case),
-        # but agent build-it tasks render hints as a list of bullet strings.
-        # Accept either shape; reject empty/blank in both.
-        if isinstance(v, str):
-            if not v.strip():
-                raise ValueError("must not be empty")
-            return v
-        if isinstance(v, list):
-            if not v:
-                raise ValueError("must not be an empty list")
-            for item in v:
-                if not isinstance(item, str) or not item.strip():
-                    raise ValueError("every hint entry must be a non-empty string")
-            return v
-        raise ValueError("must be a string or a list of strings")
 
     @field_validator("definitions")
     @classmethod
