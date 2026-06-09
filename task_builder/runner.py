@@ -10,11 +10,11 @@ from typing import Callable
 from run_pipeline import (
     REPO_ROOT,
     RUNS_DIR,
-    SCENARIOS_FILE,
     _locate_input_files,
     _pick_python,
     _run_stage,
     _summarise_task_stage,
+    scenarios_file_for,
 )
 from task_builder.log_tail import StageLogTailer
 from task_builder.slots import TaskBrief
@@ -139,10 +139,12 @@ def run_pipeline_for_brief(brief: TaskBrief, *, run_id: str, emit: EmitFn,
 
         comp_json, bg_json = _locate_input_files(names, level, t0)
 
+        # Thread --env so prod runs write scenarios to the prod DB (the CLI
+        # defaults to dev) — otherwise stage 4 (prod) reads an empty pool.
         scenario_cmd = [
             py, "-m", "generators.scenarios",
             "--competency-file", str(comp_json), "--background-file", str(bg_json),
-            "--count", str(brief.scenario_count), "--append",
+            "--count", str(brief.scenario_count), "--env", env, "--append",
         ]
         for area in brief.focus_areas:
             scenario_cmd += ["--focus-areas", area]
@@ -161,7 +163,8 @@ def run_pipeline_for_brief(brief: TaskBrief, *, run_id: str, emit: EmitFn,
 
         rec = _stage("04_tasks", [
             py, "multiagent.py", "generate_tasks",
-            "-c", str(comp_json), "-b", str(bg_json), "-s", str(SCENARIOS_FILE),
+            "-c", str(comp_json), "-b", str(bg_json),
+            "-s", str(scenarios_file_for(level)),
             "--env", env,
         ])
         outcome = _summarise_task_stage(Path(rec["stdout"]))

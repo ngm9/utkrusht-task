@@ -13,7 +13,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from infra.classifier.runtime import Competency, TaskRuntime
+from infra.classifier.runtime import Competency
+from generators.task.runtime_resolver import TemplateSpec
 from generators.prompts.slugs import (
     COMPETENCY_ALIASES,
     competency_tokens,
@@ -84,7 +85,7 @@ class RetrievalResult:
     """Result of retrieving reference prompt files for a new prompt synthesis."""
     competencies: list[Competency]
     proficiency: str
-    runtime: TaskRuntime | None = None
+    template: TemplateSpec | None = None
     references: list[Path] = field(default_factory=list)
     bootstrap_mode: bool = False
     fallback_level: int = 1
@@ -226,46 +227,35 @@ def _find_tech_family_files(comp: Competency, proficiency: str) -> list[Path]:
     return out
 
 
-def _find_runtime_examples(runtime: TaskRuntime, proficiency: str, limit: int = 2) -> list[Path]:
-    """Find any prompt files at the same level whose filename matches this runtime shape.
+def _find_template_examples(template: TemplateSpec, proficiency: str, limit: int = 2) -> list[Path]:
+    """Find prompt files at the same level whose filename matches the template's shape.
 
-    Heuristic file-content check would be more accurate but slow — use filename hints
-    based on the structured TaskRuntime fields (runtime + datastores + kind).
+    Heuristic file-content check would be more accurate but slow — use filename
+    hints based on the matched template's primary_runtime + capability frameworks
+    + capability datastores.
     """
     candidates = _list_prompt_files(proficiency)
     out: list[Path] = []
-    has_db = bool(runtime.datastores)
-    has_msg = bool(runtime.messaging)
-    db_tokens = tuple(runtime.datastores) + ("postgres", "mongodb", "mysql") if has_db else ()
+    caps = template.capabilities or {}
+    datastores = list(caps.get("datastores") or [])
+    frameworks = [str(f).lower() for f in (caps.get("frameworks") or [])]
+    has_db = bool(datastores)
+    db_tokens = tuple(datastores) + ("postgres", "mongodb", "mysql") if has_db else ()
+    runtime_tok = (template.primary_runtime or "").lower()
     for path in candidates:
         fname = path.name.lower()
         matched = False
-        # app/script + DB → filename mentions the datastore
         if has_db and any(tok in fname for tok in db_tokens):
             matched = True
-        # script-only (python+SQL style) when explicit datastore not bracketed
-        elif runtime.kind == "script" and "sql" in fname and "python" in fname:
+        elif runtime_tok == "python" and "sql" in fname and "python" in fname:
             matched = True
-        # LLM framework
-        elif runtime.kind == "llm" and any(
-            tok in fname for tok in ("langchain", "llamaindex", "rag")
+        elif any(fw in ("langchain", "llamaindex") and fw in fname for fw in frameworks):
+            matched = True
+        elif "vector" in fname and any(
+            fw in ("chroma", "pinecone", "qdrant", "weaviate") for fw in frameworks
         ):
             matched = True
-        elif runtime.kind == "vector_db" and "vector" in fname:
-            matched = True
-        elif has_msg and any(tok in fname for tok in ("kafka", "rabbit")):
-            matched = True
-        elif runtime.kind == "frontend" and any(
-            tok in fname for tok in ("react", "vue", "next", "javascript", "typescript")
-        ):
-            matched = True
-        elif runtime.kind == "mobile" and any(
-            tok in fname for tok in ("flutter", "react_native", "dart")
-        ):
-            matched = True
-        elif runtime.kind == "testing" and runtime.needs_browser and any(
-            tok in fname for tok in ("playwright", "selenium", "cypress")
-        ):
+        elif runtime_tok and runtime_tok in fname:
             matched = True
         if matched:
             out.append(path)
@@ -283,7 +273,7 @@ def retrieve_references(
     proficiency: str,
     max_refs: int = 5,
     exclude_paths: Optional[set[Path]] = None,
-    runtime: TaskRuntime | None = None,
+    template: TemplateSpec | None = None,
 ) -> RetrievalResult:
     """Retrieve reference prompt files via the 6-level fallback ladder.
 
@@ -292,7 +282,7 @@ def retrieve_references(
       2. Same combination at adjacent proficiency.
       3. Per-competency prompts at this level + tech-family siblings.
       4. Per-competency prompts at any level.
-      5. Same-category prompts at this level (generic).
+      5. Same-shape prompts at this level (template-driven, generic).
       6. Competency-agnostic general reference for this proficiency — the
          last-resort skeleton carrying the canonical output JSON schema.
 
@@ -303,13 +293,16 @@ def retrieve_references(
         exclude_paths: optional set of file paths to skip at every ladder step.
             Use this at compile time to prevent the gold file from appearing in
             its own references (causes metric-score leakage during compilation).
+        template: matched ``TemplateSpec`` for the combo. When supplied, Level
+            5 fires to pull template-shape examples; preflight callers (no
+            template yet) skip Level 5.
     """
     proficiency = proficiency.upper()
     excluded: set[Path] = set(exclude_paths or ())
     result = RetrievalResult(
         competencies=competencies,
         proficiency=proficiency,
-        runtime=runtime,
+        template=template,
     )
 
     def _accept(path: Path) -> bool:
@@ -321,14 +314,14 @@ def retrieve_references(
         result.references.append(exact)
         result.notes.append(f"Level 1 (exact match): {exact.name}")
         result.fallback_level = 1
-        # If we have an exact match AND a TaskRuntime was supplied, also pull
-        # runtime-shape examples for style. Skip when no runtime is provided
-        # (e.g. preflight) — Level 5 fires only with a classified runtime.
-        if runtime is not None:
-            for p in _find_runtime_examples(runtime, proficiency, limit=max_refs - 1):
+        # If we have an exact match AND a TemplateSpec was supplied, also pull
+        # template-shape examples for style. Skip when no template is provided
+        # (e.g. preflight) — Level 5 fires only with a matched template.
+        if template is not None:
+            for p in _find_template_examples(template, proficiency, limit=max_refs - 1):
                 if _accept(p):
                     result.references.append(p)
-                    result.notes.append(f"Level 1+ (runtime example): {p.name}")
+                    result.notes.append(f"Level 1+ (template example): {p.name}")
         if len(result.references) >= max_refs:
             return _trim_and_return(result, max_refs)
     elif exact:
@@ -378,14 +371,16 @@ def retrieve_references(
                     result.fallback_level = max(result.fallback_level, 4)
 
     # LEVEL 5 — generic same-shape prompts at this level.
-    # Only fires when the caller passed a classified TaskRuntime (Level 5 needs
-    # the structured fields for filename matching). Without it, skip to Level 6.
-    if runtime is not None and (not result.has_references() or len(result.references) < max_refs):
-        for path in _find_runtime_examples(runtime, proficiency, limit=max_refs):
+    # Only fires when the caller passed a matched TemplateSpec (Level 5 needs
+    # the template's primary_runtime + capabilities for filename matching).
+    # Without it, skip to Level 6.
+    if template is not None and (not result.has_references() or len(result.references) < max_refs):
+        for path in _find_template_examples(template, proficiency, limit=max_refs):
             if _accept(path):
                 result.references.append(path)
                 result.notes.append(
-                    f"Level 5 (runtime example {runtime.runtime}/{runtime.kind}): {path.name}"
+                    f"Level 5 (template example {template.template_id}/"
+                    f"{template.primary_runtime}): {path.name}"
                 )
                 result.fallback_level = max(result.fallback_level, 5)
 

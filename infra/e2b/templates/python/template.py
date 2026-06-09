@@ -13,13 +13,98 @@ serves both the eval gate and candidate-facing deployment (one lineage).
 
 Supersedes the narrower ``python-sql`` template once the eval gate cuts over.
 
+Two module-level exports:
+
+* ``template``  — the imperative :class:`AsyncTemplate` build pipeline.
+* ``manifest``  — the declarative capability sheet read by the LLM classifier
+  and the ``templates`` SQL table. Phase 0 of
+  ``docs/plans/2026-05-27-unified-classifier-template-schema.md``.
+
+The manifest is intentionally hand-aligned with what ``template`` installs —
+keep them in sync.
+
 Build:
-    cd e2b_flow/templates/python
+    cd infra/e2b/templates/python
     python build_dev.py     # -> utkrusht-python-dev
     python build_prod.py    # -> utkrusht-python   (once verified)
 """
 
 from e2b import AsyncTemplate
+
+# Capability sheet — the "menu" of what this template offers.
+#
+# SYNC NOTE — Two categories have DIFFERENT semantics:
+#   capabilities.tools: packages PRE-INSTALLED in the image. Adding a pip
+#     package to the run_cmd chain (below) requires a matching addition here,
+#     and vice versa. The presence in this list is a contract.
+#   capabilities.frameworks / datastores / protocols: the UNIVERSE the LLM
+#     classifier may match against — NOT all pre-installed; the web
+#     frameworks ARE pre-installed but DB servers (postgres, mysql, mongo,
+#     redis) come from the task's own docker-compose.yml, not the template.
+#
+# Nothing in CI enforces this alignment today (CI gate is deferred — see
+# docs/plans/2026-05-27-unified-classifier-template-schema.md §Phase 0).
+# Drift between this dict and the run_cmd chain is currently honor-system.
+#
+# install_cmd / install_verify / install_seconds describe how to install THIS
+# template's primary runtime as a SECONDARY in another sandbox (the polyglot
+# install-at-boot mechanism from e2b-templates.md#polyglot). They do NOT
+# describe what THIS template's build pipeline does — that's the run_cmd
+# chain below.
+manifest = {
+    "template_id": "utkrusht-python",
+    "status": "built",
+    "primary_runtime": "python",
+    "personas": ["backend", "data", "mle"],
+    "eval_methods": ["test_suite"],
+    "capabilities": {
+        "language_versions": {"python": "3.12"},
+        "frameworks": ["fastapi", "flask", "django", "sqlalchemy"],
+        "datastores": ["postgres", "mysql", "mongo", "redis"],
+        "protocols": ["rest", "websocket"],
+        "tools": [
+            "pytest",
+            "pytest-asyncio",
+            "docker",
+            "docker-compose",
+            "git",
+            "jq",
+            "postgresql-client",
+            "default-mysql-client",
+            "psycopg2-binary",
+            "pymongo",
+            "redis",
+            "uvicorn",
+            "gunicorn",
+            "httpx",
+            "requests",
+            "langchain",
+            "llama-index",
+            "openai",
+            "anthropic",
+            "pinecone",
+            "chromadb",
+            "pandas",
+            "numpy",
+        ],
+        "requires": {"browser": False, "gpu": False},
+        "tags": [],
+    },
+    "build_cmd": "pip install --break-system-packages -r requirements.txt",
+    "test_cmd": "python -m pytest -q --tb=short",
+    "compile_cmd": "python -m compileall -q .",
+    "install_cmd": "apt-get install -y python3 python3-pip",
+    "install_verify": "python3 --version",
+    "install_seconds": 15,
+    "description": (
+        "Fat Python 3.12 runtime. Pre-installed web frameworks: fastapi, "
+        "flask, django, uvicorn, gunicorn. ORMs/DB clients: sqlalchemy, "
+        "psycopg2-binary, pymongo, redis. LLM stack: langchain, llama-index, "
+        "openai, anthropic, pinecone, chromadb. Data: pandas, numpy. Test: "
+        "pytest, pytest-asyncio. Browser tools: ttyd, code-server, adminer. "
+        "DinD via docker-ce."
+    ),
+}
 
 template = (
     AsyncTemplate()

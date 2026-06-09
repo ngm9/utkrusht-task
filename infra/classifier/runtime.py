@@ -1,14 +1,17 @@
 """Structured runtime spec for a generated task.
 
-Replaces the legacy TaskCategory enum with a multi-dimensional record that
-captures everything downstream code needs to scaffold a task:
+Three concepts:
+  1. Capability sheet  → ``templates`` row (jsonb capabilities; read by LLM)
+  2. Match decision    → ``task_template_match`` row (TaskTemplateMatch)
+  3. Per-task intent   → ``TaskIntent`` model (defined here, NOT persisted)
 
-  • runtime   — the language SDK the E2B template must preinstall
-  • frameworks — named framework libraries (fastapi, spring-boot, …)
-  • datastores — DB servers the task brings up via docker-compose
-  • messaging  — Kafka/queue brokers the task brings up
-  • needs_browser — True for Playwright/Selenium (template needs Chromium)
-  • kind       — high-level shape that picks the prompt-template strategy
+The ``tasks.task_intent`` column was dropped after it landed with no live
+reader; the Pydantic model is kept here because the content-generation
+LLM is expected to emit it in a future change, at which point the column
+will be re-added by the same PR that wires up the reader.
+
+See ``docs/plans/2026-05-27-unified-classifier-template-schema.md`` for
+the full architecture.
 """
 from __future__ import annotations
 
@@ -17,28 +20,82 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-Runtime = Literal[
-    "python", "node", "java", "php", "go", "rust",
-    "flutter", "ruby", "scala", "none",
+
+#: Role a datastore plays in a specific task. Per-task; not a template prop.
+Role = Literal["primary", "replica", "source", "target", "cache"]
+
+#: Wire protocol the task implements. Closed enum — LLM picks subset.
+Protocol = Literal["rest", "grpc", "graphql", "websocket", "none"]
+
+#: Which eval runner the gate dispatches for the task. Closed enum.
+#: The runtime-specific command (pytest / mvn test / etc.) is read from
+#: the matched template's ``test_cmd``; this field selects the *category*
+#: of evaluation (test_suite vs notebook vs validator vs ...).
+EvalMethod = Literal[
+    "test_suite", "notebook", "validator",
+    "lint", "benchmark", "compile_only",
 ]
 
-Kind = Literal[
-    "app", "script", "mobile", "frontend", "testing",
-    "db_only", "llm", "vector_db", "non_code",
-]
 
+class DatastoreRef(BaseModel):
+    """One datastore the task uses, plus the role it plays in this task.
 
-class TaskRuntime(BaseModel):
-    """Multi-dimensional infrastructure spec for one task."""
+    The template's ``capabilities.datastores`` lists the MENU (what
+    clients/drivers are installed). This carries the per-task SELECTION
+    plus the role tag — same DB name can appear twice with different
+    roles (e.g. postgres primary + postgres replica).
+    """
 
     model_config = ConfigDict(frozen=True)
 
-    runtime: Runtime
-    frameworks: list[str] = Field(default_factory=list)
-    datastores: list[str] = Field(default_factory=list)
-    messaging: list[str] = Field(default_factory=list)
-    needs_browser: bool = False
-    kind: Kind
+    name: str  # "postgres", "mysql", "redis", ...
+    role: Role
+
+
+class TaskIntent(BaseModel):
+    """Per-task USE of the matched template's capabilities.
+
+    Emitted by the content-generation LLM (which already sees the
+    scenario), NOT by the classifier — see "Why scenario is NOT passed
+    to the classifier" in the plan doc.
+
+    Currently in-memory only — see module docstring for why the
+    ``tasks.task_intent`` column was dropped.
+
+    All fields have safe defaults so an empty intent ``{}`` is valid.
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    datastores: list[DatastoreRef] = Field(default_factory=list)
+    protocols_used: list[Protocol] = Field(default_factory=list)
+    eval_method: EvalMethod = "test_suite"
+    secondary_runtimes: list[str] = Field(default_factory=list)
+    persona_override: str | None = None
+
+
+class TaskTemplateMatch(BaseModel):
+    """The classifier's match decision for one competency combo.
+
+    Cached per ``combo_key`` in the ``task_template_match`` Supabase table.
+    Per-combo, not per-task — same competencies always produce the same
+    match (modulo human edits via the override path).
+
+    ``template_id`` is None iff no built template fits — in that case
+    ``no_match_reason`` MUST be set (CHECK constraint on the table
+    mirrors this; the Pydantic ``model_validator`` enforces the same).
+    """
+
+    model_config = ConfigDict(frozen=True)
+
+    template_id: str | None = None
+    persona: str | None = None
+    confidence: float = 0.0
+
+    # no_match path
+    no_match_reason: str | None = None
+    missing_capabilities: list[str] = Field(default_factory=list)
+    suggested_template: str | None = None
 
 
 @dataclass(frozen=True)

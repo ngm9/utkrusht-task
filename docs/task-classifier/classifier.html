@@ -222,6 +222,7 @@
   <nav class="toc">
     <a href="#problem">Problem statement</a>
     <a href="#design">The design</a>
+    <a href="#scope-driven">Scope-driven matching</a>
     <a href="#today">Where we are today</a>
     <a href="#why-broken">Why the current shape stalls</a>
     <a href="#migration">Migration path</a>
@@ -235,7 +236,7 @@
     <a href="#next">What we should do next</a>
   </nav>
   <p class="sister">
-    <span class="status">Status</span> Design decided 2026-05-27. Migration ahead.<br /><br />
+    <span class="status">Status</span> Merged design <strong>shipped</strong> (Phase 3 cutover). Scope-driven matching + template family decided 2026-06-01, not yet built.<br /><br />
     <span class="status">Sister doc</span> <a href="./e2b-templates.html">E2B Templates</a>
   </p>
 </aside>
@@ -355,21 +356,49 @@ CREATE TABLE task_template_match (
 
 <p>A cache hit requires <code>classifier_model = current AND registry_version = current_registry_version</code>. Either bumping invalidates stale entries automatically.</p>
 
+<h2 id="scope-driven">Scope-driven matching</h2>
+
+<p><strong>Decided 2026-06-01, not yet implemented.</strong> Needed the moment a <em>second</em> Python template exists. With one fat <code>utkrusht-python</code>, every Python combo trivially matches it — the classifier needs no more than the competency name. A <strong>template family</strong> changes that.</p>
+
+<h3>The trigger: a Python template family</h3>
+<p>Instead of one fat image, the Python runtime becomes a small inheritance family, <strong>split by framework family</strong> (not by datastore tier — see the finding below):</p>
+<div class="ascii">python-base                       # python 3.13 + pytest + Docker-in-Docker + common DB clients
+  ├─ python-web                   # + django/flask/fastapi/sqlalchemy   (≈ today's utkrusht-python)
+  ├─ python-data                  # + pandas/polars/numpy               (if data competencies justify it)
+  └─ python-ai-agent              # + langgraph/crewai/mem0 + mock-LLM   (see ai-engineering plan)</div>
+<p>This isolates heavy dependency pins (an agent framework's <code>langchain-core</code> pin vs Django's) and keeps each image lean, instead of forcing every Python task — even junior CRUD — onto one large image. See the <a href="../plans/2026-05-27-ai-engineering-task-category.html">AI-engineering plan</a> for the concrete <code>python-ai-agent</code> member.</p>
+<div class="callout">
+  <strong>Why framework-family, not datastore tier.</strong> A spot-check of the dev <code>competencies.scope</code> texts showed scopes <strong>reliably name the framework</strong> (Django/Flask/FastAPI/langgraph are always present) but <strong>not</strong> a concrete datastore engine — Python - Django INTERMEDIATE says "complex database queries and optimization" yet never "postgres"; Flask BASIC says "Flask-SQLAlchemy or direct DB drivers" (engine-agnostic). So a <code>python-base</code>-vs-<code>python-db</code> split isn't supported by the signal, and web frameworks assume <em>a</em> DB anyway. The reliable signal is the framework family — so the family splits on that, and each tier bundles the common DB clients (as <code>utkrusht-python</code> already lists <code>postgres/mysql/mongo/redis</code>). The task's own <code>docker-compose.yml</code> picks the engine that boots.
+</div>
+
+<h3>The classifier change: feed the competency <code>scope</code> (approach B)</h3>
+<p>Today <code>classify_match</code> sees only competency <strong>name + proficiency</strong> (<code>Competency</code> dataclass + <code>_user_message</code> in <code>infra/classifier/llm_classifier.py</code>). With one template that was enough. With a family it can't disambiguate the <strong>framework family</strong> from the name alone — an abstract competency like <code>"Production Agent Engineering (ADVANCED)"</code> names no framework, and even concrete ones need their framework menu to route between <code>python-web</code> and <code>python-ai-agent</code>. <strong>The name names the competency; the scope names the framework family.</strong></p>
+<p>The change is small and <strong>system-wide</strong> (every classification, not just AI):</p>
+<ol>
+  <li>Add <code>scope</code> to the <code>Competency</code> dataclass.</li>
+  <li>Render it in <code>_user_message</code> so the LLM sees the competency's framework/datastore <strong>menu</strong>, not just its title.</li>
+  <li>Change the prompt rule from <em>"pick the template that best matches"</em> to <strong>"pick the LEANEST template whose capability sheet is a superset of what the scope implies."</strong></li>
+</ol>
+<p>The "leanest" word is load-bearing: without it the LLM defaults to the richest template for everything and the family delivers no boot-time saving. A scope that needs two <strong>incomparable</strong> templates returns <code>no_match</code> — the signal to build a combined template or split the competency.</p>
+
+<h3>Why <code>combo_key</code> stays a valid cache key</h3>
+<p>Classification becomes a pure function of <code>(competency set + scope)</code>, and scope is stable per competency — so the <code>combo_key</code> PK still holds. The earlier worry ("two scenarios for the same combo need different templates → PK conflict") dissolves: a Flask combo classifies to <code>python-web</code> once, and every Flask task — DB-backed or in-memory — boots that same image (the web tier bundles the DB clients; the task's own <code>docker-compose.yml</code> decides what runs). Per-task variance is resolved at <strong>generation time</strong> (the scenario's stack + answer-schema routing), never at template-selection time. Bump <code>registry_version</code> once after the scope change to re-classify every cached combo.</p>
+
+<div class="callout">
+  <strong>The scope-authoring cost (narrower than it first looks).</strong> Approach B makes the classifier depend on scope naming the <strong>framework family</strong>. The dev spot-check is reassuring: existing scopes already name their framework reliably, so web/data routing needs little rework. The real, much smaller cost is <strong>authoring the 5 new AI competency scopes</strong> so they clearly name their agent frameworks (langgraph / crewai / pydantic-ai / mock-LLM / observability) — otherwise they'd route to <code>python-web</code>. This is "write 5 scopes well," not "audit 60."
+</div>
+
 <h2 id="today">Where we are today</h2>
 
-<p>The shipped pipeline implements the same input-to-deploy flow, but via two decision surfaces stitched together by a rule-based picker.</p>
+<p>The merged design is <strong>shipped</strong>. The Phase 3 cutover replaced the old two-layer model with the single-surface match described above.</p>
 
 <div class="twoup">
   <div class="card">
-    <h4>Today — two surfaces</h4>
+    <h4>Before — two surfaces (removed)</h4>
     <div class="ascii">competencies
      │
      ▼
- TaskRuntime
-   (runtime, kind,
-    frameworks,
-    datastores,
-    needs_browser)
+ TaskRuntime  (enum)
      │
      ▼
  template_registry
@@ -379,18 +408,20 @@ CREATE TABLE task_template_match (
  template_name</div>
   </div>
   <div class="card target">
-    <h4>Target — one decision</h4>
+    <h4>Now — one decision (shipped)</h4>
     <div class="ascii">competencies
      │
      ▼
- LLM reads capability sheets
-   (templates WHERE status='built')
+ classify_match
+   (reads templates' sheets)
      │
      ▼
- template_id + persona
-   OR
- no_match { missing_capabilities,
-            suggested_template }</div>
+ task_template_match  (cached)
+     │
+     ▼
+ resolve_plan → template + persona
+   OR no_match { missing_capabilities,
+                 suggested_template }</div>
   </div>
 </div>
 
@@ -399,35 +430,32 @@ CREATE TABLE task_template_match (
 <table>
   <thead><tr><th>Component</th><th>Where</th></tr></thead>
   <tbody>
-    <tr><td>LLM classifier (Sonnet 4.6 via Portkey, strict JSON, retry-with-validation-error)</td><td><code>infra/classifier/llm_classifier.py</code></td></tr>
-    <tr><td><code>TaskRuntime</code> Pydantic model — single closed <code>Runtime</code> Literal</td><td><code>infra/classifier/runtime.py</code></td></tr>
-    <tr><td><code>competency_combo_classification</code> cache table</td><td>migration 2026-05-25</td></tr>
-    <tr><td><code>template_registry</code> table — <code>runtime</code> PK, one row per language</td><td>migration 2026-05-25</td></tr>
-    <tr><td><code>resolve_plan(combo_key)</code> orchestrator</td><td><code>generators/task/runtime_resolver.py</code></td></tr>
-    <tr><td><code>utkrusht-python</code> (only <code>built</code> row; node/java/php/go/rust/flutter/ruby/scala are <code>proposed</code>)</td><td>E2B registry</td></tr>
-    <tr><td><code>sandbox_eval</code> reads <code>template_name</code> from registry</td><td><code>e2b_flow/sandbox_eval.py</code></td></tr>
-    <tr><td>Persona-routed eval critics keyed off <code>TaskRuntime.kind</code></td><td><code>evals.py</code></td></tr>
+    <tr><td>LLM classifier <code>classify_match</code> (Sonnet 4.6 via Portkey, strict JSON, retry-with-validation-error)</td><td><code>infra/classifier/llm_classifier.py</code></td></tr>
+    <tr><td><code>TaskTemplateMatch</code> + <code>Competency</code> models (the closed <code>Runtime</code> enum is gone)</td><td><code>infra/classifier/runtime.py</code></td></tr>
+    <tr><td><code>task_template_match</code> cache — <code>combo_key</code> PK, <code>template_id</code> FK, <code>no_match</code> first-class</td><td>migration 2026-05-28</td></tr>
+    <tr><td><code>templates</code> table — <code>template_id</code> PK, capability sheet jsonb, <code>personas[]</code>, <code>manifest_hash</code></td><td>E2B manifest → row</td></tr>
+    <tr><td><code>resolve_plan(competencies)</code> orchestrator — cache-then-LLM</td><td><code>generators/task/runtime_resolver.py</code></td></tr>
+    <tr><td><code>utkrusht-python</code> (only <code>built</code> row today; the family split is next)</td><td>E2B registry</td></tr>
+    <tr><td><code>sandbox_eval</code> boots <code>plan.template</code> + reads <code>build_cmd</code>/<code>test_cmd</code></td><td><code>infra/e2b/sandbox_eval.py</code></td></tr>
+    <tr><td>Persona-routed eval critics keyed off <code>match.persona</code></td><td><code>infra/evals.py</code></td></tr>
   </tbody>
 </table>
 
-<p>The picker function <code>_get_template(runtime)</code> in <code>runtime_resolver.py:140-188</code> is the entire current routing logic — a PK lookup by runtime. <code>kind</code>, <code>frameworks</code>, <code>needs_browser</code> are stored on the classification row but unused by routing.</p>
-
-<h3>Gaps vs. the design</h3>
+<h3>What's still ahead (the gaps this doc tracks)</h3>
 
 <table>
-  <thead><tr><th>Gap</th><th>Effect today</th></tr></thead>
+  <thead><tr><th>Gap</th><th>Status</th></tr></thead>
   <tbody>
-    <tr><td>Closed <code>Runtime</code> Literal</td><td>New tech requires code change + migration + redeploy</td></tr>
-    <tr><td>No <code>personas: text[]</code> on templates</td><td><code>kind</code> carries persona — conflated with shape, one value per task</td></tr>
-    <tr><td>No first-class <code>no_match</code> output</td><td>Infra / shell / Terraform tasks skip silently with <code>no_template</code></td></tr>
-    <tr><td>No <code>manifest_hash</code> / capability sheet provenance</td><td>Image content can drift from documented commands; no CI check</td></tr>
-    <tr><td>No <code>(classifier_model, registry_version)</code> cache invalidation</td><td>Stale rows survive model upgrades and template changes</td></tr>
-    <tr><td>Picker ignores <code>frameworks</code> and <code>needs_browser</code></td><td>Template variants (<code>python-llm</code> vs <code>python-web</code>) can't coexist under <code>runtime</code> PK</td></tr>
-    <tr><td><code>Runtime</code> enum and <code>template_registry.status</code> duplicate the same fact</td><td>Classifier can claim to support runtimes we don't actually deploy</td></tr>
+    <tr><td>First-class <code>no_match</code> output</td><td><strong>Shipped</strong> — <code>template_id IS NULL</code> rows carry <code>missing_capabilities</code> + <code>suggested_template</code></td></tr>
+    <tr><td><code>(classifier_model, registry_version)</code> cache invalidation</td><td><strong>Shipped</strong> — both keys checked on every hit</td></tr>
+    <tr><td><code>personas: text[]</code> on templates, persona ≠ shape</td><td><strong>Shipped</strong> — <code>match.persona</code> routes the eval critic</td></tr>
+    <tr><td><code>manifest_hash</code> / capability-sheet provenance</td><td><strong>Partial</strong> — manifest module + hash landed (<code>45d398f</code>); CI drift-gate still honor-system</td></tr>
+    <tr><td>Scope fed to the classifier (multi-template disambiguation)</td><td><strong>Not yet</strong> — see <a href="#scope-driven">Scope-driven matching</a></td></tr>
+    <tr><td>More than one <code>built</code> template</td><td><strong>Not yet</strong> — <code>utkrusht-python</code> is still the only built row</td></tr>
   </tbody>
 </table>
 
-<h2 id="why-broken">Why the current shape doesn't carry us forward</h2>
+<h2 id="why-broken">Why the two-layer shape didn't carry us forward (historical)</h2>
 
 <p>The two-layer model isn't wrong by intent — it was the natural shape with one template and one runtime. As task variety grows, the seam between classifier output and routing accumulates structural failures. Concrete cases from real tasks:</p>
 
@@ -449,9 +477,11 @@ CREATE TABLE task_template_match (
 
 <p>The structural fix is the design above: <strong>stop carrying the task's needs through an intermediate model.</strong> The template rows describe what we can deploy; the classifier matches against them directly. There's no model to "underdimension" because there's no model — just rows and a matcher.</p>
 
-<h2 id="migration">Migration path</h2>
+<h2 id="migration">Migration path <span style="font-weight:400;color:var(--ok)">(✅ complete — historical record)</span></h2>
 
-<p>The current implementation is partially aligned with the design. The migration is additive and reversible until the final step.</p>
+<div class="callout"><strong>This migration shipped in the Phase 3 cutover (2026-05-27.)</strong> Steps 1–2 became the <code>templates</code> table; Steps 4–5 (classifier emits <code>template_id</code>+<code>persona</code>, <code>task_template_match</code> table) and Steps 6–7 (<code>no_match</code> path, drop the <code>Runtime</code> enum) are done. The one item still open is <strong>Step 3's CI drift-gate</strong> for <code>manifest_hash</code> (the manifest module + hash landed in <code>45d398f</code>; build-time enforcement is still honor-system). The steps below are kept as the record of how the schema got here.</div>
+
+<p>The migration was additive and reversible until the final step.</p>
 
 <div class="steps">
   <div class="step">
@@ -520,8 +550,17 @@ CREATE TABLE task_template_match (
 <h3>Cache invalidation has two keys</h3>
 <p><code>classifier_model</code> AND <code>registry_version</code>. Either bumping invalidates cached rows. Sonnet 4.6 → 5.x quietly changes decisions on borderline cases; without <code>classifier_model</code> in the key, cached rows survive the upgrade. A template's sheet gains <code>redis-cli</code>; without <code>registry_version</code> in the key, rows classified before the update never reconsider the better-fit template.</p>
 
-<h3>Sibling templates, not E2B inheritance</h3>
-<p>When <code>utkrusht-python</code> splits into <code>utkrusht-python-nlp</code> / <code>-llm</code> / <code>-web</code>, the variants should each <code>FROM</code> a common Docker base — <strong>not</strong> chain via E2B's <code>from_template()</code>. Inheritance feels DRY but makes rebuild graphs ugly and CVE patching cascades. Siblings duplicate a small amount and are independently buildable / patchable.</p>
+<h3>Template inheritance is a build-time concern — the DB never models it</h3>
+<p>When <code>utkrusht-python</code> splits into the family (<code>python-base</code> / <code>-db</code> / <code>-llm</code> / <code>-ai-agent</code>), inheritance lives <strong>entirely in the E2B build flow</strong> and is invisible to the <code>templates</code> table: the child image is built on the parent's layers (Docker), and <code>manifest.py</code> (Python) composes the parent's capability dict at authoring time, so the stored <code>manifest.json</code> is <strong>already fully resolved</strong>. The classifier reads a self-contained sheet per row — no parent pointer, no query-time union, no denormalization step. <strong>No <code>parent_template_id</code> column, no schema change for inheritance.</strong></p>
+<p><strong>Open mechanism choice (flag for review):</strong></p>
+<table>
+  <thead><tr><th>Mechanism</th><th>Pro</th><th>Con</th></tr></thead>
+  <tbody>
+    <tr><td>Sibling <code>FROM</code> a common base</td><td>Independently buildable / CVE-patchable; flat rebuild graph</td><td>Duplicates a few layer declarations</td></tr>
+    <tr><td>E2B <code>from_template()</code> chaining</td><td>Strict DRY layering, smallest diffs</td><td>Rebuild graph cascades — patching the base re-triggers every descendant</td></tr>
+  </tbody>
+</table>
+<p>The earlier position here was <strong>sibling-from-common-base</strong>, for CVE-patch isolation. The family design works under either; the manifest composition and the self-contained stored sheet are identical regardless. <strong>Decide the mechanism before building the family.</strong></p>
 
 <h2 id="fragmentation">Template fragmentation policy</h2>
 
@@ -573,35 +612,33 @@ CREATE TABLE task_template_match (
 
 <p><code>generators/task/runtime_resolver.py</code> is the single entry point. Every consumer goes through it; there is no second classification site anywhere in the codebase.</p>
 
-<div class="ascii">combo_key = make_combo_key(competencies)
+<div class="ascii">combo_key = make_combo_key(competencies)         # sorted, proficiency-suffixed
                 ▼
-  SELECT runtime, kind, frameworks, datastores, messaging, needs_browser
-    FROM competency_combo_classification
+  SELECT template_id, persona, confidence, no_match_reason, …
+    FROM task_template_match
    WHERE combo_key = ?
                 ▼
-   ┌── HIT  → return ResolvedPlan(
-   │            TaskRuntime(from row),
-   │            template = _get_template(runtime)
-   │          )                                       (~10 ms, $0)
+   ┌── HIT (fresh: classifier_model + registry_version match)
+   │     → return ResolvedPlan(match, template = _get_template(template_id))   (~10 ms, $0)
    │
-   └── MISS → classify_with_llm(competencies)         (~2 s, ~$0.001)
+   └── MISS / stale
+         → classify_match(competencies, active = templates WHERE status='built')   (~2 s)
                 ▼
-              UPSERT competency_combo_classification
+              UPSERT task_template_match (classified_at, model, registry_version)
                 ▼
-              return ResolvedPlan(new TaskRuntime, template)</div>
+              return ResolvedPlan(match, template)</div>
 
-<p><strong>Economics.</strong> ~50 unique competency combos across 339 dev tasks → ~50 LLM calls ever → ~$0.05 to populate the cache. After that, every consumer reads a column. Misses happen at task-generation time, never on a user-facing hot path.</p>
+<p>When the <a href="#scope-driven">scope-driven</a> change lands, <code>classify_match</code> also receives each competency's <code>scope</code> and picks the leanest superset template; the cache key and flow are unchanged.</p>
 
-<p>After the migration, the orchestrator's shape stays the same — only the cache table and the LLM output change.</p>
+<p><strong>Economics.</strong> ~50 unique competency combos → ~50 LLM calls ever → ~$0.05 to populate the cache. After that, every consumer reads a column. Misses happen at task-generation time, never on a user-facing hot path.</p>
 
-<h3>Consumers</h3>
+<h3>Consumers (post-cutover)</h3>
 <table>
-  <thead><tr><th>Consumer</th><th>Field used today</th><th>Field after migration</th></tr></thead>
+  <thead><tr><th>Consumer</th><th>Field used</th></tr></thead>
   <tbody>
-    <tr><td><code>multiagent.py:create_task</code></td><td><code>plan.kind</code> (persona)</td><td><code>plan.persona</code></td></tr>
-    <tr><td><code>multiagent.py:create_task</code></td><td><code>plan.template.name</code></td><td><code>plan.template_id</code></td></tr>
-    <tr><td><code>generators/prompts/agent.py:step1</code></td><td><code>plan.task_runtime</code> (whole object)</td><td><code>plan.task_runtime</code> (projection of template row)</td></tr>
-    <tr><td><code>e2b_flow/sandbox_eval.py</code></td><td><code>template_name_for_runtime(plan.runtime)</code></td><td><code>_get_template(plan.template_id)</code></td></tr>
+    <tr><td><code>generators/task/creator.py</code></td><td><code>plan.match.persona</code> (eval-critic routing) + <code>plan.template</code> (gate boot)</td></tr>
+    <tr><td><code>generators/prompts/agent.py</code></td><td><code>plan.template</code> capability projection (prompt generation)</td></tr>
+    <tr><td><code>infra/e2b/sandbox_eval.py</code></td><td><code>plan.template.build_cmd</code> / <code>test_cmd</code> (gate)</td></tr>
   </tbody>
 </table>
 
@@ -625,48 +662,44 @@ CREATE TABLE task_template_match (
 <h2 id="bootstrap">Bootstrap — migrations to apply (in order)</h2>
 
 <table>
-  <thead><tr><th>#</th><th>File</th><th>What it does</th></tr></thead>
+  <thead><tr><th>#</th><th>File</th><th>What it does</th><th>Status</th></tr></thead>
   <tbody>
-    <tr><td>1</td><td><code>2026-05-25-create-template-registry.sql</code></td><td>Creates the template registry</td></tr>
-    <tr><td>2</td><td><code>2026-05-25-create-competency-combo-classification.sql</code></td><td>Creates the classification cache with FK to (1)</td></tr>
-    <tr><td>3</td><td><code>2026-05-25-grant-cache-tables.sql</code></td><td>Grants <code>SELECT/INSERT/UPDATE/DELETE</code> to <code>anon</code>, <code>authenticated</code>, <code>service_role</code>. <strong>Without this the cache silently fails on every call.</strong></td></tr>
-    <tr><td>4</td><td><code>2026-05-26-classification-drop-org-id.sql</code></td><td>Drops <code>organization_id</code> — over-applied multi-tenancy</td></tr>
-    <tr><td>5</td><td><em>to be written</em></td><td>Step 1 of migration — additive ALTER on <code>template_registry</code></td></tr>
-    <tr><td>6</td><td><em>to be written</em></td><td>Step 2 — switch PK to <code>template_id</code></td></tr>
-    <tr><td>7</td><td><em>to be written</em></td><td>Step 5 — create <code>task_template_match</code>, backfill from <code>competency_combo_classification</code></td></tr>
+    <tr><td>1–4</td><td>the <code>2026-05-25</code>/<code>2026-05-26</code> registry + classification + grant + drop-org-id migrations</td><td>Bootstrapped the original two-layer cache</td><td>superseded by the cutover</td></tr>
+    <tr><td>5</td><td><code>2026-05-28-create-templates.sql</code></td><td>The <code>templates</code> table (capability sheet, <code>personas[]</code>, <code>manifest_hash</code>)</td><td><strong>applied</strong></td></tr>
+    <tr><td>6</td><td><code>2026-05-28-create-task-template-match.sql</code></td><td><code>task_template_match</code> cache, backfilled from the old table</td><td><strong>applied</strong></td></tr>
+    <tr><td>7</td><td><code>2026-05-29-add-timestamps.sql</code></td><td><code>templates.generated_at</code> + <code>task_template_match.classified_at</code></td><td>pending apply</td></tr>
+    <tr><td>8</td><td><code>2026-05-29-drop-legacy-tables.sql</code></td><td>Drops <code>competency_combo_classification</code> + <code>template_registry</code></td><td>apply after full smoke</td></tr>
   </tbody>
 </table>
 
-<h2 id="status">Implementation status (2026-05-27)</h2>
+<h2 id="status">Implementation status (2026-06-01)</h2>
 
 <table>
   <thead><tr><th>Component</th><th>Status</th></tr></thead>
   <tbody>
-    <tr><td>LLM classifier (Sonnet 4.6, strict JSON, retry)</td><td><span class="pill pill-ok">Shipped</span></td></tr>
-    <tr><td><code>TaskRuntime</code> Pydantic model</td><td><span class="pill pill-ok">Shipped</span> <span class="pill pill-warn">deprecates at Step 7</span></td></tr>
-    <tr><td><code>competency_combo_classification</code> cache</td><td><span class="pill pill-ok">Shipped</span> <span class="pill pill-warn">superseded at Step 5</span></td></tr>
-    <tr><td><code>template_registry</code> table (one row per runtime)</td><td><span class="pill pill-ok">Shipped</span> <span class="pill pill-warn">evolves at Steps 1–2</span></td></tr>
-    <tr><td><code>resolve_plan</code> orchestrator</td><td><span class="pill pill-ok">Shipped</span> <span class="pill pill-warn">output changes at Step 4</span></td></tr>
+    <tr><td>LLM classifier <code>classify_match</code> (Sonnet 4.6, strict JSON, retry)</td><td><span class="pill pill-ok">Shipped</span></td></tr>
+    <tr><td><code>templates</code> table (capability sheet, <code>personas[]</code>, <code>manifest_hash</code>)</td><td><span class="pill pill-ok">Shipped</span></td></tr>
+    <tr><td><code>task_template_match</code> cache (<code>combo_key</code> PK, <code>no_match</code> first-class)</td><td><span class="pill pill-ok">Shipped</span></td></tr>
+    <tr><td><code>(classifier_model, registry_version)</code> cache invalidation</td><td><span class="pill pill-ok">Shipped</span></td></tr>
+    <tr><td><code>resolve_plan(competencies)</code> orchestrator</td><td><span class="pill pill-ok">Shipped</span></td></tr>
+    <tr><td>Classifier emits <code>template_id</code> + <code>persona</code>; persona routes the eval critic</td><td><span class="pill pill-ok">Shipped</span></td></tr>
+    <tr><td><code>Runtime</code> enum + <code>TaskRuntime</code> + legacy cache</td><td><span class="pill pill-bad">Removed</span> (Phase 3 cutover)</td></tr>
+    <tr><td><code>sandbox_eval</code> boots <code>plan.template</code> + reads <code>build_cmd</code>/<code>test_cmd</code></td><td><span class="pill pill-ok">Shipped</span></td></tr>
     <tr><td><code>utkrusht-python</code> template (only <code>built</code> row)</td><td><span class="pill pill-ok">Shipped</span></td></tr>
-    <tr><td><code>sandbox_eval</code> reads <code>template_name</code> from registry</td><td><span class="pill pill-ok">Shipped</span></td></tr>
-    <tr><td><code>sandbox_eval</code> reads <code>build_cmd</code>/<code>test_cmd</code> from registry</td><td><span class="pill pill-info">Proposed</span> (~15 LOC)</td></tr>
-    <tr><td>Persona-routed eval critics keyed off <code>TaskRuntime.kind</code></td><td><span class="pill pill-ok">Shipped</span> <span class="pill pill-warn">re-keys off <code>persona</code> at Step 4</span></td></tr>
-    <tr><td><code>personas: text[]</code> column on templates</td><td><span class="pill pill-info">Proposed — Step 1</span></td></tr>
-    <tr><td>Manifest-hash CI gate</td><td><span class="pill pill-warn">Proposed — Step 3, the durability gate</span></td></tr>
-    <tr><td>Classifier emits <code>template_id</code> + <code>persona</code></td><td><span class="pill pill-info">Proposed — Step 4</span></td></tr>
-    <tr><td><code>task_template_match</code> table</td><td><span class="pill pill-info">Proposed — Step 5</span></td></tr>
-    <tr><td>Drop <code>Runtime</code> Literal enum</td><td><span class="pill pill-bad">Proposed — Step 7, irreversible</span></td></tr>
+    <tr><td>Manifest module + <code>manifest_hash</code></td><td><span class="pill pill-ok">Shipped</span> (<code>45d398f</code>)</td></tr>
+    <tr><td>Manifest-hash <strong>CI drift-gate</strong></td><td><span class="pill pill-warn">Not yet — the durability gate</span></td></tr>
+    <tr><td>Scope fed to the classifier + "leanest superset" rule</td><td><span class="pill pill-info">Not yet — scope-driven matching</span></td></tr>
+    <tr><td>Python template <strong>family</strong> (<code>-base</code>/<code>-db</code>/<code>-llm</code>/<code>-ai-agent</code>)</td><td><span class="pill pill-info">Not yet — lands with the AI-engineering work</span></td></tr>
   </tbody>
 </table>
 
 <h2 id="next">What we should do next</h2>
 
 <ol>
-  <li><strong>Wire <code>sandbox_eval</code> to read build/test commands from <code>template_registry</code></strong> (~15 LOC). Validates the "registry as source of truth" pattern before the schema grows. See <a href="./e2b-templates.html">E2B Templates</a>.</li>
-  <li><strong>Step 1 of migration</strong> — additive ALTER on <code>template_registry</code>, backfill the <code>utkrusht-python</code> row. Cheap, reversible.</li>
-  <li><strong>Step 3 — build the manifest-hash CI gate before the second template lands.</strong> This is the only step whose absence makes the design rot.</li>
-  <li><strong>Defer Steps 4–7</strong> until the second built template is real. The LLM-picks-template_id change is cheap to implement but premature when there's only one template to pick.</li>
-  <li><strong>Build the second template (<code>utkrusht-node-base</code>) with <code>personas[]</code> and a generated <code>manifest_hash</code> from day one.</strong> Retrofitting these onto a growing template set is harder than starting with them.</li>
+  <li><strong>Build the manifest-hash CI drift-gate before the second template lands.</strong> The one investment whose absence makes the design rot — sheets silently drift from the images and the LLM picks on lies. Everything else can wait; this can't.</li>
+  <li><strong>Land the first template-family split together with the scope-driven classifier change</strong> — they're one unit of work (a second template is what <em>makes</em> scope-driven matching necessary). See <a href="#scope-driven">scope-driven matching</a> and the <a href="../plans/2026-05-27-ai-engineering-task-category.html">AI-engineering plan</a>.</li>
+  <li><strong>Decide the inheritance mechanism</strong> (sibling-<code>FROM</code>-common-base vs E2B <code>from_template()</code> chaining) before authoring the family.</li>
+  <li><strong>Author the 5 new AI competency scopes to name their agent frameworks</strong> (+ spot-check that existing scopes name their framework family — they do) so scope-driven matching routes them to <code>python-ai-agent</code> rather than <code>python-web</code>.</li>
 </ol>
 
 </main>

@@ -54,19 +54,29 @@ from generators.task.evaluator import (
     is_task_hollow,
     run_evaluations,
 )
+from generators.task.expected_ports import build_expected_ports
 from generators.task.gate import GateOutcome, run_gate_for_attempt
+from generators.task.repository import (
+    TaskValidationError,
+    insert_task_competencies,
+    validate_task,
+)
 from generators.task.persistence import (
     GITHUB_GIST_TOKEN,
     GITHUB_UTKRUSHTAPPS_TOKEN,
     REPO_OWNER,
     create_answer_github_repo,
+    delete_github_repo,
+    fetch_existing_task_titles,
     init_supabase,
+    insert_draft_task,
+    mark_task_failed,
+    mark_task_ready,
     upload_answer_files_to_repo,
     upload_files_to_github,
 )
 from generators.task.runtime_resolver import resolve_plan
 from task_quality import run_quality_for_attempt
-from task_validation import BaseTaskDAO, TaskValidationError, TaskWriteError
 
 
 # ---------------------------------------------------------------------------
@@ -246,6 +256,46 @@ def generate_answer_code_and_steps(task_data: Dict) -> Dict:
 
 
 # ---------------------------------------------------------------------------
+# Scenario resolution
+# ---------------------------------------------------------------------------
+
+def resolve_scenarios(
+    competencies: List[Dict],
+    scenarios_file: Path,
+    *,
+    env: str = "dev",
+) -> List[str]:
+    """Load the candidate scenario pool for a competency combo.
+
+    DB-first (``generated_scenarios`` keyed by combo + proficiency), falling
+    back to the JSON file for combos not yet backfilled into the DB. Shared
+    by :func:`create_task` (to feed the generator) and the orchestrator's
+    scenario stage (to surface the selectable list to the human).
+    """
+    from generators.scenarios import repository as scenario_repo
+    from infra.utils import build_scenario_key
+
+    combo_key = build_scenario_key(competencies)
+    proficiency = (
+        competencies[0].get("proficiency", "BASIC").upper()
+        if competencies else "BASIC"
+    )
+    scenarios = scenario_repo.load_scenarios_for_combo(
+        env=env, combo_key=combo_key, proficiency=proficiency,
+    )
+    if scenarios:
+        logger.info(
+            "Loaded %d scenarios from DB for key=%r prof=%s",
+            len(scenarios), combo_key, proficiency,
+        )
+    else:
+        logger.info(f"DB returned no scenarios; falling back to JSON: {scenarios_file}")
+        scenarios = load_relevant_scenarios(competencies, scenarios_file)
+        logger.info(f"Loaded {len(scenarios)} relevant scenarios from JSON")
+    return scenarios
+
+
+# ---------------------------------------------------------------------------
 # The main orchestration
 # ---------------------------------------------------------------------------
 
@@ -254,6 +304,7 @@ def create_task(
     background_file: Path,
     scenarios_file: Path | None = None,
     env: str = "dev",
+    selected_scenarios: List[str] | None = None,
 ) -> Dict:
     """Generate an intelligent assessment task.
 
@@ -265,6 +316,11 @@ def create_task(
 
     Args:
         env: Supabase environment to store the task in — ``"dev"`` or ``"prod"``.
+        selected_scenarios: When provided (the scenario(s) a human picked in
+            the UI), the generator uses exactly these and skips the pool
+            lookup. A single entry hard-locks generation to that scenario.
+            When ``None``/empty, the full candidate pool is resolved and the
+            scenario-lock prompt picks one.
     """
     try:
         if scenarios_file is None:
@@ -287,10 +343,27 @@ def create_task(
 
         created_at = datetime.datetime.now(datetime.timezone.utc)
 
-        logger.info(f"Loading scenarios from: {scenarios_file}")
-        scenarios = load_relevant_scenarios(competencies, scenarios_file)
-        logger.info(f"Loaded {len(scenarios)} relevant scenarios")
+        # Human-in-the-loop: when the caller passes an explicit selection
+        # (the scenario the user picked in the UI), use exactly that and skip
+        # the pool lookup — the generator is then hard-locked to it. Otherwise
+        # resolve the candidate pool (DB-first, JSON fallback) and let the
+        # scenario-lock prompt pick one.
+        if selected_scenarios:
+            scenarios = list(selected_scenarios)
+            logger.info(
+                "Using %d human-selected scenario(s); skipping pool lookup",
+                len(scenarios),
+            )
+        else:
+            scenarios = resolve_scenarios(competencies, scenarios_file, env=env)
         logger.info(f"Scenarios: {scenarios}")
+
+        existing_titles = fetch_existing_task_titles(competencies, env=env)
+        if existing_titles:
+            logger.info(
+                f"Found {len(existing_titles)} existing tasks for this competency — "
+                f"will instruct LLM to avoid duplicating: {existing_titles}"
+            )
 
         input_data = {
             "competencies": [
@@ -303,6 +376,7 @@ def create_task(
             ],
             "background": background,
             "scenarios": scenarios,
+            "existing_task_titles": existing_titles,
         }
         # Retry loop gates everything downstream — GitHub repo / Gist /
         # Supabase row are only created when an attempt produces a
@@ -315,10 +389,9 @@ def create_task(
         } for comp in competencies]
 
         # Resolve the competency-set into a ResolvedPlan once, before the
-        # retry loop. The plan carries (a) the classified TaskRuntime
-        # (``kind`` routes the eval-critic personas) and (b) the resolved
-        # template (gate boot target). Phase B1 of the plan plugs the combo
-        # cache in behind resolve_plan(); this call site does not change.
+        # retry loop. The plan carries (a) the match decision (template_id
+        # + persona — persona routes the eval-critic personas) and (b) the
+        # hydrated template (gate boot target).
         runtime_comps = [
             Competency(
                 name=c.get("name"),
@@ -327,14 +400,40 @@ def create_task(
             for c in competencies if c.get("name")
         ]
         plan = resolve_plan(runtime_comps) if runtime_comps else None
-        task_runtime = plan.task_runtime if plan else None
-        if task_runtime:
+        match = plan.match if plan else None
+        template = plan.template if plan else None
+        if match:
             logger.info(
-                f"task_runtime classified: runtime={task_runtime.runtime} "
-                f"kind={task_runtime.kind} frameworks={task_runtime.frameworks} "
-                f"datastores={task_runtime.datastores}"
+                f"resolve_plan matched: template_id={match.template_id} "
+                f"persona={match.persona} confidence={match.confidence:.2f}"
             )
-        eval_kind = task_runtime.kind if task_runtime else None
+            if match.no_match_reason:
+                logger.info(
+                    f"  no_match: {match.no_match_reason} "
+                    f"missing={match.missing_capabilities} "
+                    f"suggested={match.suggested_template}"
+                )
+        eval_persona = match.persona if match else None
+
+        # Agent competencies are FREE-FORM by design: the candidate-facing
+        # scenario is invented by the generator, not locked to the input pool
+        # (the agent prompt explicitly designs its own domain). So Criterion 6
+        # DOMAIN ALIGNMENT must NOT fire for them — otherwise it deadlocks
+        # against the dedup "use a different domain" rule and fails every
+        # attempt. Passing scenarios=None below makes Criterion 6 pass
+        # vacuously (see infra/evals.py:_render_scenarios_block). Non-agent
+        # tasks keep their scenario pool, so DOMAIN ALIGNMENT stays enforced
+        # for them. Gate is keyed on the COMPETENCY, never the proficiency.
+        from generators.scenarios.prompts import is_agent_competency
+        agent_freeform = is_agent_competency(
+            ", ".join(c.get("name", "") for c in competencies)
+        )
+        if agent_freeform:
+            logger.info(
+                "Agent competency detected — free-form mode: Criterion 6 "
+                "DOMAIN ALIGNMENT disabled for eval (scenario is generator-"
+                "invented, not pool-locked)."
+            )
 
         max_attempts = MAX_EVAL_RETRIES + 1
         task_data = None
@@ -371,6 +470,21 @@ def create_task(
             candidate.setdefault("code_files", {})
             candidate["criterias"] = criterias
 
+            # Wire the generated run.sh into ``run_script`` so the gate runs the
+            # run.sh READINESS probe (exit 0/1) instead of falling back to legacy
+            # pytest on the unfilled stubs (which always "fails" for a build-it
+            # task). ``code_files`` is a flat path->contents map; match run.sh at
+            # the repo root or in any subdir.
+            if not candidate.get("run_script"):
+                _files = candidate.get("code_files") or {}
+                _run_sh = next(
+                    (v for k, v in _files.items()
+                     if k == "run.sh" or k.endswith("/run.sh")),
+                    None,
+                )
+                if _run_sh:
+                    candidate["run_script"] = _run_sh
+
             hollow, reasons = is_task_hollow(candidate)
             if hollow:
                 logger.warning(
@@ -381,11 +495,22 @@ def create_task(
                     "task_eval": {"pass": False, "issues": reasons},
                     "code_eval": {"pass": False, "issues": ["task_data hollow before eval"]},
                 }
+                # Hollow candidates have nothing useful to patch — feed the
+                # canonical-keys reminder only; don't echo the empty JSON.
                 feedback = build_retry_feedback(reasons, None)
                 continue
 
             logger.info("Running task evaluations")
-            candidate_eval = run_evaluations(candidate, kind=eval_kind)
+            # Thread `scenarios` into the eval critic so Criterion 6
+            # (DOMAIN ALIGNMENT) can detect drift — task invented a new
+            # domain not present in the scenarios pool. For agent competencies
+            # the scenario is free-form (generator-invented), so we pass None
+            # and Criterion 6 passes vacuously; non-agent tasks keep the pool.
+            candidate_eval = run_evaluations(
+                candidate,
+                persona=eval_persona,
+                scenarios=None if agent_freeform else scenarios,
+            )
             last_failure = candidate_eval
             t_pass = candidate_eval["task_eval"]["pass"]
             c_pass = candidate_eval["code_eval"]["pass"]
@@ -429,77 +554,26 @@ def create_task(
                 f"(task_eval.pass={t_pass}, code_eval.pass={c_pass}); "
                 f"will retry with feedback if budget remains"
             )
-            feedback = build_retry_feedback([], candidate_eval)
+            # Pass the failing candidate JSON so the next attempt patches
+            # this concrete output instead of regenerating a fresh task with
+            # a different scenario / different bugs.
+            feedback = build_retry_feedback([], candidate_eval,
+                                            prior_candidate=candidate)
 
         if task_data is None or eval_info is None:
             raise EvalGateError(max_attempts, last_failure)
 
-        # ────────────────────────── persistence ─────────────────────────────
+        # ────────────────────────── persistence (B5) ─────────────────────────
+        # New lifecycle: INSERT draft → build GitHub artifacts → UPDATE ready.
+        # Any failure between INSERT and UPDATE leaves the row marked 'failed'
+        # and best-effort cleans up the partial GitHub repos so the reconciler
+        # has a clear surface to scan.
         task_type = determine_task_type(competencies, task_data)
         logger.info(f"Determined task type: {task_type}")
 
         logger.info("Generating solution code and steps")
         solutions_data = generate_answer_code_and_steps(task_data)
 
-        repo_name_base = (
-            task_data.get("resources", {}).get("github_repo", "").split("/")[-1]
-        )
-        if not repo_name_base:
-            repo_name_base = slugify(task_data.get("name", "assessment-task"))
-        # GitHub repo names cap at ~100 chars; keep well below that.
-        if len(repo_name_base) > 50:
-            repo_name_base = repo_name_base[:50].rstrip("-")
-
-        logger.info("Creating public GitHub template repository")
-        repo_name = create_github_template_repo(repo_name_base, is_private=True)
-        github_repo_url = f"https://github.com/{REPO_OWNER}/{repo_name}"
-
-        logger.info("Creating answer repository")
-        # ``-answers`` (8 chars) gets appended — keep the base ≤42.
-        answer_base_name = task_data.get("name", "assessment-task")
-        if len(answer_base_name) > 42:
-            answer_base_name = answer_base_name[:42].rstrip("-")
-        answer_repo_name = create_answer_github_repo(answer_base_name)
-        answer_repo_url = f"https://github.com/{REPO_OWNER}/{answer_repo_name}"
-
-        logger.info("Uploading solution files to answer repository")
-        upload_answer_files_to_repo(answer_repo_name, solutions_data)
-
-        solutions_for_db = {
-            "steps": solutions_data.get("steps", []),
-            "answer_repo": answer_repo_url,
-        }
-
-        if "resources" not in task_data:
-            task_data["resources"] = {}
-        task_data["resources"]["github_repo"] = github_repo_url
-
-        logger.info("Saving files locally...")
-        local_task_dir = save_files_locally(repo_name, task_data)
-        logger.info(f"Files saved locally to: {local_task_dir}")
-
-        logger.info("Uploading files to GitHub repository...")
-        upload_files_to_github(repo_name, task_data)
-
-        gist_url = None
-        if GITHUB_GIST_TOKEN:
-            try:
-                gist_url = create_gist_from_template(
-                    repo_url=github_repo_url,
-                    repo_token=GITHUB_UTKRUSHTAPPS_TOKEN,
-                    gist_token=GITHUB_GIST_TOKEN,
-                    description=task_data.get("name", repo_name),
-                    public=False,
-                )
-                if gist_url:
-                    task_data["resources"]["gist_url"] = gist_url
-                    logger.info(f"Gist created: {gist_url}")
-            except Exception as e:
-                logger.warning(f"Gist creation skipped or failed: {e}")
-        else:
-            logger.warning("No GITHUB_GIST_TOKEN for gist; skipping gist creation")
-
-        logger.info("Storing task in Supabase...")
         # Drive is_shared_infra_required purely from whether the generated
         # repo carries Docker / docker-compose artifacts. The previous
         # heuristic marked every "backend" task True regardless of Docker,
@@ -513,61 +587,214 @@ def create_task(
             f"(task_type: {task_type}, has_docker: {has_docker})"
         )
 
-        task_data_for_db = {
+        # Step 1 — INSERT the minimal draft row, get task_id BEFORE any
+        # external side effect.
+        # `answer` is EVALUATOR-FACING free-form guidance; the agent prompt may
+        # emit it as a structured object, but the `tasks.answer` column is TEXT
+        # and the schema validator expects a string — serialize a dict to JSON
+        # so storage + validation agree.
+        _answer = task_data.get("answer", "")
+        if not isinstance(_answer, str):
+            _answer = json.dumps(_answer, indent=2, ensure_ascii=False)
+        # `hints` is a single TEXT field — the candidate app's model treats it as
+        # string-or-null, NEVER a list. If the generator emits a bullet list,
+        # join it into a string so storage + the str schema agree.
+        _hints = task_data.get("hints", "")
+        if isinstance(_hints, list):
+            _hints = "\n".join(
+                f"- {h}" for h in _hints if isinstance(h, str) and h.strip()
+            )
+        draft_payload = {
             "created_at": created_at.isoformat(),
             "pre_requisites": format_pre_requisites(task_data.get("pre_requisites", "")),
-            "answer": task_data.get("answer", ""),
+            "answer": _answer,
             "criterias": task_data["criterias"],
             "is_deployed": False,
             "task_blob": {
                 "title": task_data.get("title", "") or task_data.get("name", ""),
                 "definitions": task_data.get("definitions", {}),
-                "hints": task_data.get("hints", ""),
-                "resources": dict(
-                    {"github_repo": github_repo_url},
-                    **({"github_gist": gist_url} if gist_url else {}),
-                ),
+                "hints": _hints,
+                # resources patched in by mark_task_ready once repos exist.
+                "resources": {},
                 "outcomes": format_outcomes(task_data.get("outcomes", "")),
                 "question": task_data.get("question", ""),
                 "short_overview": format_outcomes(task_data.get("short_overview", "")),
             },
             "is_shared_infra_required": is_shared_infra_required,
-            "readme_content": parse_markdown_to_json(code_data.get("README.md", "")),
-            "eval_info": eval_info,
-            "solutions": solutions_for_db,
-            # ``task_type`` is a text[] consumed by the backend's
-            # /end_task_session handler — if it's empty/missing the handler
-            # 400s before queueing kill.sh / repo cleanup, leaving droplets
-            # dirty. Default to ['BUILD']; PR-review and design-review flows
-            # set their own values.
             "task_type": ["BUILD"],
+            # Pin the LLM classifier's chosen template as an IMMUTABLE per-task
+            # snapshot. The candidate app flags E2B-vs-droplet on this column and
+            # boots this image; the teardown DAG picks its kill path from it. It
+            # must NOT auto-follow a later re-classification — the task was built
+            # + gated against exactly this template. `match.template_id` is None
+            # only on no_match (unsupported combo). The classifier only returns
+            # template_ids from active built templates, so this can't dangle.
+            "template_id": match.template_id if match else None,
+            # Sandbox UI tabs, derived deterministically from the generated
+            # docker-compose.yml + run.sh. Written at draft time (insert is a
+            # raw payload insert) so the row carries it even if the build fails;
+            # mark_task_ready only patches other fields, leaving this intact.
+            "expected_ports": build_expected_ports(code_data),
         }
-
-        supabase = init_supabase(env)
-        try:
-            supabase_task = BaseTaskDAO(supabase).validate_and_insert(
-                task_data_for_db, env=env
-            )
-        except (TaskValidationError, TaskWriteError) as e:
-            logger.error(str(e))
-            raise
-
-        task_id = supabase_task.get("task_id") or supabase_task.get("id")
-        task_data.update(supabase_task)
+        # Draft→ready lifecycle (branch design): insert a draft row first so a
+        # row survives partial artifact-build failure; mark_task_ready patches
+        # resources later. main's BaseTaskDAO.validate_and_insert (single,
+        # strict insert) is brought in by this merge but wired in separately
+        # (stage 2: validation layered into the draft→ready path).
+        task_id = insert_draft_task(draft_payload, env=env)
         task_data["task_id"] = task_id
 
-        # Optionally rename local directory to use actual task ID.
+        # Step 2 — build the GitHub artifacts under a try/except that
+        # marks the row failed + cleans up partial repos.
+        repo_name: str | None = None
+        answer_repo_name: str | None = None
+        local_task_dir = None
         try:
-            new_local_task_dir = local_task_dir.parent / str(task_id)
-            if local_task_dir != new_local_task_dir:
-                shutil.move(str(local_task_dir), str(new_local_task_dir))
-                logger.info(
-                    f"Renamed local directory to use task ID: {new_local_task_dir}"
-                )
-        except Exception as e:
-            logger.info(f"Could not rename local directory to task ID: {str(e)}")
+            repo_name_base = (
+                task_data.get("resources", {}).get("github_repo", "").split("/")[-1]
+            )
+            if not repo_name_base:
+                repo_name_base = slugify(task_data.get("name", "assessment-task"))
+            if len(repo_name_base) > 50:
+                repo_name_base = repo_name_base[:50].rstrip("-")
 
-        return task_data
+            logger.info("Creating public GitHub template repository")
+            repo_name = create_github_template_repo(repo_name_base, is_private=True)
+            github_repo_url = f"https://github.com/{REPO_OWNER}/{repo_name}"
+
+            logger.info("Creating answer repository")
+            answer_base_name = task_data.get("name", "assessment-task")
+            if len(answer_base_name) > 42:
+                answer_base_name = answer_base_name[:42].rstrip("-")
+            answer_repo_name = create_answer_github_repo(answer_base_name)
+            answer_repo_url = f"https://github.com/{REPO_OWNER}/{answer_repo_name}"
+
+            logger.info("Uploading solution files to answer repository")
+            upload_answer_files_to_repo(answer_repo_name, solutions_data)
+
+            solutions_for_db = {
+                "steps": solutions_data.get("steps", []),
+                "answer_repo": answer_repo_url,
+            }
+
+            task_data.setdefault("resources", {})
+            task_data["resources"]["github_repo"] = github_repo_url
+
+            logger.info("Saving files locally...")
+            local_task_dir = save_files_locally(repo_name, task_data)
+            logger.info(f"Files saved locally to: {local_task_dir}")
+
+            logger.info("Uploading files to GitHub repository...")
+            upload_files_to_github(repo_name, task_data)
+
+            gist_url = None
+            if GITHUB_GIST_TOKEN:
+                try:
+                    gist_url = create_gist_from_template(
+                        repo_url=github_repo_url,
+                        repo_token=GITHUB_UTKRUSHTAPPS_TOKEN,
+                        gist_token=GITHUB_GIST_TOKEN,
+                        description=task_data.get("name", repo_name),
+                        public=False,
+                    )
+                    if gist_url:
+                        task_data["resources"]["gist_url"] = gist_url
+                        logger.info(f"Gist created: {gist_url}")
+                except Exception as e:
+                    logger.warning(f"Gist creation skipped or failed: {e}")
+            else:
+                logger.warning("No GITHUB_GIST_TOKEN for gist; skipping gist creation")
+
+            # Step 3 — flip the row to ready with the final payload.
+            ready_task_blob = {
+                "title": draft_payload["task_blob"]["title"],
+                "definitions": draft_payload["task_blob"]["definitions"],
+                "hints": draft_payload["task_blob"]["hints"],
+                "resources": dict(
+                    {"github_repo": github_repo_url},
+                    **({"github_gist": gist_url} if gist_url else {}),
+                ),
+                "outcomes": draft_payload["task_blob"]["outcomes"],
+                "question": draft_payload["task_blob"]["question"],
+                "short_overview": draft_payload["task_blob"]["short_overview"],
+            }
+
+            # Ready-gate validation (main's task_validation, via the repository
+            # seam): validate the fully-assembled task BEFORE flipping to ready.
+            # A malformed task raises TaskValidationError, which the build
+            # try/except below turns into mark_task_failed + repo cleanup, so a
+            # bad task never reaches status='ready'. Agent tasks pass unchanged.
+            readme_content = parse_markdown_to_json(code_data.get("README.md", ""))
+            # Guard the regression where a repo ships an empty README (the
+            # parser returns blank sections when README.md lacks the
+            # `## Task Overview` / `## Objectives` headers — historically the
+            # case for agent tasks). Surface it loudly so a context-free readme
+            # never quietly reaches candidates.
+            if not (readme_content.get("task_overview") or "").strip() or not readme_content.get("objectives"):
+                logger.warning(
+                    "Task %s README is missing Task Overview/Objectives — "
+                    "readme_content parsed empty (check the generated README.md "
+                    "uses the required '## Task Overview'/'## Objectives' headers).",
+                    task_id,
+                )
+            ready_payload = {
+                "created_at": draft_payload["created_at"],
+                "pre_requisites": draft_payload["pre_requisites"],
+                "answer": draft_payload["answer"],
+                "criterias": draft_payload["criterias"],
+                "is_deployed": draft_payload["is_deployed"],
+                "task_blob": ready_task_blob,
+                "is_shared_infra_required": is_shared_infra_required,
+                "readme_content": readme_content,
+                "eval_info": eval_info,
+                "solutions": solutions_for_db,
+            }
+            validate_task(ready_payload, env=env)
+            logger.info("Task %s passed ready-gate schema validation", task_id)
+
+            ready_row = mark_task_ready(
+                task_id,
+                env=env,
+                task_blob=ready_task_blob,
+                solutions=solutions_for_db,
+                eval_info=eval_info,
+                readme_content=readme_content,
+                is_shared_infra_required=is_shared_infra_required,
+            )
+
+            # task_competencies junction — non-fatal per row (DAO handles errors).
+            insert_task_competencies(
+                task_id,
+                [c.get("competency_id") for c in task_data["criterias"] if c.get("competency_id")],
+                env=env,
+            )
+
+            task_data.update(ready_row)
+            task_data["task_id"] = task_id
+
+            # Optionally rename local directory to use actual task ID.
+            if local_task_dir is not None:
+                try:
+                    new_local_task_dir = local_task_dir.parent / str(task_id)
+                    if local_task_dir != new_local_task_dir:
+                        shutil.move(str(local_task_dir), str(new_local_task_dir))
+                        logger.info(
+                            f"Renamed local directory to use task ID: {new_local_task_dir}"
+                        )
+                except Exception as e:
+                    logger.info(f"Could not rename local directory to task ID: {str(e)}")
+
+            return task_data
+        except Exception as build_exc:
+            logger.error(
+                "Mid-flight failure after draft INSERT for task %s: %s",
+                task_id, build_exc,
+            )
+            mark_task_failed(task_id, env=env, error=str(build_exc))
+            for partial in (repo_name, answer_repo_name):
+                if partial:
+                    delete_github_repo(partial)
+            raise
 
     except EvalGateError:
         # Distinct from generic failures — nothing was committed; the caller

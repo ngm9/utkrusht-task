@@ -1,0 +1,11 @@
+[
+    {
+        "competency_id": "f7e2c1ab-d3f7-4c9f-94d2-8d6f6fcb1c76",
+        "created_at": "2024-11-12T12:00:00+00:00",
+        "proficiency": "BASIC",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Python",
+        "scope": "An individual at BASIC level, with 0-2 years of experience, understands Python syntax and basic programming concepts like variables, data types (integers, floats, strings, booleans), and operators (arithmetic, comparison, logical). They can use control flow statements (if, elif, else) and loops (for, while) to solve simple problems. They are capable of writing simple scripts to automate basic tasks, perform calculations, and handle file I/O operations like reading from and writing to text files. They can work with fundamental data structures such as lists, tuples, dictionaries, and sets, and can define and call functions with arguments and return values. They know how to import and use standard library modules (e.g., math, random, datetime) and handle exceptions using try and except blocks. They use basic tools like text editors or simple IDEs (IDLE, Visual Studio Code), run scripts from the command line, and manage packages with pip. They can debug simple syntax and runtime errors using print statements, read and understand straightforward code written by others, and make minor edits to existing scripts under guidance. They are not expected to design complex systems but can follow predefined specifications and contribute to projects by handling straightforward tasks.",
+        "long_scope": null
+    }
+]

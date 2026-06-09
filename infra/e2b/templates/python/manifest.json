@@ -1,0 +1,71 @@
+{
+  "build_cmd": "pip install --break-system-packages -r requirements.txt",
+  "capabilities": {
+    "datastores": [
+      "postgres",
+      "mysql",
+      "mongo",
+      "redis"
+    ],
+    "frameworks": [
+      "fastapi",
+      "flask",
+      "django",
+      "sqlalchemy"
+    ],
+    "language_versions": {
+      "python": "3.12"
+    },
+    "protocols": [
+      "rest",
+      "websocket"
+    ],
+    "requires": {
+      "browser": false,
+      "gpu": false
+    },
+    "tags": [],
+    "tools": [
+      "pytest",
+      "pytest-asyncio",
+      "docker",
+      "docker-compose",
+      "git",
+      "jq",
+      "postgresql-client",
+      "default-mysql-client",
+      "psycopg2-binary",
+      "pymongo",
+      "redis",
+      "uvicorn",
+      "gunicorn",
+      "httpx",
+      "requests",
+      "langchain",
+      "llama-index",
+      "openai",
+      "anthropic",
+      "pinecone",
+      "chromadb",
+      "pandas",
+      "numpy"
+    ]
+  },
+  "compile_cmd": "python -m compileall -q .",
+  "description": "Fat Python 3.12 runtime. Pre-installed web frameworks: fastapi, flask, django, uvicorn, gunicorn. ORMs/DB clients: sqlalchemy, psycopg2-binary, pymongo, redis. LLM stack: langchain, llama-index, openai, anthropic, pinecone, chromadb. Data: pandas, numpy. Test: pytest, pytest-asyncio. Browser tools: ttyd, code-server, adminer. DinD via docker-ce.",
+  "eval_methods": [
+    "test_suite"
+  ],
+  "install_cmd": "apt-get install -y python3 python3-pip",
+  "install_seconds": 15,
+  "install_verify": "python3 --version",
+  "personas": [
+    "backend",
+    "data",
+    "mle"
+  ],
+  "primary_runtime": "python",
+  "status": "built",
+  "template_id": "utkrusht-python",
+  "test_cmd": "python -m pytest -q --tb=short"
+}

@@ -52,7 +52,23 @@ from generators.scenarios.generator import (
     "--append",
     is_flag=True,
     default=False,
-    help="Append/merge into existing scenario file instead of overwriting.",
+    help="Append/merge into the legacy JSON file (only honoured with --legacy-json).",
+)
+@click.option(
+    "--legacy-json",
+    is_flag=True,
+    default=False,
+    help=(
+        "Also write to the JSON file at --output (B4: off by default — "
+        "scenarios persist to the `generated_scenarios` Supabase table)."
+    ),
+)
+@click.option(
+    "--env",
+    type=click.Choice(["dev", "prod"], case_sensitive=False),
+    default="dev",
+    show_default=True,
+    help="Supabase env to persist scenarios into.",
 )
 @click.option(
     "--background-file",
@@ -76,7 +92,7 @@ from generators.scenarios.generator import (
     default=None,
     help="Pin all scenarios to a single business domain (e.g. 'fintech payments').",
 )
-def generate_scenarios_cli(competency_file, count, output, append, background_file, dry_run, focus_areas, domain):
+def generate_scenarios_cli(competency_file, count, output, append, legacy_json, env, background_file, dry_run, focus_areas, domain):
     """Generate task scenarios for coding assessments based on competency definitions."""
 
     # Load competency file
@@ -157,12 +173,29 @@ def generate_scenarios_cli(competency_file, count, output, append, background_fi
         click.echo(s)
         click.echo()
 
-    # Save to file
+    # Save: DB upsert is the default path (B4). The legacy JSON write is
+    # opt-in via --legacy-json — primarily for curated edits, not pipeline runs.
     if not dry_run:
-        save_generated_scenarios(scenarios, scenario_key, target_file, append=append)
-        click.echo(f"Saved to: {target_file} (key: '{scenario_key}', append={append})")
+        proficiency = competencies[0].get("proficiency", "BASIC").upper()
+        focus_list_arg = focus_list or None
+        save_generated_scenarios(
+            scenarios,
+            scenario_key,
+            target_file if legacy_json else None,
+            append=append,
+            proficiency=proficiency,
+            env=env.lower(),
+            source="scenario_generator",
+            domain=domain,
+            focus_areas=focus_list_arg,
+            also_write_json=legacy_json,
+        )
+        click.echo(
+            f"Saved to DB env={env} (key: '{scenario_key}', proficiency={proficiency})"
+            + (f"; also wrote {target_file}" if legacy_json else "")
+        )
     else:
-        click.echo("[DRY RUN] Scenarios not saved to file.")
+        click.echo("[DRY RUN] Scenarios not persisted.")
 
     # Display cost summary
     click.echo(f"\n{'='*70}")

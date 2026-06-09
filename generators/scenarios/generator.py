@@ -38,6 +38,7 @@ from generators.scenarios.prompts import (
     build_generation_prompt,
     build_eval_prompt,
 )
+from generators.scenarios import repository as scenario_repo
 
 # Load environment variables
 load_dotenv()
@@ -216,8 +217,52 @@ def load_scenarios_for_key(scenario_files: List[Path], key: str) -> List[str]:
     return scenarios
 
 
-def save_generated_scenarios(scenarios: List[str], key: str, target_file: Path, append: bool = True):
-    """Save scenarios to the target JSON file under the given key."""
+def save_generated_scenarios(
+    scenarios: List[str],
+    key: str,
+    target_file: Optional[Path] = None,
+    append: bool = True,
+    *,
+    proficiency: Optional[str] = None,
+    env: str = "dev",
+    source: str = "scenario_generator",
+    generator_model: Optional[str] = None,
+    domain: Optional[str] = None,
+    focus_areas: Optional[List[str]] = None,
+    also_write_json: bool = False,
+) -> None:
+    """Persist generated scenarios.
+
+    Primary path (B4): upsert into ``generated_scenarios`` keyed by
+    ``(combo_key, proficiency, scenario_hash)``. Idempotent — re-running
+    the same generation is a no-op rather than a corrupted JSON file.
+
+    ``target_file`` is kept as an *optional* fallback for callers that
+    explicitly opt into the legacy JSON layout (curated edits, offline
+    inspection). It is **off by default**; concurrent runs no longer race.
+    """
+    if proficiency is None:
+        proficiency = "BASIC"
+
+    inserted = scenario_repo.upsert_scenarios(
+        env=env,
+        combo_key=key,
+        proficiency=proficiency,
+        scenarios=scenarios,
+        source=source,
+        generator_model=generator_model,
+        domain=domain,
+        focus_areas=focus_areas,
+    )
+    logger.info(
+        "Persisted %d scenarios to DB for key=%r prof=%s (new rows=%d)",
+        len(scenarios), key, proficiency, inserted,
+    )
+
+    if not also_write_json or target_file is None:
+        return
+
+    # Legacy JSON path — opt-in only. Kept for curated-source edits.
     if append and target_file.exists():
         try:
             with open(target_file, "r", encoding="utf-8") as fh:
@@ -235,7 +280,10 @@ def save_generated_scenarios(scenarios: List[str], key: str, target_file: Path, 
     target_file.parent.mkdir(parents=True, exist_ok=True)
     with open(target_file, "w", encoding="utf-8") as fh:
         json.dump(data, fh, indent=2, ensure_ascii=False)
-    logger.info(f"Saved {len(scenarios)} scenarios to {target_file} under key '{key}'")
+    logger.info(
+        "Also wrote %d scenarios to legacy JSON %s under key %r",
+        len(scenarios), target_file, key,
+    )
 
 
 # ============================================================================
@@ -589,7 +637,8 @@ def generate_scenarios_for_competencies(
     logger.info(f"Generating scenarios for: {scenario_key}")
     logger.info(f"Competencies: {competency_names}, Proficiency: {proficiency}")
 
-    # Load existing scenarios for deduplication
+    # Load existing scenarios for deduplication — DB first (post-B4), then
+    # the curated JSON files for keys not yet backfilled.
     scenarios_root = Path(__file__).parent.parent.parent / "data" / "generated" / "scenarios"
     default_files = [
         scenarios_root / "task_scenarios.json",
@@ -597,10 +646,24 @@ def generate_scenarios_for_competencies(
         scenarios_root / "task_scenarios_no_code.json",
     ]
     scenario_files = existing_scenarios_files or default_files
-    all_existing = load_all_existing_scenarios(scenario_files)
-    key_existing = load_scenarios_for_key(scenario_files, scenario_key)
 
-    logger.info(f"Loaded {len(all_existing)} total existing scenarios, {len(key_existing)} for this key")
+    db_all = scenario_repo.load_all_scenarios_for_proficiency("dev", proficiency)
+    db_key = scenario_repo.load_scenarios_for_combo("dev", scenario_key, proficiency)
+
+    json_all = load_all_existing_scenarios(scenario_files)
+    json_key = load_scenarios_for_key(scenario_files, scenario_key)
+
+    # Dedup union — DB rows already include backfilled curated entries, but
+    # belt-and-braces in case the backfill hasn't run for this env.
+    all_existing = list(dict.fromkeys(db_all + json_all))
+    key_existing = list(dict.fromkeys(db_key + json_key))
+
+    logger.info(
+        "Loaded %d total existing scenarios (%d from DB, %d from JSON); "
+        "%d for this key (%d DB, %d JSON)",
+        len(all_existing), len(db_all), len(json_all),
+        len(key_existing), len(db_key), len(json_key),
+    )
 
     # --- Generation + Validation loop ---
     passing_scenarios = []

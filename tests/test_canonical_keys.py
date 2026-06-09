@@ -127,3 +127,117 @@ def test_build_retry_feedback_falls_back_to_feedback_string() -> None:
     }
     fb = _build_retry_feedback([], eval_info)
     assert "needs more depth" in fb
+
+
+def test_build_retry_feedback_embeds_prior_candidate_json() -> None:
+    """The failing candidate JSON must be embedded so the LLM patches its
+    own concrete output instead of regenerating from scratch with a
+    different scenario / different bugs."""
+    from generators.task import build_retry_feedback as _build_retry_feedback
+    eval_info = {
+        "task_eval": {"pass": True},
+        "code_eval": {"pass": False, "issues": ["missing filtering on date range"]},
+    }
+    prior = {
+        "name": "fix-assessment-attempt-viewset",
+        "question": "Add filtering + N+1 fix to AssessmentAttemptViewSet",
+        "code_files": {
+            "app/views.py": "class AssessmentAttemptViewSet(...): pass\n",
+            "app/tests/test_api.py": "from rest_framework.test import APIClient\n",
+        },
+    }
+    fb = _build_retry_feedback([], eval_info, prior_candidate=prior)
+    # The prior JSON must be embedded verbatim in a labelled block.
+    assert "PRIOR FAILED CANDIDATE" in fb
+    assert "fix-assessment-attempt-viewset" in fb
+    assert "AssessmentAttemptViewSet" in fb
+    assert "from rest_framework.test import APIClient" in fb
+    # Instructions tell the model NOT to switch scenarios / NOT to regenerate.
+    assert "PATCH" in fb
+    assert "do NOT regenerate" in fb
+    assert "do NOT switch scenarios" in fb
+    # The structured eval issue must still be present.
+    assert "missing filtering on date range" in fb
+
+
+def test_build_retry_feedback_no_prior_candidate_omits_block() -> None:
+    """When no prior candidate is provided (hollow path), the verbatim
+    block is omitted but the patch instruction still appears."""
+    from generators.task import build_retry_feedback as _build_retry_feedback
+    fb = _build_retry_feedback(["title is empty"], None)
+    assert "PRIOR FAILED CANDIDATE" not in fb
+    # Patch / no-regenerate language still present so hollow retries don't
+    # accidentally re-roll a new scenario either.
+    assert "PATCH" in fb
+
+
+def test_build_retry_feedback_includes_sandbox_verdict_when_present() -> None:
+    """Gate failures end up on candidate_eval['sandbox_eval']; build_retry_feedback
+    must surface the verdict + stdout tail so the LLM sees the actual error."""
+    from generators.task import build_retry_feedback as _build_retry_feedback
+    eval_info = {
+        "task_eval": {"pass": True},
+        "code_eval": {"pass": True},
+        "sandbox_eval": {
+            "passed": False,
+            "skipped": False,
+            "verdict": "collection_error",
+            "detail": "pytest hit a collection error",
+            "stdout_tail": "ImproperlyConfigured: Requested setting REST_FRAMEWORK",
+        },
+    }
+    fb = _build_retry_feedback([], eval_info, prior_candidate={"name": "x"})
+    assert "E2B sandbox gate FAILED (collection_error)" in fb
+    assert "pytest hit a collection error" in fb
+    assert "ImproperlyConfigured" in fb
+
+
+def test_build_retry_feedback_prefers_blocking_issues_over_legacy_issues() -> None:
+    """Layer B: blocking_issues (new schema) drives retry over legacy issues
+    field. If both populated, blocking_issues wins (it's the authoritative one)."""
+    from generators.task import build_retry_feedback as _build_retry_feedback
+    eval_info = {
+        "task_eval": {"pass": True},
+        "code_eval": {
+            "pass": False,
+            "blocking_issues": ["Criterion 2: stubs are missing"],
+            "suggestions": ["consider adding caching"],  # MUST NOT appear in feedback
+            "issues": ["legacy field — should be ignored when blocking_issues present"],
+        },
+    }
+    fb = _build_retry_feedback([], eval_info, prior_candidate={"name": "x"})
+    assert "Criterion 2: stubs are missing" in fb
+    # Suggestions never make it into retry feedback
+    assert "consider adding caching" not in fb
+    # Legacy `issues` is ignored when blocking_issues is present
+    assert "legacy field" not in fb
+
+
+def test_build_retry_feedback_falls_back_to_legacy_issues_when_no_blocking() -> None:
+    """Layer B back-compat: if a critic only emits the legacy `issues` field
+    (e.g. mocked test or pre-migration caller), the feedback still works."""
+    from generators.task import build_retry_feedback as _build_retry_feedback
+    eval_info = {
+        "task_eval": {"pass": True},
+        "code_eval": {
+            "pass": False,
+            # No blocking_issues — legacy shape only
+            "issues": ["legacy issue text"],
+        },
+    }
+    fb = _build_retry_feedback([], eval_info)
+    assert "legacy issue text" in fb
+
+
+def test_build_retry_feedback_truncates_huge_prior_candidate() -> None:
+    """Prior candidates over the char cap must be truncated to keep the
+    next LLM call within token budget."""
+    from generators.task import build_retry_feedback as _build_retry_feedback
+    from generators.task.evaluator import _PRIOR_CANDIDATE_CHAR_CAP
+    huge_value = "x" * (_PRIOR_CANDIDATE_CHAR_CAP * 2)
+    prior = {"name": "huge", "code_files": {"big.py": huge_value}}
+    fb = _build_retry_feedback([], None, prior_candidate=prior)
+    assert "[truncated;" in fb
+    # The feedback string overall must still be bounded — the cap + a few
+    # KB of system+verdict text. Anything close to 2x the cap = bug.
+    assert len(fb) < _PRIOR_CANDIDATE_CHAR_CAP + 5_000

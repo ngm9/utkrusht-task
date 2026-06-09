@@ -183,7 +183,7 @@ def _check_retriever_has_references(
         report.fail(f"could not import retriever: {e}")
         return
     comps = [Competency(name=n, proficiency=proficiency.upper()) for n in competency_names]
-    # No TaskRuntime supplied here — preflight is a diagnostic and runs before any
+    # No TemplateSpec supplied here — preflight is a diagnostic and runs before any
     # classifier call. The retriever skips Level 5 in that case (Levels 1-4 + 6 still fire).
     result = retrieve_references(comps, proficiency.upper())
     n = len(result.references)

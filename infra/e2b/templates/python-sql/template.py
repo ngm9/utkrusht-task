@@ -5,9 +5,75 @@ The generated ``template.py`` from ``e2b template migrate`` is rewritten
 here as one ``run_cmd`` per logical step — both for readability and to
 sidestep a Python-level quoting bug in the migration output (the
 ``echo "deb [...]"`` apt-source line had unescaped double quotes).
+
+Two module-level exports:
+
+* ``template``  — the imperative :class:`AsyncTemplate` build pipeline.
+* ``manifest``  — the declarative capability sheet read by the LLM
+  classifier and the future ``templates`` SQL table. Phase 0 of
+  ``docs/plans/2026-05-27-unified-classifier-template-schema.md``.
+
+The manifest is intentionally hand-aligned with what ``template``
+installs — keep them in sync.
 """
 
 from e2b import AsyncTemplate
+
+# Capability sheet — the "menu" of what this template offers.
+#
+# SYNC NOTE — Two categories have DIFFERENT semantics:
+#   capabilities.tools: packages PRE-INSTALLED in the image. Adding a pip
+#     package to the run_cmd chain (around line 99) requires a matching
+#     addition here, and vice versa. The presence in this list is a contract.
+#   capabilities.frameworks / datastores / protocols: the UNIVERSE the LLM
+#     classifier may match against — NOT all pre-installed; many are stood
+#     up at task boot by the task's own run.sh + docker-compose. No run_cmd
+#     change is required for these.
+#
+# Nothing in CI enforces this alignment today (CI gate is deferred — see
+# docs/plans/2026-05-27-unified-classifier-template-schema.md §Phase 0).
+# Drift between this dict and the run_cmd chain is currently honor-system.
+#
+# install_cmd / install_verify / install_seconds describe how to install
+# THIS template's primary runtime as a SECONDARY in another sandbox (the
+# polyglot install-at-boot mechanism from e2b-templates.md#polyglot). They
+# do NOT describe what THIS template's build pipeline does — that's the
+# run_cmd chain below.
+manifest = {
+    "template_id": "utkrusht-python",
+    "status": "built",
+    "primary_runtime": "python",
+    "personas": ["backend", "data", "mle"],
+    "eval_methods": ["test_suite"],
+    "capabilities": {
+        "language_versions": {"python": "3.13"},
+        "frameworks": ["fastapi", "django", "flask", "sqlalchemy"],
+        "datastores": ["postgres", "mysql", "mongo", "redis"],
+        "protocols": ["rest", "websocket"],
+        "tools": [
+            "pytest",
+            "docker",
+            "docker-compose",
+            "git",
+            "jq",
+            "psycopg2-binary",
+            "pandas",
+        ],
+        "requires": {"browser": False, "gpu": False},
+        "tags": [],
+    },
+    "build_cmd": "pip install --break-system-packages -r requirements.txt",
+    "test_cmd": "python -m pytest -q --tb=short",
+    "compile_cmd": "python -m compileall -q .",
+    "install_cmd": "apt-get install -y python3 python3-pip",
+    "install_verify": "python3 --version",
+    "install_seconds": 15,
+    "description": (
+        "Python 3.13 base. Pre-installed: psycopg2-binary, sqlalchemy, "
+        "pandas. Browser tools: ttyd, code-server, adminer. DinD via "
+        "docker-ce."
+    ),
+}
 
 template = (
     AsyncTemplate()

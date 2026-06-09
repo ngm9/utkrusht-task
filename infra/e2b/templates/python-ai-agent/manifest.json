@@ -1,0 +1,81 @@
+{
+  "build_cmd": "pip install --break-system-packages -r requirements.txt",
+  "capabilities": {
+    "datastores": [
+      "postgres",
+      "mysql",
+      "mongo",
+      "redis",
+      "qdrant"
+    ],
+    "frameworks": [
+      "langgraph",
+      "pydantic-ai",
+      "crewai",
+      "mem0",
+      "litellm",
+      "langfuse",
+      "openinference-instrumentation",
+      "fastembed",
+      "anthropic",
+      "openai",
+      "google-generativeai"
+    ],
+    "language_versions": {
+      "python": "3.12"
+    },
+    "protocols": [
+      "rest",
+      "websocket"
+    ],
+    "requires": {
+      "browser": false,
+      "gpu": false
+    },
+    "tags": [
+      "python-ai-agent",
+      "family-member",
+      "agent-frameworks"
+    ],
+    "tools": [
+      "pytest",
+      "pytest-asyncio",
+      "docker",
+      "docker-compose",
+      "git",
+      "jq",
+      "postgresql-client",
+      "default-mysql-client",
+      "psycopg2-binary",
+      "pymongo",
+      "redis",
+      "httpx",
+      "requests",
+      "pandas",
+      "numpy",
+      "ttyd",
+      "code-server",
+      "adminer",
+      "litellm",
+      "tiktoken",
+      "fastembed",
+      "langfuse"
+    ]
+  },
+  "compile_cmd": "python -m compileall -q .",
+  "description": "AI-agent Python 3.12 runtime. Layers the agent frameworks (langgraph, pydantic-ai, crewai, mem0) on the lean python-base substrate, plus LiteLLM for model routing and tiktoken for context budgeting. Provider SDKs (anthropic, openai, google-generativeai) are pre-installed so the candidate's agent code can call models directly via the candidate's own API key. Observability via langfuse + openinference. The gate is LLM-free \u2014 no API key sits in this image at generation; the candidate's session brings their own key in.",
+  "eval_methods": [
+    "test_suite"
+  ],
+  "install_cmd": "apt-get install -y python3 python3-pip",
+  "install_seconds": 15,
+  "install_verify": "python3 --version",
+  "personas": [
+    "agent_engineer",
+    "mle"
+  ],
+  "primary_runtime": "python",
+  "status": "built",
+  "template_id": "utkrusht-python-ai-agent",
+  "test_cmd": "python -m pytest -q --tb=short"
+}

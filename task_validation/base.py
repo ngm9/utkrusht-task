@@ -72,7 +72,7 @@ class TaskBlob(BaseModel):
     question: str
     short_overview: List[str]
 
-    @field_validator("title", "question", "hints")
+    @field_validator("title", "hints", "question")
     @classmethod
     def not_empty(cls, v: str) -> str:
         if not v or not v.strip():

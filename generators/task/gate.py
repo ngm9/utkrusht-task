@@ -23,6 +23,15 @@ from typing import Dict, Optional, Tuple
 
 from infra.logger_config import logger
 
+# ``infra.metrics`` was dropped with the deployment layer. This no-op stub keeps
+# the ``metrics.inc(...)`` call sites working without the metrics subsystem.
+class _Metrics:
+    def inc(self, *args, **kwargs) -> None:
+        pass
+
+
+metrics = _Metrics()
+
 from infra.e2b.sandbox_eval import run_sandbox_eval, sandbox_eval_enabled
 from generators.task.evaluator import build_retry_feedback
 from generators.task.runtime_resolver import ResolvedPlan
@@ -54,32 +63,50 @@ def run_gate_for_attempt(
     gate existed.
     """
     if not sandbox_eval_enabled():
+        metrics.inc("gate_outcome_total", outcome="disabled")
         return GateOutcome.DISABLED, ""
 
-    logger.info("Running E2B sandbox build/test gate")
+    logger.info("Running E2B run.sh readiness gate")
     # ``plan`` carries both the runtime AND the template recipe
     # (``plan.template.build_cmd`` / ``test_cmd`` / ``compile_cmd``) so the
-    # gate runs runtime-specific commands without any hardcoded mapping.
-    sb_result = run_sandbox_eval(candidate.get("code_files", {}), plan)
+    # gate falls back to the legacy build/test path cleanly if ``run.sh``
+    # is absent. The primary gate is the candidate's own ``run.sh`` (LLM-free
+    # at the gate, key-gated ping in their session).
+    sb_result = run_sandbox_eval(
+        candidate.get("code_files", {}),
+        plan,
+        run_sh=candidate.get("run_script"),
+    )
     candidate_eval["sandbox_eval"] = sb_result.as_dict()
 
+    runtime_label = (plan.match.template_id or plan.match.suggested_template or "unknown") if plan else "unknown"
     if sb_result.skipped:
         logger.info(f"  sandbox gate skipped: {sb_result.detail}")
+        metrics.inc(
+            "gate_outcome_total", outcome="skipped",
+            runtime=runtime_label, reason=(sb_result.detail or "no_reason")[:40],
+        )
         return GateOutcome.SKIPPED, ""
 
     if not sb_result.passed:
+        metrics.inc("gate_outcome_total", outcome="retry", runtime=runtime_label)
         logger.warning(
             f"Attempt {attempt}: sandbox gate FAILED "
             f"({sb_result.verdict}) — {sb_result.detail}"
         )
+        # The gate verdict (verbatim stdout tail + verdict + detail) is
+        # already on ``candidate_eval["sandbox_eval"]`` from the line above,
+        # so ``build_retry_feedback`` re-renders it via the structured path
+        # rather than us passing it as a free-form hollow_reason string.
+        # The big win: pass ``candidate`` so the LLM sees its own failing
+        # JSON in the next-attempt feedback (no more "regenerate from
+        # scratch + describe past bug" pathology).
         feedback = build_retry_feedback(
-            [
-                f"E2B sandbox build/test gate failed "
-                f"({sb_result.verdict}): {sb_result.detail} "
-                f"{sb_result.stdout_tail}".strip()
-            ],
+            [],
             candidate_eval,
+            prior_candidate=candidate,
         )
         return GateOutcome.RETRY, feedback
 
+    metrics.inc("gate_outcome_total", outcome="pass", runtime=runtime_label)
     return GateOutcome.PASS, ""
