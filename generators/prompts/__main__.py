@@ -156,15 +156,15 @@ def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_
             except Exception as e:
                 click.echo(f" Warning: could not load compiled demos: {e}")
         else:
-            click.echo(f" No compiled file at {cp} — running uncompiled.")
+            click.echo(f" No compiled file at {cp} -- running uncompiled.")
 
     click.echo(f" Running generator (max {max_iterations} iterations)...")
     result = agent(competencies=competencies, proficiency=proficiency_upper, env=env)
 
     # Report
-    click.echo(f"\n{'─'*70}")
+    click.echo(f"\n{'-'*70}")
     click.echo(f" RESULT")
-    click.echo(f"{'─'*70}")
+    click.echo(f"{'-'*70}")
     click.echo(f" Iterations:        {result.iterations}")
     click.echo(f" Verifier passed:   {result.passes_verifier}")
     click.echo(f" Bootstrap mode:    {result.bootstrap_mode}")
@@ -189,21 +189,21 @@ def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_
     click.echo()
 
     if not result.passes_verifier:
-        click.echo(f" ⚠  Verifier did not pass after {result.iterations} iteration(s)")
-        click.echo(f"     Last feedback: {result.verifier_feedback[:300]}")
+        click.echo(f" [WARN] Verifier did not pass after {result.iterations} iteration(s)")
+        click.echo(f"        Last feedback: {result.verifier_feedback[:300]}")
 
     if result.validation:
         v = result.validation
         click.echo(f" Validation: {'PASS' if v.passed else 'FAIL'}")
         for issue in v.issues:
-            click.echo(f"   ✗ {issue}")
+            click.echo(f"   [x] {issue}")
         for warning in v.warnings:
-            click.echo(f"   ⚠ {warning}")
+            click.echo(f"   [!] {warning}")
 
     if dry_run:
-        click.echo(f"\n{'─'*70}")
-        click.echo(f" DRY RUN — Generated prompt (first 1500 chars):")
-        click.echo(f"{'─'*70}")
+        click.echo(f"\n{'-'*70}")
+        click.echo(f" DRY RUN -- Generated prompt (first 1500 chars):")
+        click.echo(f"{'-'*70}")
         click.echo(result.new_prompt_file[:1500])
         click.echo("...")
         return
