@@ -166,7 +166,6 @@ def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_
     click.echo(f" RESULT")
     click.echo(f"{'-'*70}")
     click.echo(f" Iterations:        {result.iterations}")
-    click.echo(f" Verifier passed:   {result.passes_verifier}")
     click.echo(f" Bootstrap mode:    {result.bootstrap_mode}")
     click.echo(f" Fallback level:    {result.fallback_level}")
     click.echo(f" References used:   {len(result.references)}")
@@ -189,7 +188,7 @@ def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_
     click.echo()
 
     if not result.passes_verifier:
-        click.echo(f" [WARN] Verifier did not pass after {result.iterations} iteration(s)")
+        click.echo(f" [WARN] Review did not pass after {result.iterations} iteration(s)")
         click.echo(f"        Last feedback: {result.verifier_feedback[:300]}")
 
     if result.validation:

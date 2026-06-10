@@ -17,6 +17,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Optional
 
 import dspy
@@ -207,8 +208,12 @@ class GeneratePromptSignature(dspy.Signature):
     Do NOT rename "Helpful Tips" to "Guidance", "Tips", "Hints", or
     "Recommendations". Do NOT add `Database Schema Overview` or
     `Performance Issues` as separate sections. Section 2 (`Database Access`)
-    must use `<DROPLET_IP>` as the host placeholder and mention preferred
-    client tools (psql, pgAdmin, DBeaver, redis-cli, MongoDB Compass, …).
+    must use `localhost` as the host — the task runs inside an E2B sandbox
+    where datastore ports are bound to `127.0.0.1` and the candidate connects
+    from the sandbox terminal (e.g. `redis-cli -h localhost -p 6379`,
+    `psql -h localhost -p 5432`). Do NOT use `<DROPLET_IP>`, a droplet IP, or
+    any remote host placeholder — there is no droplet. Mention preferred client
+    tools (psql, pgAdmin, DBeaver, redis-cli, MongoDB Compass, …).
 
     ─────────────────────────────────────────────────────────────────────────
     HARD CONSTRAINT #3 — REQUIRED OUTPUT JSON STRUCTURE must be VERBOSE
@@ -528,11 +533,24 @@ class GenerationResult:
 class PromptGeneratorAgent(dspy.Module):
     """The agent that synthesizes new prompt files."""
 
-    def __init__(self, max_iterations: int = 5):
+    def __init__(self, max_iterations: int = 5, verifier_enabled: bool | None = None):
         super().__init__()
         self.generate = dspy.ChainOfThought(GeneratePromptSignature)
         self.verify = dspy.ChainOfThought(VerifyPromptSignature)
         self.max_iterations = max_iterations
+        # The LLM verifier (VerifyPromptSignature) is a STYLE/consistency
+        # reviewer — advisory, non-blocking. The deterministic validator
+        # (validate_prompt_file) is the CORRECTNESS gate (syntax, registry key,
+        # str.format dry-run). When the verifier is disabled the loop gates on
+        # the validator alone: no per-iteration verify LLM call, no churn
+        # chasing canonical-style nits the prompt ships with anyway.
+        # Default ON to preserve existing behaviour; set PROMPT_VERIFIER_ENABLED
+        # to false/0/no/off to turn it off.
+        if verifier_enabled is None:
+            verifier_enabled = os.getenv(
+                "PROMPT_VERIFIER_ENABLED", "true"
+            ).strip().lower() not in ("false", "0", "no", "off")
+        self.verifier_enabled = verifier_enabled
 
     def load_compiled_demos(self, compiled_path: str) -> int:
         """Load few-shot demos from a compile.py output JSON into the generator.
@@ -665,7 +683,7 @@ class PromptGeneratorAgent(dspy.Module):
         logger.info("  compiled demos loaded     %d", demo_count)
 
         # ─── STEP 6: Generate ⇄ Verify ⇄ Validate loop ───────────────
-        logger.info("STEP 6 — Generate ⇄ Verify ⇄ Validate loop "
+        logger.info("STEP 6 — Generate ⇄ Review ⇄ Validate loop "
                     "(max_iterations=%d)", self.max_iterations)
         comp_dicts = [{"name": c.name, "proficiency": proficiency} for c in competencies]
         feedback = ""
@@ -697,24 +715,29 @@ class PromptGeneratorAgent(dspy.Module):
                 logger.debug("    rationale preview: %s",
                              rationale_preview[:400].replace("\n", " "))
 
-            logger.info("  calling Verify (ChainOfThought)...")
-            verify_out = self.verify(
-                new_prompt_file=new_prompt,
-                competencies=comp_str,
-                runtime=template.primary_runtime,
-                frameworks=frameworks_json,
-                datastores=datastores_json,
-                persona=persona,
-                reference_prompts=refs_text,
-                similar_tasks=tasks_text,
-                competency_scopes=scopes_str,
-                detailed_skill_signal=skill_signal,
-            )
-            logger.info("    Verify done — passes=%s feedback=%d chars",
-                        verify_out.passes, len(verify_out.feedback or ""))
-            if verify_out.feedback:
-                logger.info("    verifier feedback: %s",
-                            (verify_out.feedback or "")[:400].replace("\n", " "))
+            if self.verifier_enabled:
+                logger.info("  calling Review (ChainOfThought)...")
+                verify_out = self.verify(
+                    new_prompt_file=new_prompt,
+                    competencies=comp_str,
+                    runtime=template.primary_runtime,
+                    frameworks=frameworks_json,
+                    datastores=datastores_json,
+                    persona=persona,
+                    reference_prompts=refs_text,
+                    similar_tasks=tasks_text,
+                    competency_scopes=scopes_str,
+                    detailed_skill_signal=skill_signal,
+                )
+                logger.info("    Review done — passes=%s feedback=%d chars",
+                            verify_out.passes, len(verify_out.feedback or ""))
+                if verify_out.feedback:
+                    logger.info("    review feedback: %s",
+                                (verify_out.feedback or "")[:400].replace("\n", " "))
+            else:
+                # Review step disabled — advisory pass so the loop gates on the
+                # deterministic validator alone (no extra LLM call).
+                verify_out = SimpleNamespace(passes=True, feedback="")
 
             logger.info("  calling validator.py (deterministic AST + registry "
                         "+ format-var checks)...")
@@ -728,7 +751,7 @@ class PromptGeneratorAgent(dspy.Module):
 
             last_result = (new_prompt, verify_out, validation, attempt)
             if verify_out.passes and validation.passed:
-                logger.info("  ✓ both verifier and validator passed at attempt %d "
+                logger.info("  ✓ generated prompt accepted at attempt %d "
                             "— exiting loop", attempt)
                 break
 
