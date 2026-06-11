@@ -148,7 +148,6 @@ class GeneratePromptSignature(dspy.Signature):
       ## .gitignore INSTRUCTIONS
       ## README.md INSTRUCTIONS
           ### Task Overview
-          ### Database Access                (data tasks only; otherwise omit)
           ### Helpful Tips
           ### Objectives
           ### How to Verify
@@ -199,21 +198,68 @@ class GeneratePromptSignature(dspy.Signature):
     these EXACT names, in this order:
 
       1. Task Overview
-      2. Database Access      (data-related tasks only — omit otherwise)
-      3. Helpful Tips
-      4. Objectives
-      5. How to Verify
-      6. NOT TO INCLUDE in README
+      2. Helpful Tips
+      3. Objectives
+      4. How to Verify
+      5. NOT TO INCLUDE in README
 
     Do NOT rename "Helpful Tips" to "Guidance", "Tips", "Hints", or
-    "Recommendations". Do NOT add `Database Schema Overview` or
-    `Performance Issues` as separate sections. Section 2 (`Database Access`)
-    must use `localhost` as the host — the task runs inside an E2B sandbox
-    where datastore ports are bound to `127.0.0.1` and the candidate connects
-    from the sandbox terminal (e.g. `redis-cli -h localhost -p 6379`,
-    `psql -h localhost -p 5432`). Do NOT use `<DROPLET_IP>`, a droplet IP, or
-    any remote host placeholder — there is no droplet. Mention preferred client
-    tools (psql, pgAdmin, DBeaver, redis-cli, MongoDB Compass, …).
+    "Recommendations". Do NOT add `Database Schema Overview`, `Database
+    Access`, or `Performance Issues` as separate sections. The README must
+    NOT contain `<DROPLET_IP>` placeholders or any database-connection
+    details (host, port, username, password, client-tool suggestions).
+
+    Section size + framing rules — the generated prompt's README.md
+    INSTRUCTIONS section MUST embed ALL of the following so the downstream
+    task-gen LLM produces concise, non-revealing READMEs (these come
+    verbatim from curated references like
+    `task_generation_prompts/Intermediate/javascript_intermediate_prompt.py`):
+
+      • A top-of-section preamble that states:
+          – "The README must be concise and open-ended. Each section should
+            have only the essential points needed to understand the task.
+            Do NOT overload with too many bullets — quality over quantity.
+            The candidate should figure out the implementation approach on
+            their own."
+          – "Do NOT directly tell candidates what to implement — provide
+            direction and guidance to help them discover solutions."
+
+      • Per-section size caps the generated prompt MUST include:
+          – Task Overview: 3-4 meaningful sentences. No bullet list.
+            Describes the business scenario, current state, and why the
+            problem matters. NEVER empty. NO bold time-budget callouts.
+          – Objectives:    4-6 bullets max.
+          – How to Verify: 4-6 bullets max.
+          – Helpful Tips:  4-5 bullets max.
+
+      • Per-section framing rules the generated prompt MUST include:
+          – Objectives: "Frame objectives around outcomes rather than
+            specific technical implementations. Objectives describe the
+            'what' and 'why', never the 'how'." Each bullet states an
+            observable end-state, not a step or an API/library to use.
+          – How to Verify: "Frame verification in terms of observable
+            outcomes. Describe WHAT to verify and the expected behavior,
+            not the specific implementation to write." Each bullet is a
+            check the candidate can run (test output, response shape,
+            latency observation, log line, memory reading).
+          – Helpful Tips: "Provide practical guidance without revealing
+            specific implementations." Each bullet starts with an action
+            word: "Consider", "Think about", "Explore", "Review",
+            "Analyze". Tips guide discovery — they MUST NOT name the
+            specific API, library, function, pattern, data structure, or
+            algorithm that solves the task.
+
+      • A "NOT TO INCLUDE in README" section in the generated prompt
+        listing at minimum:
+          – Setup commands (e.g. `npm install`, `pip install`,
+            `docker compose up`, `mvn test`, etc.)
+          – Direct solutions or architectural decisions
+          – Step-by-step implementation guides
+          – Specific APIs, method names, library names, pattern names, or
+            data-structure names that reveal the solution
+          – Code snippets that give away the answer
+          – Directive phrases like "you should implement", "add this
+            middleware", "create this class", "use <specific API>"
 
     ─────────────────────────────────────────────────────────────────────────
     HARD CONSTRAINT #3 — REQUIRED OUTPUT JSON STRUCTURE must be VERBOSE
@@ -304,20 +350,46 @@ class GeneratePromptSignature(dspy.Signature):
         libraries) are PRE-INSTALLED by the E2B template. Do NOT include
         `apt-get install`, `pip install`, or `npm install` for the runtime or
         its common libs in run.sh.
-      • `datastores` non-empty → include a `docker-compose.yml` that brings
-        up those service containers. `run.sh` uses `docker compose up -d`;
-        `kill.sh` uses `docker compose down`. If `datastores` lists a service
-        the assessed competency does NOT cover (e.g. `mysql` listed while the
-        competency is "PostgreSQL - Large Scale Datasets"), TREAT THE EXTRA
-        SERVICE AS OPTIONAL — do not require an `init_<extra>.sql` or build
-        the task around it. The primary database for the assessment is the
-        one named in the competencies.
+      • `datastores` are AVAILABLE in the template but are NOT automatic
+        requirements for the task. This rule is runtime-agnostic — apply
+        the same reasoning whatever the `primary_runtime` is. Inspect
+        `competency_scopes` and `detailed_skill_signal` (scenarios + role
+        context) to decide whether the selected scenario actually exercises
+        a datastore. Use your own knowledge of the stack to recognise both
+        sides — do not rely on hard-coded keyword lists.
+
+        (a) The scenario interacts with a DB, cache, queue, message broker,
+            or any other external service → include `docker-compose.yml`
+            for the datastore(s) the scenario actually needs, with `run.sh`
+            using `docker compose up -d` and `kill.sh` using `docker compose
+            down`. Datastores listed in `datastores` that the scenario does
+            NOT need stay OPTIONAL — do not require `init_<extra>.sql` for
+            them.
+
+        (b) The scenario is pure-runtime — language-level, algorithmic,
+            async-concurrency, or in-process work with no external service
+            interaction → TREAT ALL TEMPLATE DATASTORES AS OPTIONAL. Do
+            NOT include `docker-compose.yml`, `init_database.sql`, or any
+            datastore configuration. Ship the task as a local project
+            using the runtime's native package manifest + source + tests,
+            runnable on the candidate's machine via the runtime's native
+            test command. Use your knowledge of the `primary_runtime` to
+            pick the right manifest filename and test command.
+
+        When in doubt — the scenario doesn't mention an external service,
+        the scope is language-centric, the success criteria are observable
+        via in-process tests — choose the pure-local shape (b).
       • `persona="mobile"` → no Dockerfile, no compose; run the runtime's
-        native test command (e.g. `flutter test`, `npx react-native test`).
+        native test command for that platform.
       • `persona="dba"` / `persona="data"` → `init_database.sql` + Compose;
         no app code.
       • `persona="pm"` → data files only (CSV / JSON); no `run.sh`.
-      • `persona="frontend"` → `package.json`, no Docker, browser-side only.
+      • `persona="frontend"` → runtime-native manifest, no Docker,
+        browser-side only.
+      • `persona="backend"` + scenario does NOT need an external service
+        (per the rule above) → no Docker, no compose, no `kill.sh`. `run.sh`
+        is optional — the candidate runs the task locally with the runtime's
+        native test command against the runtime's native manifest.
       • `persona="sdet"` → test suite shape; template ships the runner.
 
     ─────────────────────────────────────────────────────────────────────────
@@ -364,7 +436,7 @@ class GeneratePromptSignature(dspy.Signature):
         desc="JSON list of framework names the template advertises in capabilities.frameworks, e.g. '[\"fastapi\"]' or '[]'"
     )
     datastores: str = dspy.InputField(
-        desc="JSON list of datastore names the template supports, brought up via docker-compose if used, e.g. '[\"postgres\"]' or '[]'"
+        desc="JSON list of datastore names the template makes AVAILABLE, not requirements. Decide which (if any) the task needs by reading the scenarios and scope, not this list. Pure-runtime tasks should include no datastore configuration even when this list is non-empty."
     )
     persona: str = dspy.InputField(
         desc="Reviewer persona for this combo (one of the matched template's "
@@ -415,19 +487,28 @@ class VerifyPromptSignature(dspy.Signature):
          template's capabilities + persona.
          Example: persona="data" / script-style task with a Flask/FastAPI app
          file present — REJECT.
-         Example: datastores=["postgres"] but no docker-compose.yml — REJECT.
          Example: persona="mobile" with a Dockerfile present — REJECT.
+         Example: scenario explicitly requires PostgreSQL ingest + queries
+         and the prompt asks for `docker-compose.yml` but it is missing —
+         REJECT.
+         IMPORTANT: do NOT reject just because `datastores` is non-empty.
+         The template advertises what is AVAILABLE; the task picks which
+         datastores (if any) it actually uses. A pure-runtime task —
+         language-level, algorithmic, async-concurrency, or in-process
+         work with no external service interaction — is a valid local-only
+         project for any runtime. Accept the prompt even when it ships NO
+         `docker-compose.yml`, NO `init_database.sql`, and NO `kill.sh`,
+         as long as it is runnable locally via the runtime's native test
+         command against the runtime's native manifest (use your knowledge
+         of the stack to recognise valid combinations). Decide datastore
+         necessity by READING the scenario / scope, not by reading
+         `datastores`.
          EXCEPTION (do NOT reject in this case): when `datastores` lists a
          service the assessed competency clearly does NOT cover (e.g.
          datastores=["postgres","mysql"] for a "PostgreSQL - Large Scale
          Datasets" competency), the prompt may legitimately treat the extra
          service as OPTIONAL infrastructure. Accept the prompt as long as it
-         EXPLICITLY marks the extra datastore as optional/non-required (look
-         for phrasing like "treat as OPTIONAL and non-blocking", "PRIMARY
-         DATASTORE: <name> is the only assessed datastore", "do not require
-         the candidate to use them", or similar). Do not require the prompt
-         to ship an `init_<extra>.sql` or build the task around the extra
-         service in that case.
+         EXPLICITLY marks the extra datastore as optional/non-required.
       3. STRUCTURAL DAMAGE: missing PROMPT_REGISTRY, missing format vars
          ({organization_background}, {role_context}, {competencies},
          {real_world_task_scenarios}), or wrong registry key format.
