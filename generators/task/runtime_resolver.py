@@ -73,12 +73,12 @@ class ResolvedPlan:
     ``infra/classifier/runtime.TaskIntent`` but isn't persisted today).
 
     On classifier failure, ``match`` is None — callers skip persona
-    routing and skip the gate. When the classifier returned a useful
-    no-match (``match.template_id is None`` but ``match.suggested_template``
-    is set), ``template`` is a SYNTHESIZED ``TemplateSpec``
-    (``registry_version == 0``) so the prompt-generator and task-creator
-    can still proceed for pure-local tasks. The build/test gate still
-    SKIPS for synthesized templates — see ``gate_supported`` below.
+    routing and skip the gate. When the classifier decided the task
+    does NOT need an external service (``match.needs_external_service``
+    is False), ``template`` is intentionally None — the prompt generator
+    and task creator must handle the pure-local case from references
+    alone. On no_match where infra IS needed but no template fits,
+    ``template`` is also None and ``match.no_match_reason`` is set.
     """
 
     combo_key: str
@@ -87,18 +87,19 @@ class ResolvedPlan:
 
     @property
     def gate_supported(self) -> bool:
-        """True when a BUILT template backs the plan — the build/test gate
-        can boot it. False for synthesized fallbacks (``registry_version``
-        is 0) and for completely empty plans.
-        """
-        return self.template is not None and self.template.registry_version > 0
+        """True when a template exists — the build/test gate can boot it."""
+        return self.template is not None
 
     @property
-    def is_synthesized(self) -> bool:
-        """True when ``template`` is a fallback synthesized from
-        ``match.suggested_template`` rather than a real built row.
+    def is_no_infra(self) -> bool:
+        """True when the classifier flagged this combo as pure-local
+        (no Docker / no datastore / no message broker / etc.). The agent
+        and task creator branch on this to skip infra-related output.
         """
-        return self.template is not None and self.template.registry_version == 0
+        return (
+            self.match is not None
+            and self.match.needs_external_service is False
+        )
 
 
 def make_combo_key(competencies: Iterable[Competency]) -> str:
@@ -181,67 +182,6 @@ def _get_template(supabase, template_id: str) -> TemplateSpec | None:
     return _row_to_template(rows[0])
 
 
-def _synthesize_template_from_match(
-    match: TaskTemplateMatch | None,
-) -> TemplateSpec | None:
-    """Synthesize a minimal ``TemplateSpec`` from a no-match decision.
-
-    Used when the LLM classifier ran successfully and returned a useful
-    no-match verdict — i.e. ``match.template_id is None`` BUT
-    ``match.suggested_template`` is populated — and we still want the
-    rest of the pipeline (prompt generator + task creator) to proceed
-    because the task is pure-local (no Docker / no datastore needed).
-
-    The synthesized spec is identifiable by ``registry_version == 0`` so
-    the build/test gate can skip cleanly without trying to boot a
-    sandbox that does not exist yet.
-
-    Returns None when no synthesis is possible (no suggested_template and
-    no missing_capabilities to work with).
-    """
-    if match is None:
-        return None
-    suggested = match.suggested_template
-    missing = list(match.missing_capabilities or [])
-    if not suggested and not missing:
-        return None
-
-    template_id = suggested or "synthesized-fallback"
-    # We deliberately do NOT hard-code language/runtime maps here — the
-    # downstream LLM infers the runtime from competency names + scope +
-    # references. We just pass the classifier's own hint, stripped of
-    # the convention prefix so the field stays consistent with built
-    # templates ("python", "node", etc. rather than "utkrusht-python").
-    primary_runtime = suggested or ""
-    if primary_runtime.startswith("utkrusht-"):
-        primary_runtime = primary_runtime[len("utkrusht-"):]
-    personas = [match.persona] if match.persona else []
-
-    return TemplateSpec(
-        template_id=template_id,
-        primary_runtime=primary_runtime,
-        personas=personas,
-        eval_methods=["test_suite"],
-        capabilities={
-            "frameworks": missing,
-            "datastores": [],
-        },
-        build_cmd="",
-        test_cmd="",
-        compile_cmd=None,
-        install_cmd=None,
-        install_verify=None,
-        install_seconds=None,
-        manifest_hash="",
-        registry_version=0,  # marker: synthesized, not a built row
-        description=(
-            f"Synthesized fallback for combo with no built template "
-            f"(suggested: {suggested or 'n/a'})."
-        ),
-        generated_at=None,
-    )
-
-
 def _match_lookup(supabase, combo_key: str) -> tuple[TaskTemplateMatch | None, int | None, str | None]:
     """Return (match, cached_registry_version, classifier_model) for combo_key.
 
@@ -315,20 +255,15 @@ def _is_match_fresh(
 
     Rules:
       * Model mismatch → stale (the prompt may have changed semantics).
-      * If the cache pointed at a real built template and that template's
+      * If the cache pointed at a real template and that template's
         registry_version has bumped → stale.
       * no_match rows survive registry bumps (a new template might
         un-block them, but that's only worth re-evaluating on a model
         change; otherwise we'd re-call the LLM on every template insert).
-      * Synthesized fallback templates (``registry_version == 0``) skip
-        the version check — same rationale as no_match: version doesn't
-        apply to a row that was never persisted in ``templates``.
     """
     if cached_model != _CLASSIFIER_MODEL:
         return False
-    if (template is not None
-            and template.registry_version > 0
-            and cached_version != template.registry_version):
+    if template is not None and cached_version != template.registry_version:
         return False
     return True
 
@@ -382,17 +317,6 @@ def resolve_plan(
         if cached is not None:
             template = (_get_template(client, cached.template_id)
                         if cached.template_id else None)
-            # Fallback synthesis: cached no-match decision with a useful
-            # suggested_template → synthesize so downstream stages don't
-            # hard-fail on a pure-local task.
-            if template is None and cached.template_id is None:
-                template = _synthesize_template_from_match(cached)
-                if template is not None:
-                    logger.info(
-                        f"resolve_plan: combo={combo_key!r} cache HIT "
-                        f"(no-match) — synthesized template "
-                        f"{template.template_id!r} from suggested_template"
-                    )
             if _is_match_fresh(cached_model, cached_version, template):
                 logger.info(
                     f"resolve_plan: combo={combo_key!r} cache HIT "
@@ -480,21 +404,6 @@ def resolve_plan(
             f"template_id={match.template_id!r} but no built template row "
             f"could be hydrated — gate will skip"
         )
-
-    # Fallback synthesis: classifier returned a useful no-match decision
-    # (no matching built template, but suggested_template is set). Synth
-    # a minimal TemplateSpec so prompt generation + task creation can
-    # still proceed for pure-local tasks. The build/test gate stays
-    # skipped (registry_version == 0 → gate_supported is False).
-    if template is None and match.template_id is None:
-        template = _synthesize_template_from_match(match)
-        if template is not None:
-            logger.info(
-                f"resolve_plan: combo={combo_key!r} no built template — "
-                f"synthesized fallback {template.template_id!r} "
-                f"(missing_capabilities={match.missing_capabilities})"
-            )
-
     return ResolvedPlan(
         combo_key=combo_key,
         match=match,

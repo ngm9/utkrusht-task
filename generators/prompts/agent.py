@@ -26,7 +26,6 @@ from dotenv import load_dotenv
 logger = logging.getLogger("prompt_generator")
 
 from infra.classifier.runtime import Competency
-from generators.task.runtime_resolver import TemplateSpec, resolve_plan
 from generators.prompts.db_queries import (
     TaskExample,
     fetch_competency_scope,
@@ -671,26 +670,22 @@ class PromptGeneratorAgent(dspy.Module):
                     [c.name for c in competencies], proficiency, env)
         logger.info("=" * 72)
 
-        # ─── STEP 1: resolver (task_template_match cache + classifier) ─
-        # Routes through resolve_plan so we hit the task_template_match cache
-        # instead of re-classifying on every prompt-generator run.
-        logger.info("STEP 1 / runtime_resolver.py — matching template via combo cache")
-        plan = resolve_plan(competencies)
-        if plan.match is None or plan.template is None:
-            raise RuntimeError(
-                f"resolve_plan returned no usable match for combo={plan.combo_key!r} — "
-                f"match={plan.match!r} template={plan.template!r}; "
-                "cannot generate a prompt without a matched built template"
-            )
-        template = plan.template
-        persona = plan.match.persona or (template.personas[0] if template.personas else "")
-        caps = template.capabilities or {}
-        cap_frameworks = list(caps.get("frameworks") or [])
-        cap_datastores = list(caps.get("datastores") or [])
-        logger.info("  → template_id=%s primary_runtime=%s persona=%s "
-                    "frameworks=%s datastores=%s",
-                    template.template_id, template.primary_runtime, persona,
-                    cap_frameworks, cap_datastores)
+        # ─── STEP 1: prompt-generation runs without a template ─────────
+        # The prompt-generator deliberately does NOT call resolve_plan or
+        # touch the task_template_match cache. Template matching is a
+        # deployment concern (stage 4); prompt generation only needs the
+        # references, the competency scope, and the scenarios. The LLM
+        # that generates the prompt decides infra-vs-local from those
+        # inputs (per HARD CONSTRAINT #7 in the agent's INSTRUCTIONS
+        # block), so the generated prompt naturally includes or omits
+        # docker-compose / run.sh / kill.sh / init_database.sql.
+        logger.info("STEP 1 — skipping resolver; runtime/persona/datastores "
+                    "left empty so the LLM infers them from references + scope")
+        template = None
+        persona = ""
+        runtime = ""
+        cap_frameworks: list[str] = []
+        cap_datastores: list[str] = []
 
         # ─── STEP 2: retriever (5-level fallback) ─────────────────────
         logger.info("STEP 2 / retriever.py — running 5-level fallback ladder")
@@ -747,7 +742,7 @@ class PromptGeneratorAgent(dspy.Module):
         frameworks_json = json.dumps(cap_frameworks)
         datastores_json = json.dumps(cap_datastores)
         logger.info("  runtime                   %6d chars  %r",
-                    len(template.primary_runtime), template.primary_runtime)
+                    len(runtime), runtime)
         logger.info("  persona                   %6d chars  %r", len(persona), persona)
         logger.info("  frameworks                %6d chars  %r", len(frameworks_json), cap_frameworks)
         logger.info("  datastores                %6d chars  %r", len(datastores_json), cap_datastores)
@@ -776,7 +771,7 @@ class PromptGeneratorAgent(dspy.Module):
             gen_out = self.generate(
                 competencies=comp_str,
                 proficiency=proficiency,
-                runtime=template.primary_runtime,
+                runtime=runtime,
                 frameworks=frameworks_json,
                 datastores=datastores_json,
                 persona=persona,
@@ -801,7 +796,7 @@ class PromptGeneratorAgent(dspy.Module):
                 verify_out = self.verify(
                     new_prompt_file=new_prompt,
                     competencies=comp_str,
-                    runtime=template.primary_runtime,
+                    runtime=runtime,
                     frameworks=frameworks_json,
                     datastores=datastores_json,
                     persona=persona,
