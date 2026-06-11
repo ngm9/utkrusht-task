@@ -46,7 +46,7 @@ load_dotenv()
 # Model configuration — using gpt-5-nano for both generation and evaluation (cost-effective)
 GENERATION_MODEL = "gpt-5.4"
 EVAL_MODEL = "gpt-5.4"
-MAX_RETRIES = 1
+MAX_RETRIES = 2  # total attempts = MAX_RETRIES + 1 (gives the eval-feedback loop room to converge)
 
 # Pricing per million tokens (https://platform.openai.com/docs/pricing)
 PRICING = {
@@ -340,45 +340,42 @@ def get_combined_scope_text(competencies: List[Dict]) -> str:
 # VALIDATION & DEDUPLICATION
 # ============================================================================
 
-def validate_scenario_structure(scenario: str, proficiency: str = "BASIC") -> bool:
+def validate_scenario_structure(scenario: str, proficiency: str = "BASIC") -> tuple[bool, str]:
     """Validate that a scenario meets structural requirements for its proficiency level.
 
-    Checks for:
-    - Minimum/maximum length (per proficiency)
-    - Required bold-header sections
-    - Word count limits (per proficiency)
-    - Bullet point count limits (per proficiency)
+    Returns ``(is_valid, reason)``. ``reason`` is empty when valid; otherwise it
+    is an actionable message that the generation loop feeds back so the NEXT
+    attempt corrects the specific problem instead of regenerating blind.
+
+    Checks: min/max length, required bold-header sections, word-count limit, and
+    bullet-point-count limit (per proficiency).
     """
     limits = PROFICIENCY_LIMITS.get(proficiency, PROFICIENCY_LIMITS["BASIC"])
 
     if len(scenario) < 100:
-        logger.warning(f"Scenario too short ({len(scenario)} chars): {scenario[:80]}...")
-        return False
+        return False, f"Scenario too short ({len(scenario)} chars; need at least 100)."
 
     if len(scenario) > limits["max_chars"]:
-        logger.warning(
-            f"Scenario too long for {proficiency} level ({len(scenario)} chars, "
-            f"max {limits['max_chars']}): {scenario[:80]}..."
+        return False, (
+            f"Scenario too long for {proficiency} ({len(scenario)} chars, "
+            f"max {limits['max_chars']}) — tighten it."
         )
-        return False
 
-    # Check for required bold-header sections
+    # Required bold-header sections
     required_headers = ["**Current Implementation:**", "**Your Task:**", "**Success Criteria:**"]
     for header in required_headers:
         if header not in scenario:
-            logger.warning(f"Scenario missing required section '{header}': {scenario[:80]}...")
-            return False
+            return False, f"Missing required section '{header}'."
 
-    # Check word count
+    # Word count
     word_count = len(scenario.split())
     if word_count > limits["max_words"]:
-        logger.warning(
-            f"Scenario too verbose for {proficiency} level ({word_count} words, "
-            f"max {limits['max_words']}): {scenario[:80]}..."
+        return False, (
+            f"Scenario too verbose for {proficiency} ({word_count} words, "
+            f"max {limits['max_words']}) — cut it down."
         )
-        return False
 
-    # Check bullet point count in "Your Task" section
+    # Bullet-point count in the "Your Task" section
     task_section = ""
     if "**Your Task:**" in scenario and "**Success Criteria:**" in scenario:
         task_start = scenario.index("**Your Task:**") + len("**Your Task:**")
@@ -391,13 +388,15 @@ def validate_scenario_structure(scenario: str, proficiency: str = "BASIC") -> bo
     total_bullets = bullet_count + numbered_bullets
 
     if total_bullets > limits["max_bullets"]:
-        logger.warning(
-            f"Scenario has too many bullet points for {proficiency} level "
-            f"({total_bullets} bullets, max {limits['max_bullets']}): {scenario[:80]}..."
+        target = max(1, limits["max_bullets"] - 1)
+        return False, (
+            f"Too many bullet points in 'Your Task' ({total_bullets} found, hard "
+            f"max {limits['max_bullets']} for {proficiency}). Rewrite with at most "
+            f"{target} focused bullets — keep the single most important change plus "
+            f"its direct support, and drop the rest (do NOT just merge bullets)."
         )
-        return False
 
-    return True
+    return True, ""
 
 
 def validate_pr_review_scenario_structure(scenario: str, proficiency: str = "BASIC") -> bool:
@@ -708,10 +707,15 @@ def generate_scenarios_for_competencies(
         # Structural validation (with per-proficiency limits)
         structurally_valid = []
         for s in generated:
-            if validate_scenario_structure(s, proficiency):
+            ok, reason = validate_scenario_structure(s, proficiency)
+            if ok:
                 structurally_valid.append(s)
             else:
-                logger.warning(f"Scenario failed structural validation: {s[:80]}...")
+                logger.warning(f"Scenario failed structural validation: {reason}")
+                # Feed the structural reason back so the NEXT attempt corrects
+                # this exact problem (e.g. bullet overflow) instead of silently
+                # dropping it and regenerating blind.
+                eval_failure_feedback.append({"scenario": s, "reason": reason})
 
         # Deduplication against all existing + already accepted
         combined_existing = all_existing + passing_scenarios

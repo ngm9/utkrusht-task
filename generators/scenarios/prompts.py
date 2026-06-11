@@ -147,13 +147,22 @@ EXAMPLE OF A WELL-CALIBRATED BASIC SCENARIO:
 TIME LIMIT: 30-40 minutes
 
 WHAT TO GENERATE:
-- System optimization, performance tuning, or architectural improvement
-- Test 4-5 concepts combined
-- The scenario should feel like a task for a mid-senior developer
-- Max 5 bullet points in the "Your Task" section
-- Keep the entire scenario under 250 words
+- ONE coherent optimization, performance fix, or architectural improvement,
+  built around a SINGLE clear problem — not a grab-bag of unrelated changes.
+- Combine 3-4 closely-related concepts that all serve that one problem.
+- The scenario should feel like a task for a mid-senior developer.
+- Max 4 bullet points in the "Your Task" section — keep it tightly scoped.
+- Keep the entire scenario under 250 words.
 
-ALLOWED CONCEPTS:
+DO NOT OVER-SCOPE (this is the #1 reason INTERMEDIATE scenarios get rejected):
+- Don't bundle several independent subsystems into one task — e.g. connection
+  pooling + a caching decorator + cache invalidation/versioning + fallback
+  behaviour + custom response headers + perf guarantees ALL at once. That is
+  ADVANCED scope, not intermediate.
+- If satisfying the task would take more than ~4 distinct changes, it is too
+  big: keep the single most important improvement plus its direct support.
+
+ALLOWED CONCEPTS (pick a few that serve ONE problem):
 - All concepts from BASIC level, plus:
 - API design with multiple endpoints
 - Database optimization (indexes, query plans, connection pooling)
@@ -168,9 +177,12 @@ ALLOWED CONCEPTS:
 - Comprehensive testing strategies
 
 EXAMPLE OF A WELL-CALIBRATED INTERMEDIATE SCENARIO:
-**Current Implementation:** A SaaS analytics dashboard's GET /api/reports/daily endpoint takes 8 seconds because it runs 3 sequential queries against a PostgreSQL events table (50M rows) with no indexes on event_type or created_at, uses synchronous psycopg2 with a new connection per request, and returns uncompressed JSON payloads averaging 2MB.
-**Your Task:** Add composite indexes on (event_type, created_at) and (created_at) columns. Refactor the 3 sequential queries into a single CTE-based query. Switch to asyncpg with a connection pool (min=5, max=20). Add a 5-minute TTL cache for the report data. Implement response compression.
-**Success Criteria:** Response time drops from 8s to under 800ms, connection pool eliminates per-request connection overhead, and cache hit rate exceeds 80% for repeated queries within the TTL window.""",
+**Current Implementation:** A SaaS analytics dashboard's GET /api/reports/daily endpoint takes 8 seconds because it runs 3 sequential queries against a PostgreSQL events table (50M rows) with no indexes on event_type or created_at, and opens a new synchronous psycopg2 connection per request.
+**Your Task:**
+- Add composite indexes on (event_type, created_at) and (created_at).
+- Combine the 3 sequential queries into a single CTE-based query.
+- Switch to asyncpg with a connection pool (min=5, max=20).
+**Success Criteria:** Response time drops from 8s to under 800ms, and the connection pool eliminates per-request connection overhead.""",
 
     "ADVANCED": """PROFICIENCY LEVEL: ADVANCED (6+ years of experience — senior IC scope)
 TIME LIMIT: 45-55 minutes
@@ -256,6 +268,56 @@ are blocked pre-call; ≥ 8/10 fixture tickets get a non-empty, on-policy
 reply; trace_id ties one request end-to-end from ingress to tool call to
 final response.""",
 }
+
+
+# ============================================================================
+# PROFICIENCY GUARDRAILS — AGENT competencies, INTERMEDIATE
+# ----------------------------------------------------------------------------
+# The generic INTERMEDIATE block tells the generator to combine "4-5 concepts"
+# with a DB-optimization example. For AGENT competencies each such concept
+# (typed tool-schema validation, idempotency, retry/backoff, tracing, async
+# orchestration) is itself a substantial production change, so the aggregate
+# lands at ADVANCED scope and the scope critic rejects it. This agent-flavored
+# block constrains an INTERMEDIATE agent task to ONE focused change, the same
+# way the ADVANCED block is already agent-specific.
+# ============================================================================
+
+AGENT_INTERMEDIATE_GUARDRAIL = """PROFICIENCY LEVEL: INTERMEDIATE (3-5 years of experience) — AGENT ENGINEERING
+TIME LIMIT: 30-40 minutes
+
+WHAT TO GENERATE:
+- ONE focused fix to a single broken agent behavior — NOT a production overhaul.
+- Pick EXACTLY ONE primary concern and build the whole task around it. Do NOT
+  combine several agent concerns into one scenario — that is the #1 failure mode.
+- The scenario should read like ONE focused ticket for a mid-level agent engineer.
+- Max 3 bullet points in the "Your Task" section.
+- Keep the entire scenario under 180 words.
+
+PICK EXACTLY ONE PRIMARY CONCERN (optionally ONE small supporting tweak, no more):
+- Enforce a typed tool-output / LLM-response schema and validate it before use
+- Make a single side-effecting tool idempotent with a request key
+- Replace sequential tool/agent calls with one concurrent gather
+- Add a bounded retry + timeout policy for ONE class of tool call
+- Require explicit user confirmation before a single side-effecting tool runs
+- Add a short TTL cache for ONE repeated read-only tool
+- Add structured trace fields (trace_id, tool name, latency) to an existing path
+
+FORBIDDEN — DO NOT do any of these (they make the task ADVANCED, not INTERMEDIATE):
+- Bundling schema design + retries + caching + idempotency + tracing together
+- Multi-subsystem rewrites, orchestration redesigns, or "production hardening" sweeps
+- More than ~2 distinct code concerns total
+- Anything that reads like a senior on-call ticket (that is the ADVANCED level)
+
+EXAMPLE OF A WELL-CALIBRATED INTERMEDIATE AGENT SCENARIO:
+**Current Implementation:** A returns agent behind `POST /api/agent/returns` calls
+`create_return_label(order_id, reason)` straight from free-form LLM output. Traces show
+`VALIDATION_ERROR: order_id required` and occasional duplicate labels because the model
+sometimes emits a malformed, unvalidated tool call.
+**Your Task:**
+- Define a typed schema for the `create_return_label` arguments (`order_id`, `reason`).
+- Validate the LLM's tool call against it and reject/repair malformed calls before the tool runs.
+**Success Criteria:** Malformed tool calls are rejected before execution with a structured
+error, and no `VALIDATION_ERROR` or duplicate-label traces appear in a 50-request test run."""
 
 
 # ============================================================================
@@ -735,6 +797,12 @@ def get_proficiency_guardrails(proficiency: str, competency_hint: str = "") -> s
     silently means agent", a non-agent ADVANCED competency falls back to the
     INTERMEDIATE guardrail rather than the agent block. When ``competency_hint``
     is empty the legacy behaviour is preserved (backward-compatible).
+
+    The INTERMEDIATE block is non-agent-flavored (it tells the generator to
+    combine 4-5 concepts, which over-scopes for agent competencies). Agent
+    competencies at INTERMEDIATE therefore route to a dedicated, tighter
+    agent block so the generator and the scope critic agree on "ONE focused
+    change". When ``competency_hint`` is empty the legacy behaviour is kept.
     """
     if (
         proficiency == "ADVANCED"
@@ -747,6 +815,12 @@ def get_proficiency_guardrails(proficiency: str, competency_hint: str = "") -> s
             competency_hint,
         )
         return PROFICIENCY_GUARDRAILS["INTERMEDIATE"]
+    if (
+        proficiency == "INTERMEDIATE"
+        and competency_hint
+        and is_agent_competency(competency_hint)
+    ):
+        return AGENT_INTERMEDIATE_GUARDRAIL
     return PROFICIENCY_GUARDRAILS.get(proficiency, PROFICIENCY_GUARDRAILS["BASIC"])
 
 

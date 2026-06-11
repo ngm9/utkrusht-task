@@ -414,6 +414,20 @@ def run_sandbox_eval(
         logger.info(f"{_GATE} wrote {len(code_files)} code file(s) "
                     f"+ {'run.sh' if run_sh else 'no run.sh'} to {_TASK_DIR}")
 
+        # Mirror the deploy runtime (sandbox_manager._symlink_root_task): many
+        # tasks hardcode /root/task (the legacy droplet path) in run.sh and
+        # docker-compose volume mounts. The deploy path aliases it to
+        # /home/user/task, so the gate must too — otherwise it false-negatives
+        # tasks that would actually deploy and boot cleanly.
+        try:
+            sb.commands.run(
+                f"ln -sfn {_TASK_DIR} /root/task",
+                timeout=10,
+                user="root",
+            )
+        except Exception as exc:
+            logger.warning(f"{_GATE} could not symlink /root/task: {exc}")
+
         # Path A — new default: run.sh IS the gate.
         if run_sh:
             return _finish(_run_runsh(sb, run_sh, template_spec))

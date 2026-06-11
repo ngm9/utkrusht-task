@@ -169,6 +169,43 @@ def _summarise_task_stage(stdout_path: Path) -> str:
     return "UNKNOWN — inspect stage 4 logs"
 
 
+# Markers used to split the interleaved stage-4 stderr into focused sub-logs.
+# The infra_assessor logger writes the E2B gate and LLM-eval lines to stderr;
+# this is a best-effort substring filter (kept here so the orchestrator owns
+# the run-dir layout, with no change to the task-generation code).
+_E2B_GATE_MARKERS = ("[e2b-gate]", "sandbox gate", "Eval gate rejected", "readiness gate")
+_EVAL_MARKERS = (
+    "task eval", "code eval", "task evaluation", "code evaluation",
+    "Running task eval", "Running code eval", "Running task evaluations",
+    "blocking_issues", "validated_criteria", "Task generation attempt",
+    "Applying feedback from previous attempt", "is_task_hollow", "hollow",
+)
+
+
+def _split_stage4_logs(combo_dir: Path) -> list[str]:
+    """Extract focused e2b-gate and eval sub-logs from the interleaved
+    ``04_tasks.stderr``.
+
+    Writes ``04_tasks.e2b_gate.log`` and ``04_tasks.evals.log`` into the combo
+    run dir so the gate verdict and eval outcomes are easy to inspect without
+    grepping the full stderr. Returns the list of filenames actually written.
+    """
+    src = combo_dir / "04_tasks.stderr"
+    if not src.exists():
+        return []
+    lines = src.read_text(encoding="utf-8", errors="replace").splitlines()
+    written: list[str] = []
+    for fname, markers in (
+        ("04_tasks.e2b_gate.log", _E2B_GATE_MARKERS),
+        ("04_tasks.evals.log", _EVAL_MARKERS),
+    ):
+        matched = [ln for ln in lines if any(m in ln for m in markers)]
+        if matched:
+            (combo_dir / fname).write_text("\n".join(matched) + "\n", encoding="utf-8")
+            written.append(fname)
+    return written
+
+
 # ----------------------------------------------------------------------
 # Main
 # ----------------------------------------------------------------------
@@ -299,6 +336,9 @@ def main() -> int:
         "--env", args.env,
     ])
     stages.append(rec)
+    sublogs = _split_stage4_logs(combo_dir)
+    if sublogs:
+        print(f"    stage-4 sub-logs: {', '.join(sublogs)}")
     task_outcome = _summarise_task_stage(Path(rec["stdout"]))
 
     status = "COMPLETED" if rec["exit_code"] == 0 else "STAGE_4_ERROR"

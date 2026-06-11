@@ -17,6 +17,7 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Optional
 
 import dspy
@@ -112,33 +113,226 @@ def configure_dspy(model: Optional[str] = None, mode: str = "runtime") -> None:
 # ----------------------------------------------------------------------
 
 class GeneratePromptSignature(dspy.Signature):
-    """Generate a complete Python file containing PROMPT_REGISTRY entry for a
+    """Generate a complete Python file containing a PROMPT_REGISTRY entry for a
     new (competencies, proficiency) combination.
 
-    HARD CONSTRAINT — competency_scopes is the source of truth:
-    The `competency_scopes` field describes EXACTLY what each competency covers
-    at this proficiency level. The generated prompt MUST:
-      - Only ask the candidate to use concepts that appear (or could be naturally
-        derived from) the scope text.
-      - Never require concepts the scope says are out of scope.
-      - When the scope says "limited understanding of X" or "not yet expected to
-        do Y", the generated task must NOT require X or Y as primary skills.
-    Read every scope line carefully before designing the task.
+    The generated prompt MUST look and feel like the curated prompt files in
+    `reference_prompts`. The curated files (e.g. PostgreSQL_intermediate_prompt.py,
+    python_redis_intermediate.py, PostgreSQL_basic_prompt.py) follow a single
+    canonical blueprint. Your job is to reproduce that blueprint — its section
+    ordering, its tone, its recurring phrases, its README section names, its
+    verbose per-field JSON schema descriptions — adapted to the target
+    competencies. Do NOT invent your own section structure.
 
-    HARD CONSTRAINT — output structure:
-    The output MUST be a valid Python module that:
-      - Defines three triple-quoted strings: a CONTEXT prompt, an INPUT_AND_ASK
-        prompt, and an INSTRUCTIONS prompt. Use names like
+    ─────────────────────────────────────────────────────────────────────────
+    HARD CONSTRAINT #1 — STRUCTURAL MIMICRY (most important)
+    ─────────────────────────────────────────────────────────────────────────
+    The INSTRUCTIONS string MUST follow the exact section ordering used by
+    the curated reference prompts. Use these top-level section headings, in
+    this order, with these EXACT names:
+
+      ## GOAL
+      ## CONTEXT & CANDIDATE EXPECTATION
+      ## INSTRUCTIONS
+          ### Nature of the Task
+      ## AI AND EXTERNAL RESOURCE POLICY
+      ## <Code or Database> Generation Instructions
+      ## Infrastructure Requirements
+          ### Docker-compose Instructions
+          ### <init_database.sql / Redis Configuration / etc.> Instructions
+          ### Run.sh Instructions
+      ## kill.sh file instructions
+      ### Dockerfile Instructions          (omit if no app container)
+      <"The output should be a valid json schema:" bullet list of files>
+      ## Code file requirements
+      ## .gitignore INSTRUCTIONS
+      ## README.md INSTRUCTIONS
+          ### Task Overview
+          ### Helpful Tips
+          ### Objectives
+          ### How to Verify
+          ### NOT TO INCLUDE in README
+      ## REQUIRED OUTPUT JSON STRUCTURE
+      ## CRITICAL REMINDERS                  (or "## CRITICAL NOTES")
+
+    DO NOT introduce new top-level sections that don't appear in the
+    references — specifically, do NOT add `## SCENARIO LOCK`,
+    `## PROFICIENCY BOUNDARY`, `## TASK SHAPE`, `## QUALITY BAR`,
+    `## RECOMMENDED TASK THEMES`, or `## HARD CONSTRAINTS FROM TEMPLATE
+    CAPABILITIES`. Those don't exist in any curated prompt. Their content
+    belongs INLINE inside the canonical sections above (proficiency notes
+    inside `### Nature of the Task`, scenario sourcing inside
+    `INPUT_AND_ASK` and `## INSTRUCTIONS`, etc.).
+
+    Recurring phrases the curated prompts use — reuse them verbatim or
+    near-verbatim:
+      - "As a [database architect / technical architect] super experienced in
+        <stack>, you are given a list of real world scenarios and proficiency
+        levels for <stack>."
+      - "**CRITICAL**:" callouts on important rules (use liberally inside
+        `### Nature of the Task`)
+      - "FULLY FUNCTIONAL" / "FULLY POPULATED" when describing the candidate's
+        starting environment
+      - "**FILE LOCATION**: All code and scripts must reference /root/task as
+        the base directory"
+      - "If you include diagrams, ensure they are written in mermaid format,
+        properly indented and also in code blocks"
+      - "**MUST NOT include any version specification**" in docker-compose
+      - "**MUST NOT include environment variables or .env file references**"
+      - "**SECURITY-CRITICAL**: ports MUST be bound to localhost only using
+        `127.0.0.1:<port>:<port>`" — for every datastore exposed to the host
+      - The 9-numbered-step `## kill.sh file instructions` block — copy its
+        shape (stop containers, remove volumes, remove networks, force-remove
+        images, `docker system prune -a --volumes -f`, `rm -rf /root/task`,
+        "|| true" for idempotency, print logs at every step, final
+        "Cleanup completed successfully!" message)
+      - "Candidates are permitted and encouraged to use any external resources
+        they find helpful, including but not limited to Google, Stack Overflow,
+        <stack> documentation, and AI-powered tools, agentic IDEs, or Large
+        Language Models (LLMs)" — the standard AI policy 4-bullet block
+
+    ─────────────────────────────────────────────────────────────────────────
+    HARD CONSTRAINT #2 — README section names
+    ─────────────────────────────────────────────────────────────────────────
+    Inside `## README.md INSTRUCTIONS`, the README section list MUST use
+    these EXACT names, in this order:
+
+      1. Task Overview
+      2. Helpful Tips
+      3. Objectives
+      4. How to Verify
+      5. NOT TO INCLUDE in README
+
+    Do NOT rename "Helpful Tips" to "Guidance", "Tips", "Hints", or
+    "Recommendations". Do NOT add `Database Schema Overview`, `Database
+    Access`, or `Performance Issues` as separate sections. The README must
+    NOT contain `<DROPLET_IP>` placeholders or any database-connection
+    details (host, port, username, password, client-tool suggestions).
+
+    Section size + framing rules — the generated prompt's README.md
+    INSTRUCTIONS section MUST embed ALL of the following so the downstream
+    task-gen LLM produces concise, non-revealing READMEs (these come
+    verbatim from curated references like
+    `task_generation_prompts/Intermediate/javascript_intermediate_prompt.py`):
+
+      • A top-of-section preamble that states:
+          – "The README must be concise and open-ended. Each section should
+            have only the essential points needed to understand the task.
+            Do NOT overload with too many bullets — quality over quantity.
+            The candidate should figure out the implementation approach on
+            their own."
+          – "Do NOT directly tell candidates what to implement — provide
+            direction and guidance to help them discover solutions."
+
+      • Per-section size caps the generated prompt MUST include:
+          – Task Overview: 3-4 meaningful sentences. No bullet list.
+            Describes the business scenario, current state, and why the
+            problem matters. NEVER empty. NO bold time-budget callouts.
+          – Objectives:    4-6 bullets max.
+          – How to Verify: 4-6 bullets max.
+          – Helpful Tips:  4-5 bullets max.
+
+      • Per-section framing rules the generated prompt MUST include:
+          – Objectives: "Frame objectives around outcomes rather than
+            specific technical implementations. Objectives describe the
+            'what' and 'why', never the 'how'." Each bullet states an
+            observable end-state, not a step or an API/library to use.
+          – How to Verify: "Frame verification in terms of observable
+            outcomes. Describe WHAT to verify and the expected behavior,
+            not the specific implementation to write." Each bullet is a
+            check the candidate can run (test output, response shape,
+            latency observation, log line, memory reading).
+          – Helpful Tips: "Provide practical guidance without revealing
+            specific implementations." Each bullet starts with an action
+            word: "Consider", "Think about", "Explore", "Review",
+            "Analyze". Tips guide discovery — they MUST NOT name the
+            specific API, library, function, pattern, data structure, or
+            algorithm that solves the task.
+
+      • A "NOT TO INCLUDE in README" section in the generated prompt
+        listing at minimum:
+          – Setup commands (e.g. `npm install`, `pip install`,
+            `docker compose up`, `mvn test`, etc.)
+          – Direct solutions or architectural decisions
+          – Step-by-step implementation guides
+          – Specific APIs, method names, library names, pattern names, or
+            data-structure names that reveal the solution
+          – Code snippets that give away the answer
+          – Directive phrases like "you should implement", "add this
+            middleware", "create this class", "use <specific API>"
+
+    ─────────────────────────────────────────────────────────────────────────
+    HARD CONSTRAINT #3 — REQUIRED OUTPUT JSON STRUCTURE must be VERBOSE
+    ─────────────────────────────────────────────────────────────────────────
+    The INSTRUCTIONS prompt's `## REQUIRED OUTPUT JSON STRUCTURE` block tells
+    the downstream task-generation LLM what JSON to emit. Each field's value
+    in that schema MUST be a one-sentence DESCRIPTION of what to fill in —
+    NOT a placeholder example like `["outcome 1"]` or `{{"term_1": "..."}}`.
+
+    Required canonical keys (multiagent.py reads exactly these names — synonyms
+    like `task_title` / `files` / `context` produce a hollow, unusable task):
+
+      "name"           — kebab-case GitHub repo name (under 50 chars)
+      "title"          — human-readable display name, "<action verb> <subject>"
+                         format, 50-80 chars. Different from `name`.
+      "question"       — full candidate-facing task description
+      "code_files"     — object mapping filepath → file contents (verbose
+                         per-file descriptions; see references)
+      "answer"         — evaluator-facing high-level solution approach
+      "definitions"    — object of term → definition pairs
+      "hints"          — single line nudging investigation WITHOUT revealing
+                         the fix
+      "outcomes"       — 2-3 lines on measurable expected results
+      "pre_requisites" — bullet list of tools/knowledge needed
+      "short_overview" — bullet list summarising business problem + technical
+                         focus + expected outcome
+
+    GOOD (matches curated style):
+      "outcomes": "Expected results after completion in 2-3 lines focusing on
+                   measurable performance improvements and optimized database
+                   operations. Use simple english."
+      "hints": "A single line hint on what a good intermediate-level approach
+                to analyze and optimize could include. These hints must NOT
+                give away the specific optimizations needed."
+
+    BAD (drift):
+      "outcomes": ["outcome 1", "outcome 2"]
+      "hints": ["hint 1"]
+      "definitions": {{"term_1": "definition", "term_2": "definition"}}
+
+    ─────────────────────────────────────────────────────────────────────────
+    HARD CONSTRAINT #4 — competency_scopes is the source of truth
+    ─────────────────────────────────────────────────────────────────────────
+    The `competency_scopes` field describes EXACTLY what each competency
+    covers at this proficiency level. The generated prompt MUST:
+      - Only ask the candidate to use concepts that appear (or could be
+        naturally derived from) the scope text.
+      - Never require concepts the scope says are out of scope.
+      - When the scope says "limited understanding of X" or "not yet
+        expected to do Y", the generated task must NOT require X or Y as
+        primary skills.
+    Bake proficiency calibration INLINE inside `### Nature of the Task`
+    (e.g. "(3-5 years experience)", "intermediate-level optimization") —
+    do NOT add a separate `## PROFICIENCY BOUNDARY` section.
+
+    ─────────────────────────────────────────────────────────────────────────
+    HARD CONSTRAINT #5 — Python module structure
+    ─────────────────────────────────────────────────────────────────────────
+    Output a valid Python module that:
+      - Defines three triple-quoted strings: a CONTEXT prompt, an
+        INPUT_AND_ASK prompt, and an INSTRUCTIONS prompt. Use names like
         PROMPT_<TECH>_<LEVEL>_CONTEXT, _INPUT_AND_ASK, _INSTRUCTIONS.
       - Contains placeholders {organization_background}, {role_context},
         {competencies}, {real_world_task_scenarios}, {minutes_range}.
       - Defines PROMPT_REGISTRY = { "<key>": [CONTEXT, INPUT_AND_ASK, INSTRUCTIONS] }
-        where <key> is exactly: 'Name1 (LEVEL), Name2 (LEVEL)' (alphabetically
-        sorted competency names with proficiency in parentheses).
+        where <key> is exactly: 'Name1 (LEVEL), Name2 (LEVEL)' — alphabetically
+        sorted competency names with proficiency in parentheses.
 
-    HARD CONSTRAINT — brace escaping:
-    Every `{` and `}` inside the prompt strings is passed through
-    Python `str.format(**fmt_args)` downstream. Only the following are valid
+    ─────────────────────────────────────────────────────────────────────────
+    HARD CONSTRAINT #6 — Brace escaping
+    ─────────────────────────────────────────────────────────────────────────
+    Every `{` and `}` inside the prompt strings is passed through Python
+    `str.format(**fmt_args)` downstream. Only the following are valid
     single-brace placeholders: `{organization_background}`, `{role_context}`,
     `{competencies}`, `{real_world_task_scenarios}`, `{minutes_range}`,
     `{question_prompt}`. Any OTHER `{` or `}` (JSON example, dict literal,
@@ -149,101 +343,86 @@ class GeneratePromptSignature(dspy.Signature):
     JSON example causes downstream `KeyError: '\\n  "title"'` and no task is
     ever generated.
 
-    HARD CONSTRAINT — derive structure from the matched template's capabilities, NOT a single label:
+    ─────────────────────────────────────────────────────────────────────────
+    HARD CONSTRAINT #7 — Infrastructure shape from template capabilities
+    ─────────────────────────────────────────────────────────────────────────
       • `primary_runtime` and the capability `frameworks` (and their common
         libraries) are PRE-INSTALLED by the E2B template. Do NOT include
         `apt-get install`, `pip install`, or `npm install` for the runtime or
         its common libs in run.sh.
-      • `datastores` non-empty → emit a `docker-compose.yml` that brings up those
-        service containers (postgres, redis, mongo, mysql, …). `run.sh` does
-        `docker compose up -d`; `kill.sh` does `docker compose down`.
-      • `persona="mobile"` → no Dockerfile, no compose; run the runtime's native
-        test command (e.g. `flutter test`, `npx react-native test`).
-      • `persona="dba"` → just an `init_database.sql` + Compose; no app code.
+      • `datastores` are AVAILABLE in the template but are NOT automatic
+        requirements for the task. This rule is runtime-agnostic — apply
+        the same reasoning whatever the `primary_runtime` is. Inspect
+        `competency_scopes` and `detailed_skill_signal` (scenarios + role
+        context) to decide whether the selected scenario actually exercises
+        a datastore. Use your own knowledge of the stack to recognise both
+        sides — do not rely on hard-coded keyword lists.
+
+        (a) The scenario interacts with a DB, cache, queue, message broker,
+            or any other external service → include `docker-compose.yml`
+            for the datastore(s) the scenario actually needs, with `run.sh`
+            using `docker compose up -d` and `kill.sh` using `docker compose
+            down`. Datastores listed in `datastores` that the scenario does
+            NOT need stay OPTIONAL — do not require `init_<extra>.sql` for
+            them.
+
+        (b) The scenario is pure-runtime — language-level, algorithmic,
+            async-concurrency, or in-process work with no external service
+            interaction → TREAT ALL TEMPLATE DATASTORES AS OPTIONAL. Do
+            NOT include `docker-compose.yml`, `init_database.sql`, or any
+            datastore configuration. Ship the task as a local project
+            using the runtime's native package manifest + source + tests,
+            runnable on the candidate's machine via the runtime's native
+            test command. Use your knowledge of the `primary_runtime` to
+            pick the right manifest filename and test command.
+
+        When in doubt — the scenario doesn't mention an external service,
+        the scope is language-centric, the success criteria are observable
+        via in-process tests — choose the pure-local shape (b).
+      • `persona="mobile"` → no Dockerfile, no compose; run the runtime's
+        native test command for that platform.
+      • `persona="dba"` / `persona="data"` → `init_database.sql` + Compose;
+        no app code.
       • `persona="pm"` → data files only (CSV / JSON); no `run.sh`.
-      • `persona="frontend"` → `package.json`, no Docker, browser-side only.
-      • `persona="sdet"` → test suite shape; the template ships the runner
-        (pytest, jest, playwright, …); the task ships the spec files.
+      • `persona="frontend"` → runtime-native manifest, no Docker,
+        browser-side only.
+      • `persona="backend"` + scenario does NOT need an external service
+        (per the rule above) → no Docker, no compose, no `kill.sh`. `run.sh`
+        is optional — the candidate runs the task locally with the runtime's
+        native test command against the runtime's native manifest.
+      • `persona="sdet"` → test suite shape; template ships the runner.
 
-    HARD CONSTRAINT — generated-task output JSON schema (CANONICAL KEYS):
-    The INSTRUCTIONS prompt you produce tells a downstream LLM to emit a JSON
-    object describing the assessment task. multiagent.py reads SPECIFIC top-level
-    keys off that JSON. You MUST instruct the downstream LLM to use exactly these
-    canonical key names — NOT synonyms:
-      - "name"          (string) — the task title. NOT "task_title", NOT "title".
-      - "question"      (string) — the full candidate-facing task description.
-                          NOT "context", NOT "candidate_instructions".
-      - "code_files"    (object) — maps each filepath to its full contents.
-                          NOT "files", NOT "repository_structure".
-      - "answer"        (object) — the evaluator-facing canonical solution summary.
-      - "definitions", "hints", "outcomes", "pre_requisites", "short_overview"
-                          — supporting fields stored in the candidate task_blob.
-    A prompt that instructs ANY other key name (task_title / files / context /
-    repository_structure / acceptance_criteria) causes multiagent.py to read
-    every field as empty and produce a HOLLOW task that is rejected by the eval
-    gate. When `reference_prompts` is empty (bootstrap mode), you MUST still use
-    these exact canonical keys — do not invent your own schema.
+    ─────────────────────────────────────────────────────────────────────────
+    SOFT GUIDANCE — Scenario sourcing
+    ─────────────────────────────────────────────────────────────────────────
+    The candidate's EMPLOYER is described in `organization_background`. The
+    employer is administering the assessment — it is NOT necessarily the task
+    domain. The task's business domain should come from one of the scenarios
+    in `real_world_task_scenarios`.
 
-    HARD CONSTRAINT — proficiency level boundaries:
-      - BEGINNER (0-1 yrs, 20-30 min): single concept, syntax fixes, basic logic.
-        Forbidden: async/await, design patterns, performance optimization, testing.
-      - BASIC (1-2 yrs, 30-45 min): 2-3 concepts combined, well-scoped feature.
-        Forbidden: system design, microservices, advanced concurrency, security
-        hardening, advanced caching, complex partitioning.
-      - INTERMEDIATE (3-5 yrs, 45-60 min): 4-5 concepts, optimization, architecture,
-        proper testing, error handling, performance tuning.
+    Use the SAME LANGUAGE the curated references use inside `INPUT_AND_ASK`:
 
-    HARD CONSTRAINT — scenario locking (the task domain MUST come from the
-    scenarios, NOT the org context):
-    Downstream task-generation LLMs see TWO competing signals — the
-    organization context (e.g. "Utkrusht builds proof-of-skills assessments")
-    AND the real-world scenarios (e.g. e-commerce dashboards, healthcare
-    APIs, logistics tools). Without an explicit lock, the LLM blends them
-    and invents tasks in the org's domain that aren't in the scenarios list
-    — e.g. generating an "AssessmentAttemptViewSet" task when every
-    scenario was about e-commerce / healthcare / real-estate.
+      - "You MUST draw inspiration from ONE of the real-world scenarios
+        provided above to create the task"
+      - "Select a different real-world scenario each time to ensure variety
+        in task generation"
+      - "The task scenario should closely align with the business context,
+        technical requirements, and domain described in the selected real-world
+        scenario"
 
-    The INSTRUCTIONS prompt you generate MUST contain a section like this,
-    verbatim or paraphrased with the same force:
+    Do NOT escalate this into a heavy-handed `## SCENARIO LOCK (mandatory)`
+    top-level section — no curated prompt has one. The soft language above
+    is what works in practice.
 
-      ## SCENARIO LOCK (mandatory)
-      - You MUST pick EXACTLY ONE scenario from `real_world_task_scenarios`.
-      - The generated task's BUSINESS DOMAIN must match the chosen
-        scenario's domain (e-commerce, healthcare, logistics, real-estate,
-        etc.). DO NOT invent a new domain.
-      - The generated task's CURRENT IMPLEMENTATION problem and YOUR TASK
-        bullet list must be the chosen scenario's, adapted to the
-        target competency. You may rename variables and adjust minor
-        details, but the SHAPE and the DOMAIN must come from the scenario.
-      - The candidate's EMPLOYER is described in `organization_background`.
-        The EMPLOYER is who is administering the assessment — it is NOT
-        the domain of the task. The task domain comes from the scenarios.
-      - If you find yourself writing about a domain that does NOT appear
-        in `real_world_task_scenarios` (e.g. "assessments", "leaderboards",
-        "proof-of-skills platforms" when no scenario mentions those), STOP
-        — that's domain hallucination. Restart with one of the listed
-        scenarios.
-      - When `real_world_task_scenarios` is empty or "(none provided)",
-        explicitly state which generic domain you picked (e.g. "I picked
-        e-commerce because the competency is web-framework-backend") and
-        why; do not silently default to the org's domain.
-
-    Place this section near the top of the INSTRUCTIONS prompt, before
-    the technical / file-layout requirements, so it anchors the LLM
-    before it starts drafting.
-
-    Also: when drafting the INPUT_AND_ASK prompt, replace soft language
-    like "draw inspiration from" with "PICK EXACTLY ONE". Soft language
-    is the failure mode that lets the LLM drift.
-
-    REFERENCE PROMPTS (knowledge base):
-    Use `reference_prompts` for the structural template — section ordering, tone,
-    output JSON shape, README sections. Do NOT copy reference content verbatim;
-    adapt it to the target competencies and category.
-
-    SIMILAR TASKS (calibration):
-    `similar_tasks` shows what successful tasks for related competencies actually
-    look like. Use them to calibrate complexity, file count, and question style.
+    ─────────────────────────────────────────────────────────────────────────
+    INPUT FIELDS reminder
+    ─────────────────────────────────────────────────────────────────────────
+    `reference_prompts` is your PRIMARY structural template — read at least
+    one same-stack reference end-to-end before drafting, mimic its skeleton.
+    `similar_tasks` calibrates question complexity and file count.
+    `detailed_skill_signal` calibrates question difficulty and scenario mix;
+    MAY BE EMPTY (when empty, fall back to scopes + references alone, do not
+    flag empty as a constraint).
     """
 
     competencies: str = dspy.InputField(
@@ -257,7 +436,7 @@ class GeneratePromptSignature(dspy.Signature):
         desc="JSON list of framework names the template advertises in capabilities.frameworks, e.g. '[\"fastapi\"]' or '[]'"
     )
     datastores: str = dspy.InputField(
-        desc="JSON list of datastore names the template supports, brought up via docker-compose if used, e.g. '[\"postgres\"]' or '[]'"
+        desc="JSON list of datastore names the template makes AVAILABLE, not requirements. Decide which (if any) the task needs by reading the scenarios and scope, not this list. Pure-runtime tasks should include no datastore configuration even when this list is non-empty."
     )
     persona: str = dspy.InputField(
         desc="Reviewer persona for this combo (one of the matched template's "
@@ -295,48 +474,82 @@ class GeneratePromptSignature(dspy.Signature):
 class VerifyPromptSignature(dspy.Signature):
     """Senior reviewer judges whether a generated prompt file meets quality bars.
 
-    PASS BAR — be PRACTICAL. The goal is to ship a usable prompt, not perfection.
-    Pass if the prompt is structurally correct, scope-respecting, and would
+    PASS BAR — be PRACTICAL. The goal is to ship a usable prompt that looks
+    and feels like the curated `reference_prompts`. Pass if the prompt is
+    structurally faithful to the curated style, scope-respecting, and would
     plausibly produce a deployable task. Do NOT block on minor stylistic issues.
 
     HARD-FAIL conditions (must reject):
       1. SCOPE VIOLATION: Required candidate skills exceed competency_scopes.
          Example: BASIC scope says "limited async understanding" but the prompt
          requires async/await throughout — REJECT.
-      2. STRUCTURE MISMATCH: code_files don't match the template's
-         capabilities + persona.
+      2. STRUCTURE MISMATCH (infrastructure): code_files don't match the
+         template's capabilities + persona.
          Example: persona="data" / script-style task with a Flask/FastAPI app
          file present — REJECT.
-         Example: datastores=["postgres"] but no docker-compose.yml — REJECT.
          Example: persona="mobile" with a Dockerfile present — REJECT.
+         Example: scenario explicitly requires PostgreSQL ingest + queries
+         and the prompt asks for `docker-compose.yml` but it is missing —
+         REJECT.
+         IMPORTANT: do NOT reject just because `datastores` is non-empty.
+         The template advertises what is AVAILABLE; the task picks which
+         datastores (if any) it actually uses. A pure-runtime task —
+         language-level, algorithmic, async-concurrency, or in-process
+         work with no external service interaction — is a valid local-only
+         project for any runtime. Accept the prompt even when it ships NO
+         `docker-compose.yml`, NO `init_database.sql`, and NO `kill.sh`,
+         as long as it is runnable locally via the runtime's native test
+         command against the runtime's native manifest (use your knowledge
+         of the stack to recognise valid combinations). Decide datastore
+         necessity by READING the scenario / scope, not by reading
+         `datastores`.
+         EXCEPTION (do NOT reject in this case): when `datastores` lists a
+         service the assessed competency clearly does NOT cover (e.g.
+         datastores=["postgres","mysql"] for a "PostgreSQL - Large Scale
+         Datasets" competency), the prompt may legitimately treat the extra
+         service as OPTIONAL infrastructure. Accept the prompt as long as it
+         EXPLICITLY marks the extra datastore as optional/non-required.
       3. STRUCTURAL DAMAGE: missing PROMPT_REGISTRY, missing format vars
          ({organization_background}, {role_context}, {competencies},
          {real_world_task_scenarios}), or wrong registry key format.
       4. SOLUTION LEAK: starter code or comments give away the solution.
-      5. MISSING SCENARIO LOCK: the INSTRUCTIONS prompt does NOT contain a
-         section forcing the downstream LLM to pick exactly ONE scenario
-         from real_world_task_scenarios and stay in that scenario's
-         business domain. Concretely, reject when ANY of these are true:
-           - The prompt uses soft language ("draw inspiration from",
-             "loosely based on", "feel free to combine") instead of a
-             hard pick ("PICK EXACTLY ONE", "MUST come from", "do NOT
-             invent a new domain").
-           - The prompt does not warn the downstream LLM against using
-             the employer's domain as the task domain.
-           - The prompt has no anti-hallucination clause for the case
-             where the LLM finds itself in a domain not in the scenarios.
-         Without this lock, generated tasks drift into the org context's
-         domain (e.g. "assessments", "leaderboards") and ignore the
-         provided scenarios. The lock must be near the TOP of the
-         INSTRUCTIONS prompt so it anchors the downstream LLM before
-         it starts drafting.
+      5. STRUCTURAL DRIFT FROM CURATED REFERENCES: The INSTRUCTIONS prompt
+         introduces invented top-level sections that don't appear in any
+         curated reference, OR misses the canonical sections, OR uses wrong
+         README section names. Concretely REJECT when ANY of these is true:
+           a. The prompt contains an invented top-level section like
+              `## SCENARIO LOCK`, `## PROFICIENCY BOUNDARY`, `## TASK SHAPE`,
+              `## QUALITY BAR`, `## RECOMMENDED TASK THEMES`, or
+              `## HARD CONSTRAINTS FROM TEMPLATE CAPABILITIES` — none of
+              these exist in any curated reference.
+           b. The prompt is missing one of the canonical sections:
+              `## GOAL`, `## CONTEXT & CANDIDATE EXPECTATION`,
+              `## AI AND EXTERNAL RESOURCE POLICY`,
+              `## Infrastructure Requirements`, `## kill.sh file instructions`,
+              `## README.md INSTRUCTIONS`, `## REQUIRED OUTPUT JSON STRUCTURE`,
+              `## CRITICAL REMINDERS` (or `## CRITICAL NOTES`).
+           c. The README uses a drift name like "Guidance", "Tips" (without
+              "Helpful"), "Hints", or "Recommendations" instead of the
+              canonical `Helpful Tips`.
+           d. The `## REQUIRED OUTPUT JSON STRUCTURE` block uses placeholder
+              arrays/objects like `"outcomes": ["outcome 1", "outcome 2"]` or
+              `"definitions": {{"term_1": "definition"}}` instead of the
+              curated style of one-sentence descriptions per field.
+           e. The JSON schema is missing the `"title"` field alongside `"name"`
+              (curated prompts include both — name is kebab-case repo name,
+              title is "<action verb> <subject>" display name).
 
     PASS conditions (accept even if not perfect):
       - All five hard-fail checks above pass.
-      - INSTRUCTIONS prompt has GOAL, infrastructure spec, REQUIRED OUTPUT
-        JSON STRUCTURE, and README structure sections (in some recognizable form).
-      - Time constraint matches proficiency (BEGINNER: 20-30 min, BASIC: 30-45 min,
-        INTERMEDIATE: 45-60 min).
+      - INSTRUCTIONS prompt section ordering loosely matches the curated
+        references — minor reordering of subsections is OK, but the canonical
+        top-level sections must all be present.
+      - Time constraint matches proficiency (BEGINNER: 20-30 min, BASIC: 30-45
+        min, INTERMEDIATE: 45-60 min) — baked INLINE inside `### Nature of
+        the Task`, not in a separate boundary section.
+      - Scenario sourcing uses the soft curated language ("draw inspiration
+        from ONE of the real-world scenarios", "Select a different real-world
+        scenario each time") — NOT a heavy-handed SCENARIO LOCK section.
 
     Output `passes=true` if all hard-fail checks pass.
     Output specific, actionable `feedback` listing each issue if rejecting. Be
@@ -371,7 +584,8 @@ class VerifyPromptSignature(dspy.Signature):
              "this alone — hard-fails are still the 4 conditions in the docstring."
     )
     passes: bool = dspy.OutputField(
-        desc="True iff all 4 HARD-FAIL conditions are clear (scope, category, structure, no leaks)"
+        desc="True iff all 5 HARD-FAIL conditions are clear (scope, infra structure, "
+             "structural damage, no leaks, no curated-style drift)"
     )
     feedback: str = dspy.OutputField(
         desc="Empty if passing. Otherwise: numbered list of specific issues to fix, "
@@ -400,11 +614,24 @@ class GenerationResult:
 class PromptGeneratorAgent(dspy.Module):
     """The agent that synthesizes new prompt files."""
 
-    def __init__(self, max_iterations: int = 5):
+    def __init__(self, max_iterations: int = 5, verifier_enabled: bool | None = None):
         super().__init__()
         self.generate = dspy.ChainOfThought(GeneratePromptSignature)
         self.verify = dspy.ChainOfThought(VerifyPromptSignature)
         self.max_iterations = max_iterations
+        # The LLM verifier (VerifyPromptSignature) is a STYLE/consistency
+        # reviewer — advisory, non-blocking. The deterministic validator
+        # (validate_prompt_file) is the CORRECTNESS gate (syntax, registry key,
+        # str.format dry-run). When the verifier is disabled the loop gates on
+        # the validator alone: no per-iteration verify LLM call, no churn
+        # chasing canonical-style nits the prompt ships with anyway.
+        # Default ON to preserve existing behaviour; set PROMPT_VERIFIER_ENABLED
+        # to false/0/no/off to turn it off.
+        if verifier_enabled is None:
+            verifier_enabled = os.getenv(
+                "PROMPT_VERIFIER_ENABLED", "true"
+            ).strip().lower() not in ("false", "0", "no", "off")
+        self.verifier_enabled = verifier_enabled
 
     def load_compiled_demos(self, compiled_path: str) -> int:
         """Load few-shot demos from a compile.py output JSON into the generator.
@@ -537,7 +764,7 @@ class PromptGeneratorAgent(dspy.Module):
         logger.info("  compiled demos loaded     %d", demo_count)
 
         # ─── STEP 6: Generate ⇄ Verify ⇄ Validate loop ───────────────
-        logger.info("STEP 6 — Generate ⇄ Verify ⇄ Validate loop "
+        logger.info("STEP 6 — Generate ⇄ Review ⇄ Validate loop "
                     "(max_iterations=%d)", self.max_iterations)
         comp_dicts = [{"name": c.name, "proficiency": proficiency} for c in competencies]
         feedback = ""
@@ -569,24 +796,29 @@ class PromptGeneratorAgent(dspy.Module):
                 logger.debug("    rationale preview: %s",
                              rationale_preview[:400].replace("\n", " "))
 
-            logger.info("  calling Verify (ChainOfThought)...")
-            verify_out = self.verify(
-                new_prompt_file=new_prompt,
-                competencies=comp_str,
-                runtime=template.primary_runtime,
-                frameworks=frameworks_json,
-                datastores=datastores_json,
-                persona=persona,
-                reference_prompts=refs_text,
-                similar_tasks=tasks_text,
-                competency_scopes=scopes_str,
-                detailed_skill_signal=skill_signal,
-            )
-            logger.info("    Verify done — passes=%s feedback=%d chars",
-                        verify_out.passes, len(verify_out.feedback or ""))
-            if verify_out.feedback:
-                logger.info("    verifier feedback: %s",
-                            (verify_out.feedback or "")[:400].replace("\n", " "))
+            if self.verifier_enabled:
+                logger.info("  calling Review (ChainOfThought)...")
+                verify_out = self.verify(
+                    new_prompt_file=new_prompt,
+                    competencies=comp_str,
+                    runtime=template.primary_runtime,
+                    frameworks=frameworks_json,
+                    datastores=datastores_json,
+                    persona=persona,
+                    reference_prompts=refs_text,
+                    similar_tasks=tasks_text,
+                    competency_scopes=scopes_str,
+                    detailed_skill_signal=skill_signal,
+                )
+                logger.info("    Review done — passes=%s feedback=%d chars",
+                            verify_out.passes, len(verify_out.feedback or ""))
+                if verify_out.feedback:
+                    logger.info("    review feedback: %s",
+                                (verify_out.feedback or "")[:400].replace("\n", " "))
+            else:
+                # Review step disabled — advisory pass so the loop gates on the
+                # deterministic validator alone (no extra LLM call).
+                verify_out = SimpleNamespace(passes=True, feedback="")
 
             logger.info("  calling validator.py (deterministic AST + registry "
                         "+ format-var checks)...")
@@ -600,7 +832,7 @@ class PromptGeneratorAgent(dspy.Module):
 
             last_result = (new_prompt, verify_out, validation, attempt)
             if verify_out.passes and validation.passed:
-                logger.info("  ✓ both verifier and validator passed at attempt %d "
+                logger.info("  ✓ generated prompt accepted at attempt %d "
                             "— exiting loop", attempt)
                 break
 
