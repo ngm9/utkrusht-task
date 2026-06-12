@@ -96,6 +96,7 @@ def run_gate_for_attempt(
     candidate: Dict,
     candidate_eval: Dict,
     attempt: int,
+    task_shape: Optional[str] = None,
 ) -> Tuple[GateOutcome, str]:
     """Run the E2B build/test gate for one ``create_task`` attempt.
 
@@ -103,12 +104,31 @@ def run_gate_for_attempt(
     the gate actually ran a verdict. Returns the outcome the retry loop
     should act on, plus the retry-feedback string (empty unless ``RETRY``).
 
-    Behind ``SANDBOX_EVAL_ENABLED`` — when off, returns ``DISABLED``
-    immediately and the loop proceeds to storage exactly as before the
-    gate existed.
+    Skip conditions (both yield ``DISABLED`` — loop proceeds to storage):
+
+      * ``SANDBOX_EVAL_ENABLED`` env var is off (the original global
+        kill-switch — unchanged).
+      * ``task_shape == "non_infra"`` — the prompt generator's shape
+        classifier decided the task is a pure-runtime local project with
+        no docker-compose / run.sh / kill.sh. There is nothing for the E2B
+        gate to build and test, so running it would always fail (or run a
+        misleading verdict). Skip cleanly; the LLM task + code evals
+        already gated quality.
     """
     if not sandbox_eval_enabled():
         metrics.inc("gate_outcome_total", outcome="disabled")
+        return GateOutcome.DISABLED, ""
+
+    if task_shape == "non_infra":
+        logger.info(
+            "E2B gate skipped: task_shape=non_infra "
+            "(pure local project, nothing to build in the sandbox)"
+        )
+        metrics.inc("gate_outcome_total", outcome="non_infra_skip")
+        candidate_eval["sandbox_eval"] = {
+            "skipped": True,
+            "reason": "task_shape=non_infra",
+        }
         return GateOutcome.DISABLED, ""
 
     logger.info("Running E2B run.sh readiness gate")

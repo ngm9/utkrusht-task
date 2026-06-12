@@ -26,7 +26,6 @@ from dotenv import load_dotenv
 logger = logging.getLogger("prompt_generator")
 
 from infra.classifier.runtime import Competency
-from generators.task.runtime_resolver import TemplateSpec, resolve_plan
 from generators.prompts.db_queries import (
     TaskExample,
     fetch_competency_scope,
@@ -35,6 +34,7 @@ from generators.prompts.db_queries import (
 )
 from generators.prompts.input_files import build_detailed_skill_signal
 from generators.prompts.retriever import retrieve_references, RetrievalResult
+from generators.prompts.shape_classifier import ShapeDecision, classify_task_shape
 from generators.prompts.validator import ValidationResult, validate_prompt_file
 
 load_dotenv()
@@ -71,6 +71,12 @@ def configure_dspy(model: Optional[str] = None, mode: str = "runtime") -> None:
     if model is None:
         model = DEFAULT_COMPILE_MODEL if mode == "compile" else DEFAULT_RUNTIME_MODEL
 
+    # GPT-5 family (gpt-5, gpt-5.4, gpt-5-codex, ...) only accepts
+    # temperature=1 — litellm rejects any other value. Detect by substring
+    # so future point-releases (gpt-5.5 etc.) are handled automatically.
+    is_gpt5_family = "gpt-5" in model.lower()
+    temperature = 1.0 if is_gpt5_family else 0.2
+
     if model.startswith("openrouter/"):
         # Strip the openrouter/ prefix; pass the rest as the model id.
         or_key = os.getenv("OPENROUTER_API_KEY")
@@ -85,7 +91,7 @@ def configure_dspy(model: Optional[str] = None, mode: str = "runtime") -> None:
             api_key=or_key,
             api_base="https://openrouter.ai/api/v1",
             max_tokens=16000,
-            temperature=0.2,
+            temperature=temperature,
         )
     else:
         api_key = os.getenv("OPENAI_API_KEY")
@@ -102,7 +108,7 @@ def configure_dspy(model: Optional[str] = None, mode: str = "runtime") -> None:
             api_base=PORTKEY_GATEWAY_URL,
             extra_headers=createHeaders(provider=provider, api_key=portkey_key),
             max_tokens=16000,
-            temperature=0.2,
+            temperature=temperature,
         )
 
     dspy.settings.configure(lm=lm)
@@ -351,41 +357,39 @@ class GeneratePromptSignature(dspy.Signature):
     ever generated.
 
     ─────────────────────────────────────────────────────────────────────────
-    HARD CONSTRAINT #7 — Infrastructure shape from template capabilities
+    HARD CONSTRAINT #7 — Infrastructure shape comes from `task_shape`
     ─────────────────────────────────────────────────────────────────────────
+    The `task_shape` input field is the AUTHORITATIVE decision for whether
+    the generated prompt produces an infra-shaped task or a pure-runtime
+    local task. It was decided up-front by the prompt-generator's shape
+    classifier from competency_scopes + scenarios. DO NOT second-guess it.
+    The two values + their requirements:
+
+      (a) `task_shape == "infra"` → the scenario needs an external service
+          (DB / cache / queue / broker / search). The generated prompt MUST
+          include `docker-compose.yml` for the datastore(s) the scenario
+          actually exercises, `run.sh` using `docker compose up -d`, and
+          `kill.sh` using `docker compose down`. Decide the specific
+          datastores by READING the scenario text in `detailed_skill_signal`
+          — do not invent extras. The `datastores` input list (if provided)
+          is informational only.
+
+      (b) `task_shape == "non_infra"` → pure-runtime / language-level /
+          algorithmic / async-concurrency / in-process / UI / frontend
+          work. The generated prompt MUST NOT include `docker-compose.yml`,
+          `init_database.sql`, `kill.sh`, or any datastore configuration.
+          Ship the task as a local project using the runtime's native
+          package manifest (e.g. `package.json`, `pyproject.toml`,
+          `pom.xml`, `Cargo.toml`, `build.gradle`) plus source + tests,
+          runnable via the runtime's native test command. Use your
+          knowledge of the stack to pick the right manifest filename and
+          test command.
+
+    Common-library/install rules (apply in BOTH shapes):
       • `primary_runtime` and the capability `frameworks` (and their common
         libraries) are PRE-INSTALLED by the E2B template. Do NOT include
-        `apt-get install`, `pip install`, or `npm install` for the runtime or
-        its common libs in run.sh.
-      • `datastores` are AVAILABLE in the template but are NOT automatic
-        requirements for the task. This rule is runtime-agnostic — apply
-        the same reasoning whatever the `primary_runtime` is. Inspect
-        `competency_scopes` and `detailed_skill_signal` (scenarios + role
-        context) to decide whether the selected scenario actually exercises
-        a datastore. Use your own knowledge of the stack to recognise both
-        sides — do not rely on hard-coded keyword lists.
-
-        (a) The scenario interacts with a DB, cache, queue, message broker,
-            or any other external service → include `docker-compose.yml`
-            for the datastore(s) the scenario actually needs, with `run.sh`
-            using `docker compose up -d` and `kill.sh` using `docker compose
-            down`. Datastores listed in `datastores` that the scenario does
-            NOT need stay OPTIONAL — do not require `init_<extra>.sql` for
-            them.
-
-        (b) The scenario is pure-runtime — language-level, algorithmic,
-            async-concurrency, or in-process work with no external service
-            interaction → TREAT ALL TEMPLATE DATASTORES AS OPTIONAL. Do
-            NOT include `docker-compose.yml`, `init_database.sql`, or any
-            datastore configuration. Ship the task as a local project
-            using the runtime's native package manifest + source + tests,
-            runnable on the candidate's machine via the runtime's native
-            test command. Use your knowledge of the `primary_runtime` to
-            pick the right manifest filename and test command.
-
-        When in doubt — the scenario doesn't mention an external service,
-        the scope is language-centric, the success criteria are observable
-        via in-process tests — choose the pure-local shape (b).
+        `apt-get install`, `pip install`, or `npm install` for the runtime
+        or its common libs in `run.sh`.
       • `persona="mobile"` → no Dockerfile, no compose; run the runtime's
         native test command for that platform.
       • `persona="dba"` / `persona="data"` → `init_database.sql` + Compose;
@@ -436,6 +440,14 @@ class GeneratePromptSignature(dspy.Signature):
         desc="Comma-separated competency names with proficiency (e.g. 'Python (BASIC), SQL (BASIC)')"
     )
     proficiency: str = dspy.InputField(desc="Target proficiency level (BASIC/BEGINNER/INTERMEDIATE)")
+    task_shape: str = dspy.InputField(
+        desc='Authoritative infra decision: exactly "infra" or "non_infra". '
+             '"infra" → MUST include docker-compose / kill.sh / run.sh for the '
+             "scenario's datastores. \"non_infra\" → MUST NOT include any "
+             "docker-compose / init_database.sql / kill.sh — ship a pure local "
+             "project using the runtime's native manifest + test command. "
+             "See HARD CONSTRAINT #7 for the full rules."
+    )
     runtime: str = dspy.InputField(
         desc="Primary language runtime of the matched template (e.g. python, node)"
     )
@@ -490,32 +502,25 @@ class VerifyPromptSignature(dspy.Signature):
       1. SCOPE VIOLATION: Required candidate skills exceed competency_scopes.
          Example: BASIC scope says "limited async understanding" but the prompt
          requires async/await throughout — REJECT.
-      2. STRUCTURE MISMATCH (infrastructure): code_files don't match the
-         template's capabilities + persona.
-         Example: persona="data" / script-style task with a Flask/FastAPI app
-         file present — REJECT.
-         Example: persona="mobile" with a Dockerfile present — REJECT.
-         Example: scenario explicitly requires PostgreSQL ingest + queries
-         and the prompt asks for `docker-compose.yml` but it is missing —
-         REJECT.
-         IMPORTANT: do NOT reject just because `datastores` is non-empty.
-         The template advertises what is AVAILABLE; the task picks which
-         datastores (if any) it actually uses. A pure-runtime task —
-         language-level, algorithmic, async-concurrency, or in-process
-         work with no external service interaction — is a valid local-only
-         project for any runtime. Accept the prompt even when it ships NO
-         `docker-compose.yml`, NO `init_database.sql`, and NO `kill.sh`,
-         as long as it is runnable locally via the runtime's native test
-         command against the runtime's native manifest (use your knowledge
-         of the stack to recognise valid combinations). Decide datastore
-         necessity by READING the scenario / scope, not by reading
-         `datastores`.
-         EXCEPTION (do NOT reject in this case): when `datastores` lists a
-         service the assessed competency clearly does NOT cover (e.g.
-         datastores=["postgres","mysql"] for a "PostgreSQL - Large Scale
-         Datasets" competency), the prompt may legitimately treat the extra
-         service as OPTIONAL infrastructure. Accept the prompt as long as it
-         EXPLICITLY marks the extra datastore as optional/non-required.
+      2. STRUCTURE MISMATCH (infrastructure): the code_files shape does not
+         match the authoritative `task_shape` decision.
+
+         When `task_shape == "non_infra"`:
+           - REJECT if the prompt ships a `docker-compose.yml`,
+             `init_database.sql`, `kill.sh`, or any datastore service
+             definition. Non-infra tasks MUST be pure local projects using
+             the runtime's native manifest + test command.
+
+         When `task_shape == "infra"`:
+           - REJECT if the prompt is missing a `docker-compose.yml` for the
+             datastore(s) the scenario clearly exercises. The scenario text
+             is the source of truth for which datastores are needed; pick
+             the ones it actually uses, not extras from the `datastores`
+             list.
+
+         Persona-specific shape rules (apply on top of `task_shape`):
+           - persona="data" / script-style: no Flask/FastAPI app file.
+           - persona="mobile": no Dockerfile.
       3. STRUCTURAL DAMAGE: missing PROMPT_REGISTRY, missing format vars
          ({organization_background}, {role_context}, {competencies},
          {real_world_task_scenarios}), or wrong registry key format.
@@ -529,12 +534,20 @@ class VerifyPromptSignature(dspy.Signature):
               `## QUALITY BAR`, `## RECOMMENDED TASK THEMES`, or
               `## HARD CONSTRAINTS FROM TEMPLATE CAPABILITIES` — none of
               these exist in any curated reference.
-           b. The prompt is missing one of the canonical sections:
-              `## GOAL`, `## CONTEXT & CANDIDATE EXPECTATION`,
-              `## AI AND EXTERNAL RESOURCE POLICY`,
-              `## Infrastructure Requirements`, `## kill.sh file instructions`,
-              `## README.md INSTRUCTIONS`, `## REQUIRED OUTPUT JSON STRUCTURE`,
-              `## CRITICAL REMINDERS` (or `## CRITICAL NOTES`).
+           b. The prompt is missing one of the SHAPE-INDEPENDENT canonical
+              sections (required for BOTH task_shape values):
+                `## GOAL`, `## CONTEXT & CANDIDATE EXPECTATION`,
+                `## AI AND EXTERNAL RESOURCE POLICY`,
+                `## README.md INSTRUCTIONS`,
+                `## REQUIRED OUTPUT JSON STRUCTURE`,
+                `## CRITICAL REMINDERS` (or `## CRITICAL NOTES`).
+              The INFRA-ONLY sections `## Infrastructure Requirements` and
+              `## kill.sh file instructions` are REQUIRED only when
+              `task_shape == "infra"`. For `task_shape == "non_infra"` these
+              two sections MUST be ABSENT — a non-infra prompt that includes
+              them is a violation of HARD CONSTRAINT #7 (no docker-compose,
+              no kill.sh for pure-local projects). Do not flag their absence
+              on the non_infra path.
            c. The README uses a drift name like "Guidance", "Tips" (without
               "Helpful"), "Hints", or "Recommendations" instead of the
               canonical `Helpful Tips`.
@@ -565,6 +578,12 @@ class VerifyPromptSignature(dspy.Signature):
 
     new_prompt_file: str = dspy.InputField(desc="The candidate prompt file source")
     competencies: str = dspy.InputField(desc="Target competencies + proficiency")
+    task_shape: str = dspy.InputField(
+        desc='Authoritative infra decision: "infra" or "non_infra". Gate the '
+             "STRUCTURE MISMATCH check on this value — non_infra must NOT ship "
+             "docker-compose/kill.sh, infra MUST include docker-compose for the "
+             "scenario's datastores."
+    )
     runtime: str = dspy.InputField(
         desc="Primary language runtime of the matched template (e.g. python, node)"
     )
@@ -616,6 +635,12 @@ class GenerationResult:
     similar_tasks_count: int = 0
     validation: Optional[ValidationResult] = None
     input_files_metadata: dict = field(default_factory=dict)
+    # Output of the shape classifier (STEP 1 of forward()). "infra" means the
+    # generated prompt produces a docker-compose-shaped task; "non_infra" means
+    # a pure-runtime local project. Surfaced so callers + the CLI banner can
+    # show the decision.
+    task_shape: str = "non_infra"
+    task_shape_reason: str = ""
 
 
 class PromptGeneratorAgent(dspy.Module):
@@ -678,29 +703,63 @@ class PromptGeneratorAgent(dspy.Module):
                     [c.name for c in competencies], proficiency, env)
         logger.info("=" * 72)
 
-        # ─── STEP 1: resolver (task_template_match cache + classifier) ─
-        # Routes through resolve_plan so we hit the task_template_match cache
-        # instead of re-classifying on every prompt-generator run.
-        logger.info("STEP 1 / runtime_resolver.py — matching template via combo cache")
-        plan = resolve_plan(competencies)
-        if plan.match is None or plan.template is None:
-            raise RuntimeError(
-                f"resolve_plan returned no usable match for combo={plan.combo_key!r} — "
-                f"match={plan.match!r} template={plan.template!r}; "
-                "cannot generate a prompt without a matched built template"
-            )
-        template = plan.template
-        persona = plan.match.persona or (template.personas[0] if template.personas else "")
-        caps = template.capabilities or {}
-        cap_frameworks = list(caps.get("frameworks") or [])
-        cap_datastores = list(caps.get("datastores") or [])
-        logger.info("  → template_id=%s primary_runtime=%s persona=%s "
-                    "frameworks=%s datastores=%s",
-                    template.template_id, template.primary_runtime, persona,
-                    cap_frameworks, cap_datastores)
+        # ─── STEP 1: detailed_skill_signal from input files ───────────
+        # Built FIRST because the shape classifier (STEP 3) needs the scenarios
+        # + role_context + sub-skill checklist to make an informed call.
+        logger.info("STEP 1 / input_files.py — building detailed_skill_signal")
+        skill_signal, skill_meta = build_detailed_skill_signal(competencies, proficiency)
+        logger.info("  → background_found  = %s", skill_meta.get("background_found"))
+        logger.info("  → questions_prompt  = %d chars", skill_meta.get("questions_chars", 0))
+        logger.info("  → role_context      = %d chars", skill_meta.get("role_context_chars", 0))
+        logger.info("  → scenarios         = %d items", skill_meta.get("scenarios_count", 0))
+        logger.info("  → total signal      = %d chars", skill_meta.get("signal_chars", 0))
 
-        # ─── STEP 2: retriever (5-level fallback) ─────────────────────
-        logger.info("STEP 2 / retriever.py — running 5-level fallback ladder")
+        # ─── STEP 2: fetch competency scopes (input to the shape classifier) ─
+        # Similar-tasks fetch is deferred to STEP 5 — only the infra path needs
+        # it, so we skip the call entirely for non-infra to avoid burning a
+        # Supabase round-trip on data the LLM will never see.
+        logger.info("STEP 2 / db_queries.py — fetching competency scopes (env=%s)", env)
+        supabase = init_supabase(env)
+        scopes_text: list[str] = []
+        for comp in competencies:
+            scope = fetch_competency_scope(supabase, comp.name, proficiency)
+            if scope and scope.get("scope"):
+                scopes_text.append(f"[{comp.name} ({proficiency})]\n{scope['scope']}")
+                logger.info("  → scope %s (%s): %d chars",
+                            comp.name, proficiency, len(scope["scope"]))
+            else:
+                logger.warning("  → NO SCOPE for %s (%s) in Supabase",
+                               comp.name, proficiency)
+        scopes_str = "\n\n---\n\n".join(scopes_text) if scopes_text else "(no scopes available)"
+
+        # ─── STEP 3: SHAPE CLASSIFIER (infra vs non-infra) ────────────
+        # The first real decision. Drives the rest of the pipeline:
+        #   non_infra → skip similar_tasks fetch, skip the e2b template
+        #               resolver entirely; references + generate is all we need
+        #   infra     → fetch similar_tasks, future template resolver, etc.
+        logger.info("STEP 3 / shape_classifier.py — classifying task shape")
+        shape_decision: ShapeDecision = classify_task_shape(
+            competencies_str=comp_str,
+            competency_scopes=scopes_str,
+            detailed_skill_signal=skill_signal,
+        )
+        logger.info("  → task_shape = %s", shape_decision.task_shape)
+        logger.info("  → reason     = %s", shape_decision.reason)
+        task_shape = shape_decision.task_shape
+
+        # Resolver is still a no-op at prompt-gen time. The LLM honours
+        # `task_shape` directly (HARD CONSTRAINT #7), so runtime / persona /
+        # frameworks / datastores stay empty for both branches. They are kept
+        # in the signature for future infra-flow work (template resolution).
+        template = None
+        persona = ""
+        runtime = ""
+        cap_frameworks: list[str] = []
+        cap_datastores: list[str] = []
+
+        # ─── STEP 4: retriever (reference prompts) ────────────────────
+        logger.info("STEP 4 / retriever.py — running fallback ladder "
+                    "(task_shape=%s)", task_shape)
         retrieval = retrieve_references(competencies, proficiency, template=template)
         logger.info("  → bootstrap_mode = %s", retrieval.bootstrap_mode)
         logger.info("  → fallback_level = %d", retrieval.fallback_level)
@@ -710,51 +769,36 @@ class PromptGeneratorAgent(dspy.Module):
         for note in retrieval.notes:
             logger.debug("      ladder: %s", note)
 
-        # ─── STEP 3: Supabase queries ─────────────────────────────────
-        logger.info("STEP 3 / db_queries.py — Supabase env=%s", env)
-        supabase = init_supabase(env)
+        # ─── STEP 5: similar tasks (infra path only) ──────────────────
+        # Non-infra goes straight from references to generate, per the
+        # streamlined non-infra contract: pick reference, generate.
         comp_names = [c.name for c in competencies]
+        if task_shape == "infra":
+            logger.info("STEP 5 / db_queries.py — fetching similar tasks "
+                        "(infra path) for %s ...", comp_names)
+            similar = fetch_similar_tasks(supabase, comp_names, proficiency)
+            logger.info("  → similar tasks fetched: %d", len(similar))
+            for t in similar[:5]:
+                logger.debug("      • task_id=%s title=%r",
+                             getattr(t, "task_id", "?"),
+                             (getattr(t, "title", "") or "")[:60])
+        else:
+            logger.info("STEP 5 — skipping similar_tasks fetch "
+                        "(non_infra path: references → generate)")
+            similar = []
 
-        logger.info("  fetching similar tasks for %s ...", comp_names)
-        similar = fetch_similar_tasks(supabase, comp_names, proficiency)
-        logger.info("  → similar tasks fetched: %d", len(similar))
-        for t in similar[:5]:
-            logger.debug("      • task_id=%s title=%r",
-                         getattr(t, "task_id", "?"),
-                         (getattr(t, "title", "") or "")[:60])
-
-        scopes_text = []
-        for comp in competencies:
-            logger.info("  fetching competency.scope for %s (%s) ...", comp.name, proficiency)
-            scope = fetch_competency_scope(supabase, comp.name, proficiency)
-            if scope and scope.get("scope"):
-                scopes_text.append(f"[{comp.name} ({proficiency})]\n{scope['scope']}")
-                logger.info("    → scope text: %d chars", len(scope["scope"]))
-            else:
-                logger.warning("    → NO SCOPE found in Supabase for %s (%s)",
-                               comp.name, proficiency)
-
-        # ─── STEP 4: detailed_skill_signal from input files ───────────
-        logger.info("STEP 4 / input_files.py — building detailed_skill_signal")
-        skill_signal, skill_meta = build_detailed_skill_signal(competencies, proficiency)
-        logger.info("  → background_found  = %s", skill_meta.get("background_found"))
-        logger.info("  → questions_prompt  = %d chars", skill_meta.get("questions_chars", 0))
-        logger.info("  → role_context      = %d chars", skill_meta.get("role_context_chars", 0))
-        logger.info("  → scenarios         = %d items", skill_meta.get("scenarios_count", 0))
-        logger.info("  → total signal      = %d chars", skill_meta.get("signal_chars", 0))
-
-        # ─── STEP 5: assemble context strings ─────────────────────────
+        # ─── STEP 6: assemble context strings ─────────────────────────
         refs_text = self._build_references_text(retrieval)
         tasks_text = self._build_similar_tasks_text(similar)
-        scopes_str = "\n\n---\n\n".join(scopes_text) if scopes_text else "(no scopes available)"
 
-        logger.info("STEP 5 — context payload sizes for the LLM call")
+        logger.info("STEP 6 — context payload sizes for the LLM call")
+        logger.info("  task_shape                %s", task_shape)
         logger.info("  competencies              %6d chars  %r", len(comp_str), comp_str)
         logger.info("  proficiency               %6d chars  %r", len(proficiency), proficiency)
         frameworks_json = json.dumps(cap_frameworks)
         datastores_json = json.dumps(cap_datastores)
         logger.info("  runtime                   %6d chars  %r",
-                    len(template.primary_runtime), template.primary_runtime)
+                    len(runtime), runtime)
         logger.info("  persona                   %6d chars  %r", len(persona), persona)
         logger.info("  frameworks                %6d chars  %r", len(frameworks_json), cap_frameworks)
         logger.info("  datastores                %6d chars  %r", len(datastores_json), cap_datastores)
@@ -770,9 +814,10 @@ class PromptGeneratorAgent(dspy.Module):
             demo_count = len(self.generate.predict.demos or [])
         logger.info("  compiled demos loaded     %d", demo_count)
 
-        # ─── STEP 6: Generate ⇄ Verify ⇄ Validate loop ───────────────
-        logger.info("STEP 6 — Generate ⇄ Review ⇄ Validate loop "
-                    "(max_iterations=%d)", self.max_iterations)
+        # ─── STEP 7: Generate ⇄ Verify ⇄ Validate loop ───────────────
+        logger.info("STEP 7 — Generate ⇄ Review ⇄ Validate loop "
+                    "(max_iterations=%d, task_shape=%s)",
+                    self.max_iterations, task_shape)
         comp_dicts = [{"name": c.name, "proficiency": proficiency} for c in competencies]
         feedback = ""
         last_result = None
@@ -783,7 +828,8 @@ class PromptGeneratorAgent(dspy.Module):
             gen_out = self.generate(
                 competencies=comp_str,
                 proficiency=proficiency,
-                runtime=template.primary_runtime,
+                task_shape=task_shape,
+                runtime=runtime,
                 frameworks=frameworks_json,
                 datastores=datastores_json,
                 persona=persona,
@@ -808,7 +854,8 @@ class PromptGeneratorAgent(dspy.Module):
                 verify_out = self.verify(
                     new_prompt_file=new_prompt,
                     competencies=comp_str,
-                    runtime=template.primary_runtime,
+                    task_shape=task_shape,
+                    runtime=runtime,
                     frameworks=frameworks_json,
                     datastores=datastores_json,
                     persona=persona,
@@ -870,6 +917,8 @@ class PromptGeneratorAgent(dspy.Module):
             similar_tasks_count=len(similar),
             validation=validation,
             input_files_metadata=skill_meta,
+            task_shape=task_shape,
+            task_shape_reason=shape_decision.reason,
         )
 
     @staticmethod

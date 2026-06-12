@@ -68,6 +68,23 @@ def _expected_path(competency_names: list[str], proficiency: str) -> Path:
     return AGENT_OUTPUT_ROOT / folder / slug / f"{slug}.py"
 
 
+def _prepend_task_shape(source: str, task_shape: str) -> str:
+    """Prepend ``TASK_SHAPE = "<value>"`` to the generated prompt source.
+
+    Idempotent: if the LLM somehow already emitted a TASK_SHAPE constant
+    (it shouldn't — nothing in the GeneratePromptSignature asks for one),
+    we skip the prepend to avoid duplicate assignments.
+    """
+    if re.search(r"^\s*TASK_SHAPE\s*=", source, re.MULTILINE):
+        return source
+    header = (
+        f'# Set by the prompt-generator shape classifier — do not edit.\n'
+        f'# Consumed by infra.utils for the E2B-gate skip decision.\n'
+        f'TASK_SHAPE = "{task_shape}"\n\n\n'
+    )
+    return header + source.lstrip()
+
+
 @click.command()
 @click.option(
     "--name", "-n", required=True, multiple=True,
@@ -165,6 +182,9 @@ def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_
     click.echo(f"\n{'-'*70}")
     click.echo(f" RESULT")
     click.echo(f"{'-'*70}")
+    click.echo(f" Task shape:        {result.task_shape}")
+    if result.task_shape_reason:
+        click.echo(f"   reason: {result.task_shape_reason}")
     click.echo(f" Iterations:        {result.iterations}")
     click.echo(f" Bootstrap mode:    {result.bootstrap_mode}")
     click.echo(f" Fallback level:    {result.fallback_level}")
@@ -199,17 +219,23 @@ def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_
         for warning in v.warnings:
             click.echo(f"   [!] {warning}")
 
+    # Prepend the shape classifier's verdict as a module-level constant so
+    # downstream consumers (the E2B gate in particular) can discover the
+    # task shape from the loaded prompt module via `getattr(module,
+    # "TASK_SHAPE", None)` — no extra plumbing, no separate metadata file.
+    final_source = _prepend_task_shape(result.new_prompt_file, result.task_shape)
+
     if dry_run:
         click.echo(f"\n{'-'*70}")
         click.echo(f" DRY RUN -- Generated prompt (first 1500 chars):")
         click.echo(f"{'-'*70}")
-        click.echo(result.new_prompt_file[:1500])
+        click.echo(final_source[:1500])
         click.echo("...")
         return
 
     # Write the file
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(result.new_prompt_file, encoding="utf-8")
+    output_path.write_text(final_source, encoding="utf-8")
     click.echo(f"\n Wrote: {output_path}")
 
     if result.bootstrap_mode:
