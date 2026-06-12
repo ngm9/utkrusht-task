@@ -152,6 +152,32 @@ def _log_output(label: str, output: str, lines: int = 30) -> None:
         logger.info(f"{_GATE}   | {ln}")
 
 
+# Readiness/endpoint-probe lines that run.sh prints itself (health code, endpoint
+# HTTP codes, warnings) + the final exception line of any app traceback. Surfaced
+# separately so they survive the last-30-lines tail truncation (which, for a
+# buggy-code task, is just the traceback) — letting a reviewer confirm "scaffold
+# up + endpoint behavior" from the gate log without re-running the sandbox.
+_READINESS_RE = re.compile(
+    r"HTTP\s*\d{3}|responding|is up|is ready|is healthy|became ready|"
+    r"did not (respond|become)|search endpoint|/health|deployment complete|"
+    r"environment is up|seed complete|WARNING:|ERROR:|"
+    r"[A-Za-z_]\w*(Error|Exception):",
+    re.I,
+)
+
+
+def _log_readiness(output: str, lines: int = 14) -> None:
+    """Surface run.sh's own readiness/endpoint-probe lines into the gate log so
+    the verdict is confirmable from the log alone. Log-only — does not affect
+    the verdict (still run.sh's exit code)."""
+    hits = [ln.strip() for ln in output.splitlines() if _READINESS_RE.search(ln)]
+    if not hits:
+        return
+    logger.info(f"{_GATE}   ── readiness probe (from run.sh) ──")
+    for ln in hits[-lines:]:
+        logger.info(f"{_GATE}   ‣ {ln[:200]}")
+
+
 def _verdict_label(result: SandboxEvalResult) -> str:
     """PASS / FAIL / SKIP — the one-word outcome class for a result."""
     if result.skipped:
@@ -324,6 +350,7 @@ def _run_runsh(
     )
     combined = out + "\n" + err
     logger.info(f"{_GATE} run.sh… exit={code} ({time.time() - ts:.1f}s)")
+    _log_readiness(combined)
     _log_output("run.sh output", combined)
 
     if code == 124:
