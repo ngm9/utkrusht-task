@@ -28,6 +28,7 @@ from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
 from dotenv import load_dotenv
 
 from infra.logger_config import logger
+from infra.tracing.client import trace_client
 from generators.scenarios.prompts import (
     SCENARIO_SYSTEM_PROMPT,
     SCENARIO_SYSTEM_PROMPT_NON_CODE,
@@ -298,13 +299,16 @@ def create_openai_client() -> openai.OpenAI:
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY environment variable is not set")
 
-    return openai.OpenAI(
-        api_key=api_key,
-        base_url=PORTKEY_GATEWAY_URL,
-        default_headers=createHeaders(
-            provider="openai",
-            api_key=portkey_key,
+    return trace_client(
+        openai.OpenAI(
+            api_key=api_key,
+            base_url=PORTKEY_GATEWAY_URL,
+            default_headers=createHeaders(
+                provider="openai",
+                api_key=portkey_key,
+            ),
         ),
+        provider="openai",
     )
 
 

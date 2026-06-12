@@ -41,6 +41,13 @@ import sys
 import time
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+# run_pipeline reads TRACE_S3_BUCKET / S3_REGION / AWS creds for the end-of-run
+# log upload; the stage subprocesses load .env themselves, but the parent does
+# not otherwise, so load it here.
+load_dotenv()
+
 REPO_ROOT = Path(__file__).parent.resolve()
 RUNS_DIR = REPO_ROOT / ".task_agent_runs"
 INPUT_FILES_ROOT = REPO_ROOT / "data" / "generated" / "input_files"
@@ -83,8 +90,55 @@ def _combo_slug(names: list[str]) -> str:
     return "_".join(slugify(n) for n in names)
 
 
-def _run_stage(combo_dir: Path, label: str, cmd: list[str]) -> dict:
+def _run_stage_streaming(cmd, stdout_path, stderr_path, stage_env, combo_dir,
+                         live_split) -> int:
+    """Run ``cmd`` streaming its stderr line-by-line so focused sub-logs appear
+    DURING the stage, not after it.
+
+    Every stderr line is written to ``stderr_path`` (the full log, unchanged) and
+    ALSO fanned into each ``(filename, markers)`` sub-log whose markers it matches
+    — each sub-log is created lazily on its first matching line and flushed per
+    line, so e.g. ``04_tasks.evals.log`` shows up the moment the eval starts.
+    stdout goes straight to its file (only stderr is a pipe → no deadlock).
+    Returns the child's exit code.
+    """
+    sub_handles: dict = {}
+    try:
+        with stdout_path.open("w", encoding="utf-8") as out, \
+                stderr_path.open("w", encoding="utf-8") as err:
+            proc = subprocess.Popen(
+                cmd, stdout=out, stderr=subprocess.PIPE, cwd=REPO_ROOT,
+                env=stage_env, text=True, bufsize=1, encoding="utf-8",
+                errors="replace",
+            )
+            for line in proc.stderr:
+                err.write(line)
+                err.flush()
+                for fname, markers in live_split:
+                    if any(m in line for m in markers):
+                        fh = sub_handles.get(fname)
+                        if fh is None:
+                            fh = (combo_dir / fname).open("w", encoding="utf-8")
+                            sub_handles[fname] = fh
+                        fh.write(line)
+                        fh.flush()
+            proc.wait()
+            return proc.returncode
+    finally:
+        for fh in sub_handles.values():
+            try:
+                fh.close()
+            except Exception:  # noqa: BLE001
+                pass
+
+
+def _run_stage(combo_dir: Path, label: str, cmd: list[str],
+               live_split: "list | None" = None) -> dict:
     """Run one stage as a subprocess; capture stdout/stderr/timing.
+
+    ``live_split`` (a list of ``(filename, markers)``) streams the stage's stderr
+    and fans matching lines into live sub-logs as they're produced (used by the
+    task stage so the eval / e2b-gate logs appear during the run).
 
     Returns a dict: {label, cmd, duration_s, exit_code, stdout_path, ...}.
     """
@@ -99,22 +153,37 @@ def _run_stage(combo_dir: Path, label: str, cmd: list[str]) -> dict:
     # other stages). An explicit SANDBOX_EVAL_ENABLED in the environment wins.
     stage_env = {**os.environ}
     stage_env.setdefault("SANDBOX_EVAL_ENABLED", "true")
-    with stdout_path.open("w", encoding="utf-8") as out, \
-         stderr_path.open("w", encoding="utf-8") as err:
-        proc = subprocess.run(cmd, stdout=out, stderr=err, cwd=REPO_ROOT,
-                              env=stage_env)
+    # Pipeline tracing is captured for the LLM-bearing stages (input_files /
+    # scenarios / prompt / tasks) — each opens trace_run(TRACE_RUN_ID) in its
+    # __main__ and writes into the shared run-<ts>/traces/ dir. Preflight has no
+    # LLM calls. Force the flag explicitly per stage (not setdefault) so an
+    # enabled value inherited from the parent shell can't turn on a non-wired
+    # stage. TRACE_RUN_ID is inherited via {**os.environ}. Stages run
+    # sequentially, so there are no concurrent writers to the shared JSONL.
+    _traced = ("input_files", "scenarios", "prompt", "tasks")
+    stage_env["PIPELINE_TRACING_ENABLED"] = "1" if any(s in label for s in _traced) else "0"
+    if live_split:
+        returncode = _run_stage_streaming(
+            cmd, stdout_path, stderr_path, stage_env, combo_dir, live_split,
+        )
+    else:
+        with stdout_path.open("w", encoding="utf-8") as out, \
+             stderr_path.open("w", encoding="utf-8") as err:
+            returncode = subprocess.run(
+                cmd, stdout=out, stderr=err, cwd=REPO_ROOT, env=stage_env,
+            ).returncode
     duration = round(time.time() - start, 1)
 
     record = {
         "label": label,
         "cmd": cmd,
         "duration_s": duration,
-        "exit_code": proc.returncode,
+        "exit_code": returncode,
         "stdout": str(stdout_path),
         "stderr": str(stderr_path),
     }
     timing_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
-    flag = "ok" if proc.returncode == 0 else f"FAIL exit={proc.returncode}"
+    flag = "ok" if returncode == 0 else f"FAIL exit={returncode}"
     print(f"  ◀ {label}: {flag}  ({duration}s)", flush=True)
     return record
 
@@ -243,6 +312,10 @@ def main() -> int:
 
     # Set up the run directory.
     ts = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    # Pipeline tracing: share the run id with the task-gen subprocess so its
+    # captured LLM-call traces land under .task_agent_runs/run-<ts>/traces/
+    # (the sink prepends "run-" itself, so pass the bare timestamp).
+    os.environ["TRACE_RUN_ID"] = ts
     combo_label = _combo_slug(names) + "_" + level.lower()
     combo_dir = RUNS_DIR / f"run-{ts}" / combo_label
     combo_dir.mkdir(parents=True, exist_ok=True)
@@ -334,8 +407,15 @@ def main() -> int:
         "-c", str(comp_json), "-b", str(bg_json),
         "-s", str(scenarios_file_for(level)),
         "--env", args.env,
+    ], live_split=[
+        # Stream the eval + e2b-gate sub-logs LIVE so they appear when the eval
+        # starts, not only after the task stage finishes.
+        ("04_tasks.e2b_gate.log", _E2B_GATE_MARKERS),
+        ("04_tasks.evals.log", _EVAL_MARKERS),
     ])
     stages.append(rec)
+    # Final reconcile: re-derive the sub-logs from the complete stderr in case the
+    # live stream missed anything (idempotent — same content).
     sublogs = _split_stage4_logs(combo_dir)
     if sublogs:
         print(f"    stage-4 sub-logs: {', '.join(sublogs)}")
@@ -343,6 +423,16 @@ def main() -> int:
 
     status = "COMPLETED" if rec["exit_code"] == 0 else "STAGE_4_ERROR"
     _write_summary(combo_dir, names, level, stages, status, task_outcome)
+
+    # Upload the stage logs to S3 alongside the JSONL traces (env-gated on
+    # TRACE_S3_BUCKET, failure-isolated). Done here — after the summary + sub-log
+    # reconcile — because this is where every log file is finalized. `ts` is the
+    # bare run_id (matches the traces upload).
+    from infra.tracing import upload_run_logs
+
+    log_prefix = upload_run_logs(ts, combo_dir)
+    if log_prefix:
+        print(f"   Logs uploaded: {log_prefix}")
 
     # --- Final report -----------------------------------------------------
     total = round(sum(s["duration_s"] for s in stages), 1)

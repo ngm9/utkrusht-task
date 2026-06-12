@@ -32,6 +32,8 @@ from dotenv import load_dotenv
 from supabase import Client, create_client
 from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
 
+from infra.tracing.client import trace_client
+
 # Load environment variables
 load_dotenv()
 
@@ -104,13 +106,16 @@ def init_openai_client() -> openai.OpenAI:
     if not api_key:
         raise click.ClickException("Missing OPENAI_API_KEY in .env file.")
 
-    return openai.OpenAI(
-        api_key=api_key,
-        base_url=PORTKEY_GATEWAY_URL,
-        default_headers=createHeaders(
-            provider="openai",
-            api_key=portkey_key,
+    return trace_client(
+        openai.OpenAI(
+            api_key=api_key,
+            base_url=PORTKEY_GATEWAY_URL,
+            default_headers=createHeaders(
+                provider="openai",
+                api_key=portkey_key,
+            ),
         ),
+        provider="openai",
     )
 
 

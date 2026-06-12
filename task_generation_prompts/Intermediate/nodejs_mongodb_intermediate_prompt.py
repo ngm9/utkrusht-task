@@ -164,9 +164,35 @@ Based on the real-world scenarios provided above, create a MongoDB and Node.js o
 - A docker-compose.yml file which contains all the applications — a docker for running the Node.js REST API and a docker for running the MongoDB database.
 - **IMPORTANT**: The infrastructure setup is AUTOMATED - candidates will NOT manually deploy or run scripts. The task environment will be pre-deployed with working API and database connection.
 
+### CRITICAL — Service startup ordering & database auth (the API MUST boot cleanly):
+The single most common failure in these tasks is the API container crashing on
+boot because it authenticates as a MongoDB user that does not exist yet. The
+scaffold MUST boot to a healthy API on the first `docker compose up`. ALL of the
+following are MANDATORY — do not deviate:
+  - The MongoDB user the Node.js app authenticates as MUST be created DURING
+    MongoDB container initialization, BEFORE the app connects — by mounting an
+    init script into `/docker-entrypoint-initdb.d/` (these run exactly once, on
+    first container start, before MongoDB serves traffic). The app's connection
+    string (username, password, database, AND `authSource`) MUST match that user
+    exactly. If the app authenticates against a specific database (not `admin`),
+    create the user in that database and use the matching `authSource`.
+  - DO NOT create database users/roles or run seed scripts from `run.sh`. There
+    must be NO `docker exec ... mongosh ... db.createUser(...)` and NO manual
+    seeding in `run.sh`. The database is fully initialized by the mounted
+    `/docker-entrypoint-initdb.d/` scripts; `run.sh` only brings the stack up and
+    waits for readiness.
+  - The Node.js app MUST retry its initial database connection with a bounded
+    backoff (e.g. a handful of retries over ~30s) instead of exiting on the first
+    failure. NEVER call `process.exit(1)` on the first connection error — a brief
+    ordering gap must self-heal, not kill the container.
+  - The Node.js (api) service in `docker-compose.yml` MUST set
+    `restart: unless-stopped` so a transient startup-ordering miss recovers
+    instead of leaving a dead container.
+
 ### Docker-compose Instructions:
   - MongoDB service with proper configuration (database, username, password, initialization)
-  - Database creation with User and Password is must 
+  - Database creation with User and Password is must — created via the `/docker-entrypoint-initdb.d/` init script (see the startup-ordering rules above), NEVER in run.sh
+  - The `api` service MUST declare `restart: unless-stopped`
   - Node.js service with dependency on MongoDB using depends_on
   - Volume mounts for data persistence (MongoDB data directory)
   - **Volume mount for seed files** - Mount the seed files directory to MongoDB container for initialization
@@ -192,7 +218,7 @@ Based on the real-world scenarios provided above, create a MongoDB and Node.js o
   + PRIMARY RESPONSIBILITY: Starts Docker containers using `docker-compose up -d`
   + WAIT MECHANISM: Implements proper health check to wait for MongoDB service to be fully ready and accepting connections
   + VALIDATION: Validates that Node.js application is responding and connected to database
-  + DATABASE SETUP: Seed files are automatically executed during MongoDB container initialization
+  + DATABASE SETUP: Seed files AND user creation are executed automatically during MongoDB container initialization (via `/docker-entrypoint-initdb.d/`). run.sh MUST NOT create users or run seed scripts itself (no `docker exec ... db.createUser`, no manual `mongosh ... seed`).
   + MONITORING: Monitors container status and provides feedback on successful deployment
   + ERROR HANDLING: Includes proper error handling for failed container starts or database connection issues
   + LOCATION: All files are located in /root/task directory, ensure Docker paths reference this location

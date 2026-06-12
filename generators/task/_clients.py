@@ -20,18 +20,38 @@ import httpx
 import openai
 from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
 
+from infra.tracing.client import trace_client
+
+
+# A FINITE timeout on the LLM HTTP clients. Previously these used
+# ``httpx.Timeout(None)`` (infinite) — a single stalled upstream response (e.g.
+# Portkey/provider hiccup mid-generation) would then hang the whole task-
+# generation pipeline indefinitely with no recovery (observed: the solution-code
+# step wedged 40+ minutes on a half-delivered response). ``read`` is generous so
+# legitimately long reasoning-model generations aren't cut off, but a true hang
+# now trips the timeout and the OpenAI SDK's built-in retries kick in.
+_LLM_TIMEOUT = httpx.Timeout(
+    connect=15.0,
+    read=float(os.getenv("LLM_HTTP_READ_TIMEOUT", "600")),
+    write=60.0,
+    pool=15.0,
+)
+
 
 # Anthropic (Claude) via Portkey — the default LLM client.
 _ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 
-openai_client = openai.OpenAI(
-    api_key=_ANTHROPIC_API_KEY,
-    base_url=PORTKEY_GATEWAY_URL,
-    default_headers=createHeaders(
-        provider="anthropic",
-        api_key=os.environ.get("PORTKEY_API_KEY"),
+openai_client = trace_client(
+    openai.OpenAI(
+        api_key=_ANTHROPIC_API_KEY,
+        base_url=PORTKEY_GATEWAY_URL,
+        default_headers=createHeaders(
+            provider="anthropic",
+            api_key=os.environ.get("PORTKEY_API_KEY"),
+        ),
+        timeout=_LLM_TIMEOUT,
     ),
-    timeout=httpx.Timeout(None),
+    provider="anthropic",
 )
 
 # Eval-critic model — Claude Sonnet 4.6 via Portkey.
@@ -41,14 +61,17 @@ EVAL_MODEL = "claude-sonnet-4-6"
 # Portkey → OpenAI client for the answer-code step. Uses GPT-5.4 (cheaper +
 # stronger structured-output support than Claude for this specific call) but
 # routed via Portkey for unified observability/billing.
-openai_via_portkey = openai.OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    base_url=PORTKEY_GATEWAY_URL,
-    default_headers=createHeaders(
-        provider="openai",
-        api_key=os.environ.get("PORTKEY_API_KEY"),
+openai_via_portkey = trace_client(
+    openai.OpenAI(
+        api_key=os.getenv("OPENAI_API_KEY"),
+        base_url=PORTKEY_GATEWAY_URL,
+        default_headers=createHeaders(
+            provider="openai",
+            api_key=os.environ.get("PORTKEY_API_KEY"),
+        ),
+        timeout=_LLM_TIMEOUT,
     ),
-    timeout=httpx.Timeout(None),
+    provider="openai",
 )
 
 ANSWER_CODE_MODEL = os.getenv("ANSWER_CODE_MODEL", "gpt-5.4")

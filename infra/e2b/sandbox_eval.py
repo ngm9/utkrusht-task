@@ -85,6 +85,16 @@ class SandboxEvalResult:
     detail: str = ""
     stdout_tail: str = ""
 
+    def __post_init__(self) -> None:
+        # Strict invariant: a skip is NEITHER pass nor fail, so it must never
+        # report ``passed=True``. Every skip/infra_error construction omits
+        # ``passed=`` and would otherwise inherit the ``True`` default, leaking
+        # a contradictory ``passed: true`` + ``skipped: true`` blob into the
+        # persisted eval_info. Centralise the guard here so no call site can
+        # reintroduce it.
+        if self.skipped:
+            self.passed = False
+
     def as_dict(self) -> dict:
         return {
             "passed": self.passed,

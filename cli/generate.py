@@ -2,12 +2,19 @@
 
 Extracted verbatim from ``multiagent.py`` during the A1 refactor.
 """
+import os
 from pathlib import Path
 
 import click
 
 from infra.evals import EvalGateError
 from generators.task import create_task
+from infra.tracing import (
+    new_trace_id,
+    trace_run,
+    upload_run_traces,
+    write_manifest,
+)
 from infra.utils import read_json_file_robust
 
 
@@ -55,6 +62,10 @@ def generate_tasks(competency_file: Path, background_file: Path, scenarios_file:
     print(" INTELLIGENT TASK GENERATION AGENT")
     print(f" Storage environment: {env}")
 
+    # Bound up-front so the tracing `finally` block can never hit an
+    # UnboundLocalError if an early-return path is added above it later.
+    competency_names: list = []
+
     try:
         competencies = read_json_file_robust(competency_file)
         competency_count = len(competencies)
@@ -81,13 +92,28 @@ def generate_tasks(competency_file: Path, background_file: Path, scenarios_file:
             print(f"   - {file}")
         return
 
+    # Pipeline tracing: run_pipeline passes the run id via TRACE_RUN_ID so the
+    # captured traces land under the same .task_agent_runs/run-<id>/ dir. A
+    # direct (non-pipeline) invocation gets a fresh id and only traces if
+    # PIPELINE_TRACING_ENABLED is set. All tracing is failure-isolated.
+    run_id = os.getenv("TRACE_RUN_ID") or new_trace_id()
+    # Recorded into the trace manifest so a run's traces are joinable to the task
+    # it produced (the LLM-call records carry run_id but task_id=None, since every
+    # LLM call happens before the DB insert).
+    _trace_result = {"outcome": "unknown", "task_id": None, "task_name": None}
     try:
         print(" STEP 1: Creating Task(s)...")
         print("-" * 50)
 
         _validate_environment()
 
-        result = create_task(competency_file, background_file, scenarios_file, env)
+        with trace_run(run_id):
+            result = create_task(competency_file, background_file, scenarios_file, env)
+        _trace_result.update(
+            outcome="created",
+            task_id=result.get("task_id"),
+            task_name=result.get("name"),
+        )
 
         task_type = result.get("task_type", "unknown")
         # task_type is a Postgres text[] (e.g. ['BUILD']) — normalize before
@@ -114,6 +140,7 @@ def generate_tasks(competency_file: Path, background_file: Path, scenarios_file:
         print()
 
     except EvalGateError as e:
+        _trace_result["outcome"] = "eval_gate_rejected"
         print(" EVAL GATE REJECTED TASK")
         print("=" * 70)
         print(f" Reason: {e}")
@@ -121,8 +148,27 @@ def generate_tasks(competency_file: Path, background_file: Path, scenarios_file:
         print(" feedback in the log, fix the prompt or scope, then retry.")
         print("=" * 70)
     except Exception as e:
+        _trace_result["outcome"] = "error"
         print(f" ERROR CREATING TASK!")
         print("=" * 70)
         print(f" Error: {str(e)}")
         print(" Please check your configuration and try again.")
         print("=" * 70)
+    finally:
+        # Persist the run manifest + (env-gated) upload traces to S3. Both are
+        # no-ops unless PIPELINE_TRACING_ENABLED / TRACE_S3_BUCKET are set, and
+        # both are failure-isolated — they never affect the task outcome.
+        try:
+            write_manifest(
+                {
+                    "run_id": run_id,
+                    "env": env,
+                    "competencies": competency_names,
+                    **_trace_result,
+                    "schema_version": 1,
+                },
+                run_id=run_id,
+            )
+            upload_run_traces(run_id)
+        except Exception:
+            pass

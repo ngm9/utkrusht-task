@@ -310,3 +310,38 @@ def test_sandbox_boot_failure_is_infra_error_skip(monkeypatch):
 
     assert r.skipped is True
     assert r.verdict == "infra_error"
+    # A skip is NEITHER pass nor fail — it must never report passed=True.
+    # (Regression: this was the contradictory passed:true + skipped:true blob.)
+    assert r.passed is False
+    assert r.as_dict()["passed"] is False
+
+
+# ---------------------------------------------------------------------------
+# Strict invariant — a skip is never a pass
+# ---------------------------------------------------------------------------
+
+
+def test_skipped_result_never_reports_passed():
+    """Every skip/infra_error construction omits ``passed=`` and so inherited
+    the dataclass default (True), producing a contradictory
+    ``passed: true`` + ``skipped: true`` blob in the persisted eval_info.
+
+    The invariant: ``skipped`` wins — a skip is never a pass, even if a caller
+    explicitly passes ``passed=True``.
+    """
+    explicit = SandboxEvalResult(passed=True, skipped=True, verdict="infra_error")
+    assert explicit.passed is False
+    assert explicit.as_dict()["passed"] is False
+
+    for verdict in ("no_template", "no_code", "no_runsh", "infra_error"):
+        skip = SandboxEvalResult(skipped=True, verdict=verdict)
+        assert skip.passed is False, f"skip verdict {verdict!r} must not be passed=True"
+
+
+def test_non_skip_results_keep_their_passed_flag():
+    """The invariant touches ONLY skips — a genuine pass/fail is untouched."""
+    ready = SandboxEvalResult(passed=True, skipped=False, verdict="ready")
+    assert ready.passed is True and ready.as_dict()["passed"] is True
+
+    failed = SandboxEvalResult(passed=False, skipped=False, verdict="runsh_failed")
+    assert failed.passed is False

@@ -9,6 +9,7 @@ from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
 
 from infra.logger_config import logger
 from infra.schemas import EVAL_RESPONSE_SCHEMA
+from infra.tracing.client import trace_client
 
 # Model configuration for evaluations.
 # Routed via Portkey → OpenAI because EVAL_MODEL is an OpenAI model name and
@@ -16,14 +17,17 @@ from infra.schemas import EVAL_RESPONSE_SCHEMA
 # (which 404s on this model name).
 EVAL_MODEL = os.getenv("EVAL_MODEL", "gpt-5-nano-2025-08-07")
 
-eval_openai_client = openai.OpenAI(
-    api_key=os.getenv("OPENAI_API_KEY"),
-    base_url=PORTKEY_GATEWAY_URL,
-    default_headers=createHeaders(
-        provider="openai",
-        api_key=os.environ.get("PORTKEY_API_KEY"),
+eval_openai_client = trace_client(
+    openai.OpenAI(
+        api_key=os.getenv("OPENAI_API_KEY"),
+        base_url=PORTKEY_GATEWAY_URL,
+        default_headers=createHeaders(
+            provider="openai",
+            api_key=os.environ.get("PORTKEY_API_KEY"),
+        ),
+        timeout=httpx.Timeout(None),
     ),
-    timeout=httpx.Timeout(None),
+    provider="openai",
 )
 
 def clean_llm_json_response(response: str) -> str:

@@ -217,4 +217,12 @@ def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_
 
 
 if __name__ == "__main__":
-    cli()
+    import os
+
+    from infra.tracing import trace_run, trace_stage
+
+    # Tag this stage's DSPy/litellm calls with the pipeline run (TRACE_RUN_ID set
+    # by run_pipeline). No-op unless PIPELINE_TRACING_ENABLED. click raises
+    # SystemExit, which propagates cleanly through the span (exit code preserved).
+    with trace_run(os.getenv("TRACE_RUN_ID")), trace_stage("prompt"):
+        cli()

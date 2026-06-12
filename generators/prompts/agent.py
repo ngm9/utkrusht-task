@@ -107,6 +107,13 @@ def configure_dspy(model: Optional[str] = None, mode: str = "runtime") -> None:
 
     dspy.settings.configure(lm=lm)
 
+    # Capture the DSPy/litellm completions into the pipeline trace sink (no-op
+    # unless PIPELINE_TRACING_ENABLED). DSPy bypasses the OpenAI-SDK trace_client
+    # wrapper, so this litellm callback is how the prompt stage gets traced.
+    from infra.tracing import register_litellm_tracing
+
+    register_litellm_tracing()
+
 
 # ----------------------------------------------------------------------
 # DSPy signatures
