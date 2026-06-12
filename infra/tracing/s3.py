@@ -4,8 +4,13 @@ Env-gated on ``TRACE_S3_BUCKET`` (no bucket → no-op, returns None) and
 failure-isolated (an upload error logs a warning and returns None; it never
 breaks the pipeline). Objects are partitioned for ML consumption:
 
-    s3://<bucket>/traces/dt=<YYYY-MM-DD>/run=<run_id>/{llm_calls,stages}.jsonl
-    s3://<bucket>/traces/dt=<YYYY-MM-DD>/run=<run_id>/manifest.json
+    s3://<bucket>/traces/dt=<YYYY-MM-DD>/combo=<slug>/run=<run_id>/{llm_calls,stages}.jsonl
+    s3://<bucket>/traces/dt=<YYYY-MM-DD>/combo=<slug>/run=<run_id>/manifest.json
+
+The ``combo`` partition is the competency+level slug (e.g.
+``python_redis_intermediate``), so the corpus is queryable/browsable by
+competency. It is taken from the ``TRACE_COMBO`` env (set by run_pipeline),
+falling back to ``adhoc`` for a standalone ``generate`` run with no combo.
 
 ``boto3`` is imported lazily so the package has no hard dependency on it.
 """
@@ -13,6 +18,7 @@ from __future__ import annotations
 
 import datetime
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -22,6 +28,17 @@ from infra.tracing.sink import trace_dir
 _FILES = ("llm_calls.jsonl", "stages.jsonl", "manifest.json")
 # Human-readable stage logs uploaded alongside the JSONL traces.
 _LOG_SUFFIXES = (".stdout", ".stderr", ".log", ".json")
+
+# Competency/combo slug → safe S3 key segment. Empty → "adhoc" (e.g. a
+# standalone `generate` run with no pipeline-provided combo).
+_COMBO_SANITIZE_RE = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def _safe_combo(combo: Optional[str]) -> str:
+    if not combo:
+        return "adhoc"
+    slug = _COMBO_SANITIZE_RE.sub("-", combo).strip("-._")
+    return slug or "adhoc"
 
 
 def _s3_client():
@@ -41,9 +58,13 @@ def upload_run_traces(
     bucket: Optional[str] = None,
     local_dir: Optional[Path] = None,
     date: Optional[str] = None,
+    combo: Optional[str] = None,
 ) -> Optional[str]:
     """Upload a run's trace files to S3. Returns the s3:// prefix, or None when
-    disabled (no bucket) or on any failure (logged, never raised)."""
+    disabled (no bucket) or on any failure (logged, never raised).
+
+    ``combo`` (the competency+level slug) becomes a Hive partition; it defaults
+    to the ``TRACE_COMBO`` env, then ``adhoc``."""
     bucket = bucket or os.getenv("TRACE_S3_BUCKET")
     if not bucket:
         return None  # tracing→S3 disabled; local JSONL still captured
@@ -56,7 +77,8 @@ def upload_run_traces(
     if date is None:
         date = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
     root = os.getenv("TRACE_S3_PREFIX", "traces").strip("/")
-    prefix = f"{root}/dt={date}/run={run_id}"
+    combo = _safe_combo(combo or os.getenv("TRACE_COMBO"))
+    prefix = f"{root}/dt={date}/combo={combo}/run={run_id}"
 
     try:
         s3 = _s3_client()  # lazy boto3; region from S3_REGION/AWS_DEFAULT_REGION
@@ -81,11 +103,15 @@ def upload_run_logs(
     *,
     bucket: Optional[str] = None,
     date: Optional[str] = None,
+    combo: Optional[str] = None,
 ) -> Optional[str]:
     """Upload a run's human-readable stage logs (the combo dir's
     ``*.stdout``/``*.stderr``/``*.log``/``*.json`` — incl. the live
     ``04_tasks.evals.log`` / ``04_tasks.e2b_gate.log`` and ``summary.json``) to
-    ``<prefix>/dt=<date>/run=<run_id>/logs/<combo>/``.
+    ``<prefix>/dt=<date>/combo=<slug>/run=<run_id>/logs/``.
+
+    ``combo`` defaults to the ``TRACE_COMBO`` env, then the log dir's own name
+    (which IS the combo dir), then ``adhoc``.
 
     Called from ``run_pipeline`` at end-of-run (the only point where all logs are
     finalized). Env-gated on ``TRACE_S3_BUCKET``; returns the s3:// prefix, or
@@ -102,7 +128,8 @@ def upload_run_logs(
     if date is None:
         date = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
     root = os.getenv("TRACE_S3_PREFIX", "traces").strip("/")
-    prefix = f"{root}/dt={date}/run={run_id}/logs/{log_dir.name}"
+    combo = _safe_combo(combo or os.getenv("TRACE_COMBO") or log_dir.name)
+    prefix = f"{root}/dt={date}/combo={combo}/run={run_id}/logs"
 
     try:
         s3 = _s3_client()

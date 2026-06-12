@@ -154,4 +154,9 @@ def classify_task_shape(
         prefix = f"[default after invalid output {raw_shape!r}] "
         reason = prefix + reason if reason else prefix.rstrip()
 
+    # First-class decision log (prompt stage): WHY this task is infra/non-infra,
+    # so the call that drives the E2B-gate skip is visible in the logs + trace_ui.
+    logger.info(
+        "shape_classifier: task_shape=%s — %s", shape, reason or "(no reason given)"
+    )
     return ShapeDecision(task_shape=shape, reason=reason, raw_response=raw_shape)

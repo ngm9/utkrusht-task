@@ -251,6 +251,7 @@ def test_upload_run_logs_keys_and_filter(monkeypatch, tmp_path):
 
     monkeypatch.setenv("TRACE_S3_BUCKET", "mybucket")
     monkeypatch.setenv("TRACE_S3_PREFIX", "traces")
+    monkeypatch.delenv("TRACE_COMBO", raising=False)  # combo derives from log_dir.name
     calls = []
 
     class _FakeS3:
@@ -260,13 +261,43 @@ def test_upload_run_logs_keys_and_filter(monkeypatch, tmp_path):
     monkeypatch.setattr(s3mod, "_s3_client", lambda: _FakeS3())
     pref = upload_run_logs("20260612T0000Z", combo, date="2026-06-12")
 
-    base = "traces/dt=2026-06-12/run=20260612T0000Z/logs/python_redis_intermediate"
+    # combo is now a partition (from log_dir.name); logs drop the trailing /<combo>
+    base = "traces/dt=2026-06-12/combo=python_redis_intermediate/run=20260612T0000Z/logs"
     assert pref == f"s3://mybucket/{base}/"
     assert sorted(calls) == [
         f"{base}/04_tasks.evals.log",
         f"{base}/04_tasks.stderr",
         f"{base}/summary.json",
     ]  # notes.txt (wrong suffix) excluded
+
+
+def test_upload_run_traces_combo_partition(monkeypatch, tmp_path):
+    import infra.tracing.s3 as s3mod
+    from infra.tracing.s3 import _safe_combo
+
+    (tmp_path / "llm_calls.jsonl").write_text("{}")
+    (tmp_path / "manifest.json").write_text("{}")
+
+    monkeypatch.setenv("TRACE_S3_BUCKET", "mybucket")
+    monkeypatch.setenv("TRACE_S3_PREFIX", "traces")
+    monkeypatch.setenv("TRACE_COMBO", "python_redis_intermediate")
+    calls = []
+
+    class _FakeS3:
+        def upload_file(self, path, bucket, key):
+            calls.append(key)
+
+    monkeypatch.setattr(s3mod, "_s3_client", lambda: _FakeS3())
+    pref = upload_run_traces("20260612T0000Z", local_dir=tmp_path, date="2026-06-12")
+
+    base = "traces/dt=2026-06-12/combo=python_redis_intermediate/run=20260612T0000Z"
+    assert pref == f"s3://mybucket/{base}/"
+    assert sorted(calls) == [f"{base}/llm_calls.jsonl", f"{base}/manifest.json"]
+
+    # the slug is sanitized into a safe key segment; empty → "adhoc"
+    assert _safe_combo("java, kafka:BASIC") == "java-kafka-BASIC"
+    assert _safe_combo(None) == "adhoc"
+    assert _safe_combo("") == "adhoc"
 
 
 # --------------------------------------------------------------------------

@@ -289,6 +289,12 @@ def _parse_eval_response(raw_response: str | None, response, kind: str) -> dict:
             kind, result["pass"], len(result["blocking_issues"]),
             len(raw_response or ""),
         )
+        # Surface WHY the eval rejected — the blocking reasons, not just the count
+        # — so a rejection is diagnosable from the log (and captured for training).
+        if not result["pass"] and result["blocking_issues"]:
+            n = len(result["blocking_issues"])
+            for i, issue in enumerate(result["blocking_issues"], 1):
+                logger.warning("%s eval blocker %d/%d: %s", kind, i, n, issue)
         return result
     except json.JSONDecodeError as e:
         logger.error(

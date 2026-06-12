@@ -153,6 +153,12 @@ def _run_stage(combo_dir: Path, label: str, cmd: list[str],
     # other stages). An explicit SANDBOX_EVAL_ENABLED in the environment wins.
     stage_env = {**os.environ}
     stage_env.setdefault("SANDBOX_EVAL_ENABLED", "true")
+    # Force unbuffered stdout/stderr in EVERY stage subprocess so each line is
+    # flushed to its log file as it is produced. Without this the non-04 stages
+    # block-buffer their output (it only lands when the stage exits), so the
+    # live trace_ui viewer couldn't stream them. Stage 04 already line-buffers
+    # via _run_stage_streaming; this makes the rest stream too.
+    stage_env["PYTHONUNBUFFERED"] = "1"
     # Pipeline tracing is captured for the LLM-bearing stages (input_files /
     # scenarios / prompt / tasks) — each opens trace_run(TRACE_RUN_ID) in its
     # __main__ and writes into the shared run-<ts>/traces/ dir. Preflight has no
@@ -317,6 +323,9 @@ def main() -> int:
     # (the sink prepends "run-" itself, so pass the bare timestamp).
     os.environ["TRACE_RUN_ID"] = ts
     combo_label = _combo_slug(names) + "_" + level.lower()
+    # Share the combo slug with the task-gen subprocess too, so its trace upload
+    # lands under the same `combo=<slug>/` S3 partition as the stage-log upload.
+    os.environ["TRACE_COMBO"] = combo_label
     combo_dir = RUNS_DIR / f"run-{ts}" / combo_label
     combo_dir.mkdir(parents=True, exist_ok=True)
 
@@ -442,6 +451,24 @@ def main() -> int:
     for s in stages:
         print(f"   {s['label']:<16} {s['duration_s']:>7.1f}s   exit={s['exit_code']}")
     print(f"   {'TOTAL':<16} {total:>7.1f}s")
+
+    # Per-stage LLM cost (estimated from captured token usage). Uses the same
+    # shared pricing as the trace_ui Result panel — best-effort, never fatal.
+    try:
+        from infra.tracing.cost import compute_cost
+
+        cost = compute_cost(RUNS_DIR / f"run-{ts}" / "traces")
+    except Exception:  # noqa: BLE001
+        cost = None
+    if cost:
+        print(f"\n   {'stage':<14} {'cost':>9} {'tokens':>9} {'time':>8}")
+        for r in cost["by_stage"]:
+            tks = r["input_tokens"] + r["output_tokens"]
+            t = f"{r['duration_ms'] / 1000:.1f}s" if r.get("duration_ms") is not None else "-"
+            print(f"   {r['stage']:<14} {'$' + format(r['usd'], '.4f'):>9} {tks:>9,} {t:>8}")
+        print(f"   {'TOTAL':<14} {'$' + format(cost['total_usd'], '.4f'):>9} {cost['total_tokens']:>9,} {total:>6.1f}s")
+        print("   (cost ≈ estimated from token usage × model pricing)")
+
     print(f"\n   Stage 4 outcome: {task_outcome}")
     print(f"   Logs: {combo_dir}")
     print(f"{'─' * 68}\n")
