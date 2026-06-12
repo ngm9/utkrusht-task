@@ -37,6 +37,7 @@ from infra.utils import (
     format_outcomes,
     format_pre_requisites,
     generate_task_with_code,
+    get_task_shape_for,
     has_shared_infra_files,
     load_relevant_scenarios,
     parse_markdown_to_json,
@@ -378,6 +379,17 @@ def create_task(
             "scenarios": scenarios,
             "existing_task_titles": existing_titles,
         }
+
+        # Resolve the prompt module's TASK_SHAPE classifier verdict ONCE for
+        # this combo. Used downstream to skip the E2B build/test gate for
+        # non_infra tasks — there is nothing to build in the sandbox for a
+        # pure-runtime local project. Returns None for legacy prompts
+        # without TASK_SHAPE; downstream treats None as "run the gate".
+        task_shape = get_task_shape_for(input_data)
+        if task_shape:
+            logger.info(f"Resolved task_shape={task_shape!r} from prompt module")
+        else:
+            logger.info("No TASK_SHAPE on the prompt module — E2B gate will run as usual")
         # Retry loop gates everything downstream — GitHub repo / Gist /
         # Supabase row are only created when an attempt produces a
         # non-hollow candidate that clears both LLM eval critics AND the
@@ -517,8 +529,11 @@ def create_task(
             if t_pass and c_pass:
                 # Deterministic E2B build/test gate (F12). run_gate_for_attempt
                 # encapsulates the policy; the loop just acts on the outcome.
+                # Pass task_shape so the gate can short-circuit DISABLED for
+                # non_infra tasks (pure-runtime local projects).
                 gate_outcome, gate_feedback = run_gate_for_attempt(
                     plan, candidate, candidate_eval, attempt,
+                    task_shape=task_shape,
                 )
                 if gate_outcome == GateOutcome.RETRY:
                     last_failure = candidate_eval
