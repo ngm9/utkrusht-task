@@ -103,7 +103,7 @@ if OPENAI_AVAILABLE and OPENAI_API_KEY:
 else:
     openai_client = None
     
-model = "gpt-5.1-2025-11-13"
+model = "gpt-5.5"
 
 # Validate environment and initialize variables after imports
 def validate_environment() -> None:

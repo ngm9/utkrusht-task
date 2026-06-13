@@ -34,10 +34,6 @@ openai_client = openai.OpenAI(
     timeout=httpx.Timeout(None),
 )
 
-# Eval-critic model — Claude Sonnet 4.6 via Portkey.
-EVAL_MODEL = "claude-sonnet-4-6"
-
-
 # Portkey → OpenAI client for the answer-code step. Uses GPT-5.4 (cheaper +
 # stronger structured-output support than Claude for this specific call) but
 # routed via Portkey for unified observability/billing.
@@ -51,4 +47,4 @@ openai_via_portkey = openai.OpenAI(
     timeout=httpx.Timeout(None),
 )
 
-ANSWER_CODE_MODEL = os.getenv("ANSWER_CODE_MODEL", "gpt-5.4")
+ANSWER_CODE_MODEL = os.getenv("ANSWER_CODE_MODEL", "gpt-5.5")

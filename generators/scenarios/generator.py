@@ -44,8 +44,8 @@ from generators.scenarios import repository as scenario_repo
 load_dotenv()
 
 # Model configuration — using gpt-5-nano for both generation and evaluation (cost-effective)
-GENERATION_MODEL = "gpt-5.4"
-EVAL_MODEL = "gpt-5.4"
+GENERATION_MODEL = "gpt-5.5"
+EVAL_MODEL = "gpt-5.4-nano"
 MAX_RETRIES = 2  # total attempts = MAX_RETRIES + 1 (gives the eval-feedback loop room to converge)
 
 # Pricing per million tokens (https://platform.openai.com/docs/pricing)
