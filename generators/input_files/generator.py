@@ -39,7 +39,7 @@ load_dotenv()
 
 # Constants
 BASE_DIR = Path(__file__).parent.parent.parent / "data" / "generated" / "input_files"
-MODEL = "gpt-5.4"
+MODEL = "gpt-5.5"
 
 PROFICIENCY_YOE_MAP = {
     "BEGINNER": "0+",

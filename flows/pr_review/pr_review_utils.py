@@ -106,8 +106,8 @@ def extract_usage(response) -> Dict:
 
 
 PRICING = {
-    "gpt-5-nano-2025-08-07": {"input": 0.50, "output": 2.00},
-    "gpt-5.1-2025-11-13": {"input": 2.00, "output": 8.00},
+    "gpt-5.4-nano": {"input": 0.30, "output": 1.50},
+    "gpt-5.5": {"input": 5.00, "output": 30.00},
 }
 
 

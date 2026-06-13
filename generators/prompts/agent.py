@@ -50,7 +50,7 @@ load_dotenv()
 # - COMPILATION (BootstrapFewShot/MIPROv2 search loop): use a cheaper model.
 #   Compilation runs many calls in a tight loop, so Haiku 4.5 saves ~5-10x cost
 #   while still being competent enough to score candidate prompts.
-DEFAULT_RUNTIME_MODEL = os.getenv("PROMPT_GENERATOR_MODEL", "openai/gpt-5.4")
+DEFAULT_RUNTIME_MODEL = os.getenv("PROMPT_GENERATOR_MODEL", "openai/gpt-5.5")
 DEFAULT_COMPILE_MODEL = os.getenv("PROMPT_GENERATOR_COMPILE_MODEL", "anthropic/claude-haiku-4-5")
 
 
@@ -415,8 +415,9 @@ class GeneratePromptSignature(dspy.Signature):
 
       - "You MUST draw inspiration from ONE of the real-world scenarios
         provided above to create the task"
-      - "Select a different real-world scenario each time to ensure variety
-        in task generation"
+      - "Use the provided real-world scenario as the basis for this task -
+        do not invent a different domain. When multiple scenarios are listed,
+        pick the one whose technical surface area best fits the candidate level"
       - "The task scenario should closely align with the business context,
         technical requirements, and domain described in the selected real-world
         scenario"

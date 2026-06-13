@@ -208,14 +208,31 @@ def _locate_input_files(names: list[str], level: str, since: float) -> tuple[Pat
         hits = list(INPUT_FILES_ROOT.rglob(pattern))
         if not hits:
             return None
-        fresh = [p for p in hits if p.stat().st_mtime >= since - 1]
+        # Skip paths that cannot be stat()'d — Windows MAX_PATH (260 chars)
+        # makes deeply-nested input-file paths unreadable even though rglob
+        # still enumerates the dirent. Without this guard a single offending
+        # file kills _locate_input_files even when the freshly-written stage 1
+        # output is perfectly accessible.
+        def _mtime_or_none(p: Path) -> float | None:
+            try:
+                return p.stat().st_mtime
+            except OSError:
+                return None
+        statted: list[tuple[Path, float]] = []
+        for p in hits:
+            mt = _mtime_or_none(p)
+            if mt is not None:
+                statted.append((p, mt))
+        if not statted:
+            return None
+        fresh = [(p, mt) for p, mt in statted if mt >= since - 1]
         pool = fresh or [
-            p for p in hits
+            (p, mt) for p, mt in statted
             if slug in str(p).lower() and level_l in str(p).lower()
         ]
         if not pool:
             return None
-        return max(pool, key=lambda p: p.stat().st_mtime)
+        return max(pool, key=lambda item: item[1])[0]
 
     comp = _best("competency_*.json")
     bg = _best("background_*.json")

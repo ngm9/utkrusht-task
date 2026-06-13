@@ -348,8 +348,8 @@ def create_task(
         # Human-in-the-loop: when the caller passes an explicit selection
         # (the scenario the user picked in the UI), use exactly that and skip
         # the pool lookup — the generator is then hard-locked to it. Otherwise
-        # resolve the candidate pool (DB-first, JSON fallback) and let the
-        # scenario-lock prompt pick one.
+        # resolve the candidate pool (DB-first, JSON fallback) and lock
+        # generation + eval to exactly ONE scenario from the pool.
         if selected_scenarios:
             scenarios = list(selected_scenarios)
             logger.info(
@@ -358,7 +358,7 @@ def create_task(
             )
         else:
             scenarios = resolve_scenarios(competencies, scenarios_file, env=env)
-        logger.info(f"Scenarios: {scenarios}")
+        logger.info(f"Resolved scenario pool size: {len(scenarios)}")
 
         existing_titles = fetch_existing_task_titles(competencies, env=env)
         if existing_titles:
@@ -366,6 +366,30 @@ def create_task(
                 f"Found {len(existing_titles)} existing tasks for this competency — "
                 f"will instruct LLM to avoid duplicating: {existing_titles}"
             )
+
+        # Scenario lock — feed BOTH the generator and the eval critic exactly
+        # one scenario so Criterion 6 (DOMAIN ALIGNMENT) is anchored to the
+        # same scenario the generator was told to use. Without this lock, the
+        # generator gets a multi-scenario menu + "vary domain" instructions
+        # while the eval enforces "must match one of the scenarios" — a
+        # structural contradiction that deadlocks the retry loop (every
+        # attempt drifts to a fresh domain).
+        #
+        # Rotation policy: pick scenarios[len(existing_titles) % N] so each
+        # successive task generation for the same competency picks the next
+        # scenario in the pool — gives variety across runs without breaking
+        # alignment within a run. Falls through to the human-locked path if
+        # `selected_scenarios` was already supplied above.
+        if not selected_scenarios and scenarios:
+            pool_size = len(scenarios)
+            idx = len(existing_titles) % pool_size if existing_titles else 0
+            scenarios = [scenarios[idx]]
+            logger.info(
+                "Scenario-lock: chose scenario index %d (pool=%d, existing_titles=%d) "
+                "for this run; generator + eval will see exactly this one.",
+                idx, pool_size, len(existing_titles),
+            )
+        logger.info(f"Locked scenarios: {scenarios}")
 
         input_data = {
             "competencies": [

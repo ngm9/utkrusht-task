@@ -284,7 +284,7 @@ def get_task_prompt_by_technology_stack(competency_stack, input_data):
 def generate_task_with_code(openai_client, input_data: Dict) -> Dict:
     """Generate task and code files using language_prompts with Responses.create + high reasoning."""
     try:
-        model = "gpt-5.1-2025-11-13"
+        model = "gpt-5.5"
         competencies = input_data["competencies"]
 
         # Get competency names and create a single technology stack string
