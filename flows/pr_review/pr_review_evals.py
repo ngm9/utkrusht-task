@@ -6,7 +6,7 @@ from infra.schemas import EVAL_RESPONSE_SCHEMA
 from flows.pr_review.prompts.eval_prompts import BASE_REPO_EVAL_PROMPT, PR_EVAL_PROMPT
 from flows.pr_review.pr_review_utils import extract_usage
 
-EVAL_MODEL = "gpt-5-nano-2025-08-07"
+EVAL_MODEL = "gpt-5.4-nano"
 
 
 def eval_base_repo(code_files: dict, competencies: list, openai_client) -> tuple:

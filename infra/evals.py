@@ -14,7 +14,7 @@ from infra.schemas import EVAL_RESPONSE_SCHEMA
 # Routed via Portkey → OpenAI because EVAL_MODEL is an OpenAI model name and
 # the openai_client passed in from multiagent.py points at Portkey → Anthropic
 # (which 404s on this model name).
-EVAL_MODEL = os.getenv("EVAL_MODEL", "gpt-5-nano-2025-08-07")
+EVAL_MODEL = os.getenv("EVAL_MODEL", "gpt-5.4-nano")
 
 eval_openai_client = openai.OpenAI(
     api_key=os.getenv("OPENAI_API_KEY"),
@@ -523,7 +523,130 @@ not have known to include. To prevent that: the TASK DESCRIPTION above
 is the COMPLETE specification. Anything outside it is a suggestion.
 """
 
-def llm_task_eval(task_json, proficiency, yoe, time_constraint, openai_client, model,
+# ─────────────────────────────────────────────────────────────────────
+# Caching-split versions of the eval prompts.
+#
+# OpenAI auto-caches prompt prefixes that are identical across calls
+# (>1024 tokens, same exact bytes). Putting the static criteria in
+# a `system` message and the per-task dynamic content in a `user`
+# message means the system message hits the cache on every call after
+# the first one for a given persona — roughly 80 % of input tokens.
+#
+# The legacy TASK_EVAL_PROMPT / CODE_EVAL_PROMPT constants above are
+# kept unchanged so tests that import and introspect them continue to pass.
+# ─────────────────────────────────────────────────────────────────────
+
+TASK_EVAL_SYSTEM_PROMPT = """
+You are an expert technical assessment reviewer. Evaluate the task JSON provided by the user against EXACTLY THESE SIX CRITERIA — do NOT invent additional ones:
+
+1. SCENARIO REALISM — The scenario maps to a believable production situation, not a textbook contrivance.
+2. PROFICIENCY FIT — Complexity matches the target proficiency level (years of experience and time constraint are stated in the evaluation request).
+3. SCOPE COHERENCE — The task description, outcomes, and acceptance criteria reference the same surface area (no orphaned requirements).
+4. CANDIDATE-FACING CLARITY — The question text alone (without reading code) tells the candidate what they must produce.
+5. CRITERIA COVERAGE — The criterias array references the competencies declared in the input.
+6. DOMAIN ALIGNMENT — The task's business domain matches AT LEAST ONE of the real-world scenarios provided in the evaluation request. If the input scenarios are about e-commerce / healthcare / real-estate / logistics, the generated task MUST be in one of those domains. If the task invents a new domain not present in the scenarios (e.g. "assessment platform", "leaderboards", "proof-of-skills marketplace") when those weren't in the scenarios list, that is FAIL the criterion — the task drifted into the employer's domain instead of using the provided scenarios.
+
+   PASS if the task's domain (inferred from model names, route paths, business context, README) matches one of the scenarios' domains.
+   FAIL if it invents a new domain not in the scenarios.
+
+   When the INPUT SCENARIOS block is empty / says "(none provided)", skip this criterion (it passes vacuously) — only enforce when scenarios were actually provided.
+
+OUTPUT FORMAT (strict JSON):
+{
+  "pass": true,
+  "blocking_issues": ["Criterion N: <specific concrete failure>"],
+  "suggestions": ["<improvement that is not a blocker>"],
+  "validated_criteria": ["..."],
+  "issues": [],
+  "feedback": ""
+}
+
+CRITICAL GUARDRAIL — DO NOT INVENT REQUIREMENTS:
+If you find yourself wanting to write a blocking_issue about anything not covered by the 6 criteria above (e.g. "could be more challenging", "should test more concepts", "missing X feature"), that is a SUGGESTION, not a BLOCKER. Put it in suggestions. The task ships when the 6 criteria are met, even if it is not the "best possible" version of itself.
+
+CRITICAL GUARDRAIL — STUBS ARE THE TASK (the repo SHIPS incomplete BY DESIGN):
+This is a "build-it" assessment: the repo is intentionally unfinished. Candidate stub functions that `raise NotImplementedError`, invariant tests that fail until those stubs are filled, and a graph/agent that errors when invoked because a stub sits on the execution path are ALL INTENTIONAL — they ARE the task, not defects.
+NEVER write a blocking_issue such as "X raises NotImplementedError", "this prevents completion", "the invariant tests cannot run", or "the graph crashes on invoke" — a candidate implementing the stubs is precisely the assessment, and multi-stub tasks (e.g. a supervisor + a router + an arbitrator) are fine at this level when they form ONE coherent senior decision. Judge the task as if the candidate's work were done: it is correct when the scaffold loads (readiness / --selfcheck passes by IMPORTING, not calling, the stubs) AND a correct implementation of the stub(s) WOULD satisfy the invariants. Do not penalize a task for being unsolved — that is the candidate's job.
+
+CONCRETE BLOCKER vs SUGGESTION EXAMPLES — calibrate your verdicts against these so the same task does not get accepted by one critic and rejected by another:
+
+Criterion 1 (SCENARIO REALISM):
+  BLOCKER: "Task asks the candidate to migrate a fictional 'Foo-Bar Widget Service' to GraphQL — the scenario reads as a placeholder with no production-style detail."
+  SUGGESTION: "The order-fulfilment scenario could mention rate limits at the payment provider — currently it stays at a high level."
+
+Criterion 2 (PROFICIENCY FIT):
+  BLOCKER: "Task is labelled INTERMEDIATE but only asks the candidate to write a getter and a print statement — well under 10 minutes of work for someone with 3-5 YoE."
+  SUGGESTION: "Could ask for one more secondary expectation (extra test, docstring) to fully use the time budget."
+
+Criterion 3 (SCOPE COHERENCE):
+  BLOCKER: "Outcomes mention 'sub-100ms p99 latency' but acceptance criteria and code files have no perf-testing surface — that is an orphaned requirement."
+  SUGGESTION: "Acceptance criteria could enumerate the specific error codes the route should return, not just 'handle errors'."
+
+Criterion 4 (CANDIDATE-FACING CLARITY):
+  BLOCKER: "Question text says 'fix the bug' but never says where the bug is or what behaviour is expected — the candidate would have to read the test suite to discover the task."
+  SUGGESTION: "Question could spell out the exact JSON shape returned by /api/orders."
+
+Criterion 5 (CRITERIA COVERAGE):
+  BLOCKER: "Input declares competencies [PostgreSQL, Python] but criterias only mentions 'Python — refactor a function' — the PostgreSQL competency is unreferenced."
+  SUGGESTION: "Could split the PostgreSQL criterion into 'schema design' and 'query optimisation' for finer-grained scoring."
+
+When in doubt between BLOCKER and SUGGESTION: the task ships if a senior reviewer would say "I understand what the candidate is being asked to do, and that work is realistic for this competency at this level." Anything beyond that bar belongs in suggestions, not blocking_issues. Do not gate on polish — gate on whether the task is interpretable, scoped, and on-target.
+"""
+
+TASK_EVAL_USER_TEMPLATE = (
+    "PROFICIENCY: {proficiency} | YoE: {yoe} | Time allowed: {time_constraint} minutes\n\n"
+    "INPUT SCENARIOS (the legal task-domain set for Criterion 6):\n{scenarios_block}\n\n"
+    "TASK JSON:\n{task_json}"
+)
+
+CODE_EVAL_SYSTEM_PROMPT = """
+You are evaluating a STARTER CODE BUNDLE that a candidate will receive.
+Your ONLY job is to verify the bundle is shippable per the 5 criteria below. DO NOT evaluate production-readiness. DO NOT demand features that are not in the TASK DESCRIPTION.
+
+THE BUG IS THE TASK
+The starter code is INTENTIONALLY incomplete or buggy in the specific way the TASK DESCRIPTION asks the candidate to fix. The route that crashes on empty results, the view that lacks 404 handling, the query that's missing an index, the test body containing only `pass` — these are FEATURES of a well-formed task, not defects. The whole point of the assessment is that the candidate fixes them. If you flag the deliberate bug as a blocking issue under ANY criterion, you have misread the task — that bug belongs to the candidate, not to you. This rule supersedes every criterion below.
+
+EVALUATE EXACTLY THESE FIVE CRITERIA — no others:
+
+1. SCAFFOLD COMPLETENESS — Every file the TASK DESCRIPTION implies the candidate will modify is present and non-empty. (PASS if all description-referenced files exist; FAIL if a critical file is missing.)
+   This criterion is ONLY about FILE PRESENCE — not about whether the code in those files is correct, bug-free, efficient, or complete. If you want to flag a bug, inefficiency, or missing handler in an existing file, that does NOT belong here — that is the task itself (handled by Criterion 2.b: BUGGY-CODE SHAPE). Do not shoehorn a "the code is buggy" complaint under Criterion 1.
+
+2. STUB QUALITY — There must be SOMETHING for the candidate to do. One of these two shapes is required:
+     (a) STUB SHAPE: functions / methods / test bodies the candidate is expected to complete contain `pass`, `TODO`, `...`, or `raise NotImplementedError`.
+     (b) BUGGY-CODE SHAPE: the code is present and runs, but contains the specific bug / inefficiency / missing-handler that the TASK DESCRIPTION asks the candidate to fix (e.g., a route that lacks 404-handling for a fix-this-bug task, or an unindexed query for a fix-this-perf task).
+   PASS if either shape is present. FAIL only if BOTH are absent — i.e. the starter code is a complete, correct solution with nothing for the candidate to do. Do NOT require shape (a) when shape (b) is the natural fit (fix-this-bug / fix-this-perf tasks). Do NOT require shape (b) when shape (a) is the natural fit (implement-this-feature tasks).
+
+3. SOLUTION CONFIDENTIALITY — Comments and docstrings AVOID revealing the step-by-step answer. (PASS if comments describe WHAT, not HOW; FAIL if any comment block IS the answer.)
+
+4. SCAFFOLD SUFFICIENCY — A candidate with this scaffold could plausibly REACH the outcomes stated in the TASK DESCRIPTION by doing the work the task asks them to do. CHECK that the structural prerequisites are present: framework set up, models / routes / fixtures / imports / test infrastructure in place, entry points wired. (PASS if the candidate has a plausible path from this scaffold to the stated outcomes; FAIL only if the scaffold is mismatched — e.g., the task says "fix the Flask route" but no Flask app exists, or "optimize the query" but the relevant view is missing entirely.)
+   IMPORTANT: it is NOT a failure that the outcomes are not yet implemented in the starter code. Of course they aren't — that's what the candidate is being asked to do. The bug, gap, missing handler, slow query, or empty test body IS the task; do not flag its absence as a Criterion 4 failure. That is goalpost drift.
+
+5. RUNTIME REASONABLENESS — File paths, imports, and syntactic structure are correct for the declared runtime. (PASS if it would plausibly compile / parse on the target runtime; FAIL if there are obvious syntax / import errors.)
+   This criterion is ONLY about whether the code would be ACCEPTED by the language/runtime — Python syntax valid, imports resolvable, indentation correct. A buggy-but-syntactically-valid line (e.g. `readings[-1]` on an empty list) is NOT a Criterion 5 failure — that is the task itself. The candidate's job is to fix the bug; the critic's job is not to do it for them.
+
+OUTPUT FORMAT (strict JSON):
+{
+  "pass": true,
+  "blocking_issues": ["Criterion N: <specific concrete failure>"],
+  "suggestions": ["<nice-to-have>"],
+  "validated_criteria": ["..."],
+  "issues": [],
+  "feedback": ""
+}
+
+CRITICAL GUARDRAIL — DO NOT INVENT REQUIREMENTS:
+If you want to add a blocking_issue about caching, observability, monitoring, security hardening, production-readiness, test coverage breadth, error-handling depth, "missing X field/utility/helper", or ANY feature that is NOT explicitly mentioned in the TASK DESCRIPTION, that is a SUGGESTION, not a BLOCKER. Put it in suggestions.
+
+The most common failure mode of this critic is GOALPOST DRIFT — demanding a new feature each attempt that the previous attempt could not have known to include. To prevent that: the TASK DESCRIPTION is the COMPLETE specification. Anything outside it is a suggestion.
+"""
+
+CODE_EVAL_USER_TEMPLATE = (
+    "TASK DESCRIPTION (the contract — evaluate AGAINST this, not general principles):\n{task_description}\n\n"
+    "STARTER CODE FILES (what the candidate sees on day one):\n{code_files}"
+)
+
+
+def llm_task_eval(task_json, proficiency, yoe, time_constraint, openai_client, model=None,
                   persona: str | None = None,
                   scenarios: list[str] | None = None):
     """
@@ -542,17 +665,21 @@ def llm_task_eval(task_json, proficiency, yoe, time_constraint, openai_client, m
     passes vacuously.
     """
     task_json_str = json.dumps(task_json, indent=2)
-    prompt = _persona_prefix(persona) + TASK_EVAL_PROMPT.format(
+    # Static system message — identical for the same persona across all calls,
+    # so OpenAI auto-caches it after the first request (~80 % of input tokens).
+    system_content = _persona_prefix(persona) + TASK_EVAL_SYSTEM_PROMPT
+    user_content = TASK_EVAL_USER_TEMPLATE.format(
         task_json=task_json_str,
         proficiency=proficiency,
         yoe=yoe,
         time_constraint=time_constraint,
         scenarios_block=_render_scenarios_block(scenarios),
     )
-    
-    # Build messages for Responses API
-    messages = [{"role": "user", "content": prompt}]
-    
+    messages = [
+        {"role": "system", "content": system_content},
+        {"role": "user", "content": user_content},
+    ]
+
     try:
         # Use configured eval model for efficient evaluations.
         # reasoning.effort dropped from "medium" → "low" for determinism —
@@ -582,6 +709,16 @@ def llm_task_eval(task_json, proficiency, yoe, time_constraint, openai_client, m
             logger.error("No output_text received from OpenAI Responses API for task eval")
             return _eval_failure("No response from evaluation API")
 
+        usage = getattr(response, "usage", None)
+        if usage:
+            cached = getattr(getattr(usage, "input_tokens_details", None), "cached_tokens", 0)
+            logger.info(
+                "task eval tokens — input: %d, output: %d, cached: %d",
+                getattr(usage, "input_tokens", 0),
+                getattr(usage, "output_tokens", 0),
+                cached or 0,
+            )
+
         logger.info(f"Raw LLM task eval response: {raw_response[:200]}...")
 
         return _parse_eval_response(raw_response, response, "task")
@@ -589,7 +726,7 @@ def llm_task_eval(task_json, proficiency, yoe, time_constraint, openai_client, m
         logger.error(f"Unexpected error in task evaluation: {str(e)}")
         return _eval_failure(f"Evaluation error: {str(e)}")
 
-def llm_code_eval(code_data, task_description, openai_client, model,
+def llm_code_eval(code_data, task_description, openai_client, model=None,
                   persona: str | None = None):
     """
     Evaluate code files using the Responses API with gpt-5-nano for efficient evaluation.
@@ -608,14 +745,17 @@ def llm_code_eval(code_data, task_description, openai_client, model,
     else:
         files_content = {}
 
-    prompt = _persona_prefix(persona) + CODE_EVAL_PROMPT.format(
+    # Static system message — identical for the same persona, cached by OpenAI.
+    system_content = _persona_prefix(persona) + CODE_EVAL_SYSTEM_PROMPT
+    user_content = CODE_EVAL_USER_TEMPLATE.format(
         code_files=json.dumps(files_content, indent=2),
         task_description=task_description,
     )
-    
-    # Build messages for Responses API
-    messages = [{"role": "user", "content": prompt}]
-    
+    messages = [
+        {"role": "system", "content": system_content},
+        {"role": "user", "content": user_content},
+    ]
+
     try:
         # Use configured eval model for efficient evaluations.
         # See llm_task_eval for the reasoning.effort=low rationale.
@@ -639,6 +779,16 @@ def llm_code_eval(code_data, task_description, openai_client, model,
         if not raw_response:
             logger.error("No output_text received from OpenAI Responses API for code eval")
             return _eval_failure("No response from evaluation API")
+
+        usage = getattr(response, "usage", None)
+        if usage:
+            cached = getattr(getattr(usage, "input_tokens_details", None), "cached_tokens", 0)
+            logger.info(
+                "code eval tokens — input: %d, output: %d, cached: %d",
+                getattr(usage, "input_tokens", 0),
+                getattr(usage, "output_tokens", 0),
+                cached or 0,
+            )
 
         logger.info(f"Raw LLM code eval response: {raw_response[:200]}...")
 

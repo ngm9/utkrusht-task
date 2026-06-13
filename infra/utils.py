@@ -477,13 +477,16 @@ def _format_scenarios_with_existing_titles(
         "\n\n## EXISTING TASKS FOR THIS COMPETENCY — DO NOT DUPLICATE\n"
         "Tasks ALREADY SHIPPED in this competency/proficiency:\n"
         f"{bullets}\n\n"
-        "HARD RULE: pick a scenario whose BUSINESS DOMAIN and BUG ARCHETYPE\n"
-        "are clearly different from every task above. If two candidates of\n"
-        "this competency received tasks back-to-back, they must not look\n"
-        "like minor rewordings of the same scenario.\n"
-        "If every remaining scenario is too close to an existing task,\n"
-        "explicitly say so and pick the LEAST similar one — do not silently\n"
-        "regenerate a near-duplicate."
+        "HARD RULE: KEEP the BUSINESS DOMAIN aligned with the scenario\n"
+        "provided above (the task MUST live in the same business domain as\n"
+        "the input scenario — Criterion 6 enforces this). Vary the BUG\n"
+        "ARCHETYPE / technical surface area / specific failure mode instead\n"
+        "so the candidate is doing genuinely different work, not just a\n"
+        "domain reskin of an existing task.\n"
+        "If every remaining bug archetype within this domain is too close\n"
+        "to an existing task, explicitly say so and pick the LEAST similar\n"
+        "one — do not silently regenerate a near-duplicate, and do NOT\n"
+        "switch business domains to escape the de-dup constraint."
     )
     return base + addendum
 
@@ -535,7 +538,7 @@ def generate_task_with_code(openai_client, input_data: Dict, feedback: str = "")
         Dict: Generated task data with code files
     """
     try:
-        model = "claude-sonnet-4-6"  # Specified model version
+        model = "claude-opus-4-8"  # Latest Claude Opus
         competencies = input_data["competencies"]
 
         # Get competency names and create a single technology stack string
@@ -557,14 +560,16 @@ def generate_task_with_code(openai_client, input_data: Dict, feedback: str = "")
             logger.error(f"No task generation prompts found for technology stack: {competency_stack}")
             raise ValueError(f"Unsupported technology stack: {competency_stack}. Please add prompts for this stack in get_task_prompt_by_technology_stack.")
 
-        # Pricing per million tokens — source: https://platform.claude.com/docs/en/docs/about-claude/models
-        # Claude Opus 4.6: $5/M input, $25/M output
-        # Claude Sonnet 4.6: $3/M input, $15/M output
-        # Claude Haiku 4.5: $1/M input, $5/M output
+        # Pricing per million tokens
         PRICING = {
+            "claude-opus-4-8": {"input": 5.0, "output": 25.0},
             "claude-opus-4-6": {"input": 5.0, "output": 25.0},
             "claude-sonnet-4-6": {"input": 3.0, "output": 15.0},
             "claude-haiku-4-5-20251001": {"input": 1.0, "output": 5.0},
+            "gpt-5.5": {"input": 5.0, "output": 30.0},
+            "gpt-5.4": {"input": 2.5, "output": 15.0},
+            "gpt-5.4-mini": {"input": 0.75, "output": 4.5},
+            "gpt-5.4-nano": {"input": 0.3, "output": 1.5},
             "gpt-5.1-2025-11-13": {"input": 2.0, "output": 8.0},
         }
         model_pricing = PRICING.get(model, {"input": 15.0, "output": 75.0})
@@ -609,6 +614,9 @@ def generate_task_with_code(openai_client, input_data: Dict, feedback: str = "")
             prompt_output = usage.completion_tokens if usage else 0
             total_input_tokens += prompt_input
             total_output_tokens += prompt_output
+            cached_read = getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", 0) if usage else 0
+            if cached_read:
+                logger.info(f" Cache: {cached_read:,} tokens served from cache (prompt {i})")
 
             logger.info("=" * 70)
             logger.info(f" Prompt {i}/{len(task_generation_prompts)} Response: ")

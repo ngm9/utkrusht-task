@@ -20,7 +20,7 @@ from typing import Dict, Optional
 
 from infra.evals import llm_code_eval, llm_task_eval
 
-from generators.task._clients import EVAL_MODEL, openai_client
+from generators.task._clients import openai_client
 
 
 # Reminder appended to retry feedback whenever output was hollow — the
@@ -209,7 +209,6 @@ def run_evaluations(
         yoe,
         time_constraint,
         openai_client,
-        EVAL_MODEL,
         persona=persona,
         scenarios=scenarios,
     )
@@ -218,7 +217,6 @@ def run_evaluations(
         task_data.get("code_files", {}),
         task_data.get("description", ""),
         openai_client,
-        EVAL_MODEL,
         persona=persona,
     )
 
