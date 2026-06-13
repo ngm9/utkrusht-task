@@ -66,26 +66,71 @@ def _iter_filesystem_prompts():
                 yield canonical
 
 
-def _build_prompt_registry() -> dict:
-    registry = {}
+def _build_prompt_registry() -> tuple[dict, dict]:
+    """Walk curated + agent-generated prompt modules and build two registries.
+
+    Returns ``(prompt_registry, task_shape_registry)``:
+      * ``prompt_registry`` maps the canonical key (e.g. ``"Java (INTERMEDIATE)"``)
+        to the ``[CONTEXT, INPUT_AND_ASK, INSTRUCTIONS]`` triple — same as
+        before.
+      * ``task_shape_registry`` maps the SAME key to the module's
+        ``TASK_SHAPE`` constant when present (``"infra"`` / ``"non_infra"``).
+        Modules without ``TASK_SHAPE`` (legacy curated prompts) get no entry —
+        the downstream lookup returns ``None`` and the E2B gate runs as
+        before.
+    """
+    registry: dict = {}
+    shape_registry: dict = {}
+
+    def _absorb(module) -> None:
+        if not hasattr(module, "PROMPT_REGISTRY"):
+            return
+        registry.update(module.PROMPT_REGISTRY)
+        shape = getattr(module, "TASK_SHAPE", None)
+        if shape:
+            # One module can register multiple keys (rare, but supported by
+            # PROMPT_REGISTRY's shape). Tag every key the module owns with
+            # this module's TASK_SHAPE — they all come from the same combo.
+            for key in module.PROMPT_REGISTRY:
+                shape_registry[key] = shape
+
     # 1) Flat-style modules under <Level>/<file>.py via the existing package walk.
     for pkg in [_basic_pkg, _inter_pkg, _beginner_pkg]:
         for _, module_name, _ in pkgutil.iter_modules(pkg.__path__):
             module = importlib.import_module(f"{pkg.__name__}.{module_name}")
-            if hasattr(module, "PROMPT_REGISTRY"):
-                registry.update(module.PROMPT_REGISTRY)
+            _absorb(module)
     # 2) Per-slug nested modules (curated + agent_generated_prompts) via filesystem walk.
     for path in _iter_filesystem_prompts():
         try:
             module = _load_module_from_path(f"_pg_{path.parent.name}", path)
         except Exception:
             continue
-        if module is not None and hasattr(module, "PROMPT_REGISTRY"):
-            registry.update(module.PROMPT_REGISTRY)
-    return registry
+        if module is not None:
+            _absorb(module)
+    return registry, shape_registry
 
 
-_PROMPT_REGISTRY = _build_prompt_registry()
+_PROMPT_REGISTRY, _TASK_SHAPE_REGISTRY = _build_prompt_registry()
+
+
+def get_task_shape_for(input_data: dict) -> Optional[str]:
+    """Return the prompt module's ``TASK_SHAPE`` for this competency combo.
+
+    Mirrors the key-construction logic in
+    :func:`get_task_prompt_by_technology_stack` so the two registries stay
+    in lockstep. Returns ``"infra"`` / ``"non_infra"`` when the prompt
+    module declared a shape, ``None`` for legacy / unannotated prompts.
+    The E2B-gate skip path treats ``None`` as "run the gate normally" —
+    so legacy prompts are unaffected.
+    """
+    competencies = input_data.get("competencies", [])
+    key = ", ".join(
+        sorted(
+            f"{c.get('name')} ({c.get('proficiency', '').upper()})"
+            for c in competencies if c.get("name")
+        )
+    ) if competencies else ""
+    return _TASK_SHAPE_REGISTRY.get(key)
 
 
 PROFICIENCY_LEVELS = ["BEGINNER", "BASIC", "INTERMEDIATE", "ADVANCED", "EXPERT"]
