@@ -32,6 +32,7 @@ from infra.github_utils import create_github_template_repo, slugify
 from infra.logger_config import logger
 from infra.classifier.runtime import Competency
 from infra.schemas import ANSWER_CODE_SCHEMA
+from infra.tracing import set_attempt, set_task_id, trace_stage
 from infra.utils import (
     create_gist_from_template,
     format_outcomes,
@@ -411,7 +412,8 @@ def create_task(
             )
             for c in competencies if c.get("name")
         ]
-        plan = resolve_plan(runtime_comps) if runtime_comps else None
+        with trace_stage("classifier"):
+            plan = resolve_plan(runtime_comps) if runtime_comps else None
         match = plan.match if plan else None
         template = plan.template if plan else None
         if match:
@@ -453,11 +455,13 @@ def create_task(
         last_failure: Dict = {}
         feedback = ""
         for attempt in range(1, max_attempts + 1):
+            set_attempt(attempt)
             logger.info(f"Task generation attempt {attempt}/{max_attempts}")
             try:
-                candidate = generate_task_with_code(
-                    openai_client, input_data, feedback=feedback,
-                )
+                with trace_stage("task_gen"):
+                    candidate = generate_task_with_code(
+                        openai_client, input_data, feedback=feedback,
+                    )
             except LLMOutputTruncated as exc:
                 # F11: the model hit max_tokens mid-output. Feed back a tight
                 # corrective message and retry.
@@ -518,11 +522,12 @@ def create_task(
             # domain not present in the scenarios pool. For agent competencies
             # the scenario is free-form (generator-invented), so we pass None
             # and Criterion 6 passes vacuously; non-agent tasks keep the pool.
-            candidate_eval = run_evaluations(
-                candidate,
-                persona=eval_persona,
-                scenarios=None if agent_freeform else scenarios,
-            )
+            with trace_stage("eval"):
+                candidate_eval = run_evaluations(
+                    candidate,
+                    persona=eval_persona,
+                    scenarios=None if agent_freeform else scenarios,
+                )
             last_failure = candidate_eval
             t_pass = candidate_eval["task_eval"]["pass"]
             c_pass = candidate_eval["code_eval"]["pass"]
@@ -531,10 +536,11 @@ def create_task(
                 # encapsulates the policy; the loop just acts on the outcome.
                 # Pass task_shape so the gate can short-circuit DISABLED for
                 # non_infra tasks (pure-runtime local projects).
-                gate_outcome, gate_feedback = run_gate_for_attempt(
-                    plan, candidate, candidate_eval, attempt,
+                with trace_stage("gate"):
+                    gate_outcome, gate_feedback = run_gate_for_attempt(
+                        plan, candidate, candidate_eval, attempt,
                     task_shape=task_shape,
-                )
+                    )
                 if gate_outcome == GateOutcome.RETRY:
                     last_failure = candidate_eval
                     feedback = gate_feedback
@@ -547,9 +553,10 @@ def create_task(
                 # not a retry-gate: the (possibly-patched) candidate moves
                 # straight to persistence. Infra errors during the call
                 # propagate up and abort the attempt without artifacts.
-                candidate, quality_report = run_quality_for_attempt(
-                    candidate, attempt,
-                )
+                with trace_stage("quality"):
+                    candidate, quality_report = run_quality_for_attempt(
+                        candidate, attempt,
+                    )
                 if quality_report.rewrites_applied:
                     logger.info(
                         f"Attempt {attempt}: quality eval autofixed "
@@ -587,7 +594,8 @@ def create_task(
         logger.info(f"Determined task type: {task_type}")
 
         logger.info("Generating solution code and steps")
-        solutions_data = generate_answer_code_and_steps(task_data)
+        with trace_stage("solution"):
+            solutions_data = generate_answer_code_and_steps(task_data)
 
         # Drive is_shared_infra_required purely from whether the generated
         # repo carries Docker / docker-compose artifacts. The previous
@@ -658,6 +666,7 @@ def create_task(
         # (stage 2: validation layered into the draft→ready path).
         task_id = insert_draft_task(draft_payload, env=env)
         task_data["task_id"] = task_id
+        set_task_id(task_id)
 
         # Step 2 — build the GitHub artifacts under a try/except that
         # marks the row failed + cleans up partial repos.

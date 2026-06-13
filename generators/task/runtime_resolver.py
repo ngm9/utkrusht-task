@@ -404,6 +404,18 @@ def resolve_plan(
             f"template_id={match.template_id!r} but no built template row "
             f"could be hydrated — gate will skip"
         )
+    if match.no_match_reason:
+        logger.info(
+            f"resolve_plan: combo={combo_key!r} NO_MATCH — "
+            f"{match.no_match_reason} (gate will skip)"
+        )
+    # Final decision line: which template/persona was resolved and whether the
+    # E2B gate can run — wrong/absent template is a top cause of gate skips.
+    logger.info(
+        f"resolve_plan: RESOLVED combo={combo_key!r} "
+        f"template_id={match.template_id} persona={match.persona} "
+        f"gate={'will run' if template is not None else 'skip (no template)'}"
+    )
     return ResolvedPlan(
         combo_key=combo_key,
         match=match,

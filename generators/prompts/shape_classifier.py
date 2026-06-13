@@ -154,4 +154,20 @@ def classify_task_shape(
         prefix = f"[default after invalid output {raw_shape!r}] "
         reason = prefix + reason if reason else prefix.rstrip()
 
+    # First-class decision log (prompt stage): WHAT it decided, WHAT it weighed,
+    # and HOW it reasoned — so the call that drives the E2B-gate skip is fully
+    # explainable from the logs + trace_ui (it's the first step of the Prompt
+    # stage, not a separate stage).
+    logger.info(
+        "shape_classifier: task_shape=%s — %s", shape, reason or "(no reason given)"
+    )
+    logger.info(
+        "shape_classifier: decided from competencies=%r (scopes=%dc, signal=%dc)",
+        competencies_str,
+        len(competency_scopes or ""),
+        len(detailed_skill_signal or ""),
+    )
+    cot = (getattr(result, "reasoning", "") or "").strip()
+    if cot:
+        logger.info("shape_classifier: reasoning — %s", cot[:600])
     return ShapeDecision(task_shape=shape, reason=reason, raw_response=raw_shape)

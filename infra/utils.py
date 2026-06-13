@@ -505,10 +505,28 @@ def get_task_prompt_by_technology_stack(competency_stack, input_data):
             f"Add PROMPT_REGISTRY to the prompt file."
         )
 
+    # Candidate time budget for the {minutes_range} placeholder — scaled by
+    # proficiency so INTERMEDIATE/ADVANCED tasks get a larger window than BASIC.
+    # An explicit input_data["minutes_range"] still overrides.
+    _minutes_by_proficiency = {
+        "BASIC": "15-20",
+        "INTERMEDIATE": "20-25",
+        "ADVANCED": "25-30",
+    }
+    _proficiency = competencies[0].get("proficiency", "").upper() if competencies else ""
+    _minutes_default = _minutes_by_proficiency.get(_proficiency, "15-20")
+
     fmt_args = {
         "organization_background": input_data["background"]["organization"]["organization_background"],
         "role_context": input_data["background"]["role_context"],
-        "minutes_range": input_data.get("minutes_range", "15-20"),
+        # Source of truth = the (user-editable) minutes_range in the background
+        # input file; top-level override wins; proficiency default is the
+        # fallback for older input files that predate the field.
+        "minutes_range": (
+            input_data.get("minutes_range")
+            or input_data.get("background", {}).get("minutes_range")
+            or _minutes_default
+        ),
         "competencies": input_data.get("competencies"),
         "real_world_task_scenarios": _format_scenarios_with_existing_titles(
             input_data.get("scenarios", ""),

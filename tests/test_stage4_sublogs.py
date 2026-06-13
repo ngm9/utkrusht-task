@@ -51,6 +51,64 @@ def test_split_no_stderr_is_noop(tmp_path: Path):
     assert not (tmp_path / "04_tasks.e2b_gate.log").exists()
 
 
+def test_run_stage_enables_tracing_for_llm_stages_only(tmp_path: Path, monkeypatch):
+    """_run_stage forces PIPELINE_TRACING_ENABLED='1' for the LLM-bearing stages
+    (input_files / scenarios / prompt / tasks) and '0' for preflight — forced
+    explicitly so an enabled parent-shell value can't leak into preflight — and
+    passes the inherited TRACE_RUN_ID through to each child.
+    """
+    captured: dict = {}
+
+    class _Proc:
+        returncode = 0
+
+    def _fake_run(cmd, stdout=None, stderr=None, cwd=None, env=None):
+        captured["env"] = dict(env or {})
+        return _Proc()
+
+    monkeypatch.setattr(rp.subprocess, "run", _fake_run)
+    monkeypatch.setenv("TRACE_RUN_ID", "20260611T000000Z")
+
+    for label in ("01_input_files", "02_scenarios", "03_prompt", "04_tasks"):
+        rp._run_stage(tmp_path, label, ["true"])
+        assert captured["env"]["PIPELINE_TRACING_ENABLED"] == "1", label
+        assert captured["env"]["TRACE_RUN_ID"] == "20260611T000000Z"  # inherited
+
+    rp._run_stage(tmp_path, "00_preflight", ["true"])
+    assert captured["env"]["PIPELINE_TRACING_ENABLED"] == "0"  # no LLM calls: off
+
+
+def test_run_stage_streams_sublogs_live(tmp_path: Path):
+    """_run_stage(live_split=...) fans the stage's stderr into focused sub-logs
+    AS it runs (not via the post-hoc split): the eval + e2b-gate lines land in
+    their files, noise is excluded, and the full stderr is still captured."""
+    import sys
+
+    script = (
+        "import sys\n"
+        "print('t - infra_assessor - INFO - Running task evaluations', file=sys.stderr)\n"
+        "print('t - infra_assessor - INFO - [e2b-gate] booting sandbox', file=sys.stderr)\n"
+        "print('t - infra_assessor - INFO - unrelated chatter line', file=sys.stderr)\n"
+    )
+    rec = rp._run_stage(
+        tmp_path, "04_tasks", [sys.executable, "-c", script],
+        live_split=[
+            ("04_tasks.e2b_gate.log", rp._E2B_GATE_MARKERS),
+            ("04_tasks.evals.log", rp._EVAL_MARKERS),
+        ],
+    )
+    assert rec["exit_code"] == 0
+    # Full stderr still captured (incl. the noise line).
+    assert "unrelated chatter line" in (tmp_path / "04_tasks.stderr").read_text()
+    # Sub-logs were written by the live stream, correctly filtered.
+    evals = (tmp_path / "04_tasks.evals.log").read_text()
+    assert "Running task evaluations" in evals
+    assert "[e2b-gate]" not in evals and "unrelated chatter" not in evals
+    gate = (tmp_path / "04_tasks.e2b_gate.log").read_text()
+    assert "[e2b-gate] booting sandbox" in gate
+    assert "Running task evaluations" not in gate
+
+
 def test_split_only_writes_files_with_matches(tmp_path: Path):
     # stderr with eval lines but no gate lines → only the evals log is written.
     (tmp_path / "04_tasks.stderr").write_text(
