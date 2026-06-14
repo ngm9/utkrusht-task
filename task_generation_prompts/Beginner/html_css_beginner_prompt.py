@@ -27,7 +27,7 @@ CRITICAL TASK GENERATION REQUIREMENTS:
 - The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
 - The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies (BEGINNER: 0-1 year experience)
 - Ensure the candidate can realistically complete the task in the allocated time
-- Select a different real-world scenario each time to ensure variety in task generation
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 - The task must reflect authentic challenges that would be encountered in the role described in the role context
 
 Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
@@ -139,7 +139,7 @@ Based on real-world scenarios, create an HTML/CSS task that:
 - Matches BEGINNER proficiency level (0-1 year experience)
 - Can be completed within {minutes_range} minutes
 - Tests practical skills in building page layouts and styling components using HTML and CSS together
-- Select a different real-world scenario each time to ensure variety in task generation
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 - Focus on single-page layouts with 2-3 visual components to build
 - Pure browser-based — no JavaScript, no Node.js, no npm, no build tools, no frameworks
 
@@ -227,7 +227,7 @@ Verification approaches after implementation:
 9. **Pure browser-based** — no Node.js, no npm, no build tools, no frameworks
 10. **MUST include index.html and styles.css** as separate files properly linked — NO .js files
 11. **Task name** must be short, descriptive, under 50 characters, kebab-case
-12. **Select a different real-world scenario** each time for variety
+12. **Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 13. **"title"** must be in `<action verb> <subject>` format and different from `"name"`
 14. **Task MUST require meaningful work in both HTML and CSS** — not just adding one property
 15. **Tasks must NOT be trivial** — each should involve building 2-3 visual components, not one-liner fixes

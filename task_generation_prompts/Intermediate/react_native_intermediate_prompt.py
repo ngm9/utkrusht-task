@@ -27,7 +27,7 @@ CRITICAL TASK GENERATION REQUIREMENTS:
 - The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
 - The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
 - Ensure the candidate can realistically complete the task in the allocated time
-- Select a different real-world scenario each time to ensure variety in task generation
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 - The task must reflect authentic challenges that would be encountered in the role described in the role context
 
 Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
@@ -109,7 +109,7 @@ Based on real-world scenarios, create a React Native task that:
 - Matches INTERMEDIATE proficiency level (3-5 years React Native experience)
 - Can be completed within {minutes_range} minutes
 - Tests practical React Native skills that require architectural thinking, performance considerations, and advanced mobile development patterns
-- Select a different real-world scenario each time to ensure variety in task generation
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 - Focus on multi-screen mobile applications that require thoughtful state management, navigation architecture, and component communication
 - Should test the candidate's ability to structure a scalable React Native application
 - Task name: short, descriptive, under 50 characters, kebab-case (e.g., "rn-order-management-app", "rn-realtime-dashboard")
@@ -288,7 +288,7 @@ Create a comprehensive gitignore file that covers all standard exclusions for Re
 7. **README.md MUST be fully populated** with meaningful, task-specific content
 8. **.gitignore** must cover standard React Native/Expo exclusions
 9. **Task name** must be short, descriptive, under 50 characters, kebab-case
-10. **Select a different real-world scenario** each time for variety
+10. **Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 11. **Use React Native components** (View, Text, FlatList, etc.) — NOT HTML/DOM elements
 12. **Styling via StyleSheet.create()** — NOT CSS files
 13. **Entry point is App.js** which is loaded by Expo's AppEntry

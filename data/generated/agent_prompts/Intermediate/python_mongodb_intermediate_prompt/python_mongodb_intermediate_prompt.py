@@ -30,7 +30,7 @@ CRITICAL TASK GENERATION REQUIREMENTS:
 - The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario.
 - The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies.
 - Ensure the candidate can realistically complete the task in the allocated time.
-- Select a different real-world scenario each time to ensure variety in task generation.
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 - The task must reflect authentic challenges that would be encountered in the role described in the role context.
 - Prefer a task where the candidate improves an existing Python service that uses MongoDB rather than building a large system from scratch.
 - Keep the task specific and bounded: one API area, one or two collections, and a clear success path.

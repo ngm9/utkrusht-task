@@ -28,7 +28,7 @@ CRITICAL TASK GENERATION REQUIREMENTS:
 - The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
 - The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
 - Ensure the candidate can realistically complete the task in the allocated time
-- Select a different real-world scenario each time to ensure variety in task generation
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 - The task must reflect authentic INTERMEDIATE Playwright work that a 3-5 yoe QA Automation Engineer would actually own — designing reusable fixtures with `storageState`, mocking multiple endpoints with `page.route` and asserting outgoing payloads, coordinating file upload + async job polling + download verification, refactoring brittle specs into small Page Objects, and replacing hard waits with deterministic synchronization.
 
 Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
@@ -238,7 +238,7 @@ Keep the rubric balanced — at most ONE objective should be a generic hygiene c
 11. **README.md MUST be fully populated** with meaningful, task-specific content, and Objectives must describe end-states without naming Playwright APIs (see "Objectives" section above for FORBIDDEN phrasings — e.g., never say "use `storageState`", "use `expect.poll`", "use `page.route`", "add a setup project")
 12. **.gitignore** must cover `node_modules/`, `test-results/`, `playwright-report/`, `playwright/.cache/`, `playwright/.auth/`
 13. **Task name** must be short, descriptive, under 50 characters, kebab-case, and SHOULD incorporate the company/product name from the scenario rather than starting with `playwright-` (e.g., for the SaaS analytics auth scenario: `insightlab-cohort-export-auth-state`; for the logistics dispatch scenario: `swiftcargo-dispatch-mock-payload`; for the EdTech grading scenario: `gradeup-bulk-grade-poll-download`)
-14. **Select a different real-world scenario** each time for variety
+14. **Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 """
 
 PROMPT_REGISTRY = {

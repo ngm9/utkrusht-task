@@ -28,7 +28,7 @@ CRITICAL TASK GENERATION REQUIREMENTS:
 - The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
 - The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
 - Ensure the candidate can realistically complete the task in the allocated time
-- Select a different real-world scenario each time to ensure variety in task generation
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 - The task must reflect authentic Playwright work that a QA Automation Engineer would actually own — fixing a flaky test, refactoring for isolation, scoping a locator inside a frame, replacing a hard sleep with a proper wait, mocking a network call with `page.route`, etc.
 
 Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
@@ -96,7 +96,7 @@ Based on real-world scenarios, create a Playwright task that:
 - Matches BASIC proficiency level (1-2 years Playwright / QA automation experience)
 - Can be completed within {minutes_range} minutes — the candidate's edits should land in 1-2 spec files, not across the whole project
 - Tests practical Playwright skills: locator selection, waiting strategy, frames, isolation, or simple network mocking — not advanced patterns like sharding, custom reporters, or visual regression
-- Select a different real-world scenario each time to ensure variety in task generation
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 - Task name: short, descriptive, under 50 characters, kebab-case (e.g., "playwright-cart-flake-fix", "playwright-iframe-eligibility", "playwright-test-isolation")
 
 ## REQUIRED OUTPUT JSON STRUCTURE
@@ -201,7 +201,7 @@ Verification approaches after implementation:
 11. **README.md MUST be fully populated** with meaningful, task-specific content, and Objectives must describe end-states without naming Playwright APIs (see "Objectives" section above for FORBIDDEN phrasings)
 12. **.gitignore** must cover `node_modules/`, `test-results/`, `playwright-report/`, `playwright/.cache/`
 13. **Task name** must be short, descriptive, under 50 characters, kebab-case, and SHOULD incorporate the company/product name from the scenario rather than starting with `playwright-` (e.g., `shopnest-cart-determinism`, `medverify-visit-summary-load`)
-14. **Select a different real-world scenario** each time for variety
+14. **Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 """
 
 PROMPT_REGISTRY = {

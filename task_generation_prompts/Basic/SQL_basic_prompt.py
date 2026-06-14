@@ -28,7 +28,7 @@ CRITICAL TASK GENERATION REQUIREMENTS:
 - The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
 - The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
 - Ensure the candidate can realistically complete the task in the allocated time
-- Select a different real-world scenario each time to ensure variety in task generation
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 - The task must reflect authentic challenges that would be encountered in the role described in the role context
 
 Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
@@ -94,7 +94,7 @@ Based on real-world scenarios, create an SQL task that:
 - Matches BASIC proficiency (1-2 years SQL/database experience)
 - Can be completed within {minutes_range} minutes using only SQL and a database client (e.g. psql, pgAdmin, DBeaver)
 - Tests practical SQL skills: queries, basic optimization, indexes, or simple schema/data fixes
-- Select a different real-world scenario each time for variety
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 - Use 2-4 tables, simple relationships, and clear success criteria (measurable performance improvement or correct query results)
 
 ## REQUIRED OUTPUT JSON STRUCTURE
@@ -200,7 +200,7 @@ Practical guidance without revealing implementations:
 7. **Focus on basic SQL concepts** — SELECT, JOINs, WHERE, indexes, EXPLAIN, primary/foreign keys, simple optimization.
 8. **README.md MUST be fully populated** with Task Overview, Helpful Tips, Database Access, Objectives, How to Verify (in that order).
 9. **Task name** must be short, under 50 characters, kebab-case.
-10. **Select a different real-world scenario** each time for variety.
+10. **Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 11. **2-4 tables**, simple relationships, clear and measurable success criteria.
 """
 

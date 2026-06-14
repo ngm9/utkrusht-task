@@ -28,7 +28,7 @@ CRITICAL TASK GENERATION REQUIREMENTS:
 - The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
 - The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
 - Ensure the candidate can realistically complete the task in the allocated time
-- Select a different real-world scenario each time to ensure variety in task generation
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 - The task must reflect authentic challenges that would be encountered in the role described in the role context — DSA work framed inside a real product surface (a cache, a lookup, a validator, a pricing tier), not abstract leetcode-style puzzles disconnected from a system.
 
 Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
@@ -117,7 +117,7 @@ Based on real-world scenarios, create a DSA task that:
 - Matches BASIC proficiency level (1-2 years in the language the scenario implies + core DSA)
 - Can be completed within {minutes_range} minutes — the candidate's edits should land in 1 module + 1 test file, occasionally one helper module
 - Tests practical DSA judgment: picking the right structure, hitting the right complexity, writing tests that pin BOTH correctness and the performance contract
-- Select a different real-world scenario each time to ensure variety in task generation
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 - Task name: short, descriptive, under 50 characters, kebab-case, ideally incorporating the company/product name from the scenario rather than starting with `dsa-` (e.g., `sessioncache-lru-eviction-fix`, `paywise-tier-binary-lookup`)
 
 ## REQUIRED OUTPUT JSON STRUCTURE
@@ -216,7 +216,7 @@ Practical guidance without revealing implementations:
 8. **README.md MUST be fully populated** with meaningful, task-specific content, and Objectives must describe end-states without naming stdlib symbols (see "Objectives" section above for FORBIDDEN phrasings)
 9. **.gitignore** must cover standard exclusions for whichever language the scenario implies (Python: `__pycache__/`, `.pytest_cache/`, `.venv/`; Node: `node_modules/`, `dist/`; Java: `target/`, `.gradle/`; Go: `bin/`, `vendor/`; etc.)
 10. **Task name** must be short, descriptive, under 50 characters, kebab-case, and SHOULD incorporate the company/product name from the scenario rather than a generic `dsa-` prefix
-11. **Select a different real-world scenario** each time for variety
+11. **Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 12. **The exact set of files in `code_files` is dictated by the scenario** — match the source/test paths the scenario references and add only the minimum project-metadata files needed for the test command to run on a fresh clone. Do NOT impose a Python-shaped layout on a non-Python scenario.
 """
 

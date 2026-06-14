@@ -27,7 +27,7 @@ CRITICAL TASK GENERATION REQUIREMENTS:
 - The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
 - The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies (INTERMEDIATE: 3-5 years)
 - Ensure the candidate can realistically complete the task in the allocated time
-- Select a different real-world scenario each time to ensure variety in task generation
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 - The task must reflect authentic challenges that would be encountered in the role described in the role context
 
 Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
@@ -131,7 +131,7 @@ Based on the real-world scenarios provided, create a Python task that:
 - Matches INTERMEDIATE proficiency: 3-5 years Python, can own a small feature or fix end-to-end with minimal ambiguity. Complexity should be achievable in the time limit without rushing.
 - Can be completed within {minutes_range} minutes. Prefer one primary ask (e.g. "add validation") with 1-2 secondary expectations (e.g. "add a test", "handle errors") rather than many unrelated tasks.
 - Tests practical intermediate skills: choose a clear focus from the INTERMEDIATE PROFICIENCY SCOPE (e.g. validation + error handling, or refactor + tests, or implement one endpoint with correct types). Do not mix too many unrelated concepts in one task.
-- Select a different real-world scenario each time to ensure variety across generated tasks.
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level.
 - Starter code may include: a small Flask/FastAPI app with 1-2 routes, or a main script plus 1-2 modules, optional tests/ directory. No Docker/infra unless the task explicitly requires it. All code must run with standard `pip install -r requirements.txt` (if any) and one clear run command.
 
 ## REQUIRED OUTPUT JSON STRUCTURE
@@ -195,7 +195,7 @@ The README.md MUST contain the following sections with fully populated, task-spe
 7. **Use Python 3.8+** and PEP 8. Code must be valid and executable.
 8. **README.md MUST be fully populated** with Task Overview, Objectives, How to Verify, and Helpful Tips as defined above. No empty sections or generic text.
 9. **Task name** must be short, under 50 characters, kebab-case.
-10. **Select a different real-world scenario** each time for variety.
+10. **Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 """
 
 PROMPT_REGISTRY = {

@@ -27,7 +27,7 @@ CRITICAL TASK GENERATION REQUIREMENTS:
 - The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
 - The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
 - Ensure the candidate can realistically complete the task in the allocated time
-- Select a different real-world scenario each time to ensure variety in task generation
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 - The task must reflect authentic challenges that would be encountered in the role described in the role context
 - CRITICAL: This is a DESIGN task — the candidate will NOT write any code. They will produce a written design document focused on system architecture.
 - CRITICAL: This is a SYSTEM DESIGN assessment — do NOT prescribe, mandate, or constrain which technologies, frameworks, infrastructure, or tools the candidate must use. The candidate is free to choose ANY tech stack, ANY infrastructure, ANY framework they see fit. Only describe what currently exists in the system — the candidate decides what to keep, replace, or add.

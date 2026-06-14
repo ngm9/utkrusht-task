@@ -28,7 +28,7 @@ CRITICAL TASK GENERATION REQUIREMENTS:
 - The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
 - The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
 - Ensure the candidate can realistically complete the task in the allocated time
-- Select a different real-world scenario each time to ensure variety in task generation
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 - The task must reflect authentic QA work in a MERN codebase that a 1-2 yoe QA Automation Engineer would actually own — fixing a flaky integration test that leaks Mongo state between tests, replacing brittle CSS-class queries in a React Testing Library spec with user-facing queries plus async findBy*, mocking the network layer in a component test with MSW so it does not depend on a real Express server, fixing a Supertest spec where middleware ordering inside the test app does not match production, tightening loose assertions on an Express response shape, writing unit tests for a Mongoose helper or an Express middleware called directly with mock req/res, or covering both a React component and the Node-side helper it calls.
 - BASIC QA-MERN tasks are LOCAL-ONLY — they run with `npm install && npm test` and nothing else. Do NOT generate Docker, docker-compose, run.sh, or kill.sh files. In-process replacements (mongodb-memory-server, MSW, in-process Supertest) cover every BASIC use case.
 
@@ -111,7 +111,7 @@ Based on real-world scenarios, create a QA-MERN task that:
 - Matches BASIC proficiency level (1-2 years QA + MERN experience)
 - Can be completed within {minutes_range} minutes — the candidate's edits should land in 1-2 files (typically the test file alone, occasionally the test file + a tiny addition to a Jest setup file)
 - Tests practical QA-on-MERN skills: user-facing RTL queries, async findBy/waitFor, per-test Mongo cleanup, MSW handler definitions, Supertest integration assertions — NOT advanced patterns like custom Jest reporters, snapshot frameworks, contract testing, full POM, or visual regression
-- Select a different real-world scenario each time to ensure variety in task generation
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 - Task name: short, descriptive, under 50 characters, kebab-case, **incorporating the company/product name from the chosen scenario** rather than starting with `qa-mern-` (e.g., for the LMS enrollment-isolation scenario: `learnloop-enrollment-test-isolation`; for the React courselist scenario: `studyhub-courselist-rtl-async`; for the login-mocking scenario: `vaultid-login-msw-mocking`)
 
 ## SCENARIO-TYPE INFRASTRUCTURE CHECKLIST
@@ -375,7 +375,7 @@ Verification approaches after implementation:
 12. **README.md MUST be fully populated** with meaningful, task-specific content, and Objectives must describe end-states without naming testing-library / Jest / MSW / Mongoose / Supertest APIs (see "Objectives" section above for FORBIDDEN phrasings — e.g., never say "use `findByText`", "use `getByRole`", "use `setupServer`", "use `mongodb-memory-server`", "add a `beforeEach`")
 13. **.gitignore** must cover `node_modules/`, `coverage/`, `dist/`, `build/`, `.env`
 14. **Task name** must be short, descriptive, under 50 characters, kebab-case, and SHOULD incorporate the company/product name from the scenario rather than starting with `qa-mern-` or `mern-` (e.g., for an LMS enrollment-isolation scenario: `learnloop-enrollment-test-isolation`; for a React dashboard scenario: `studyhub-courselist-rtl-async`; for a login mocking scenario: `vaultid-login-msw-mocking`)
-15. **Select a different real-world scenario** each time for variety
+15. **Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 """
 
 PROMPT_REGISTRY = {

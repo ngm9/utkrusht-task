@@ -27,7 +27,7 @@ CRITICAL TASK GENERATION REQUIREMENTS:
 - The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
 - The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
 - Ensure the candidate can realistically complete the task in the allocated time
-- Select a different real-world scenario each time to ensure variety in task generation
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 - The task must reflect authentic challenges that would be encountered in the role described in the role context
 
 Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
@@ -93,7 +93,7 @@ Based on real-world scenarios, create a React task that:
 - Matches BASIC proficiency level (1-2 years React experience)
 - Can be completed within {minutes_range} minutes
 - Tests practical React skills that require more than a simple AI query to solve, focusing on fundamental concepts
-- Select a different real-world scenario each time to ensure variety in task generation
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 - Focus on single-page application features rather than complex routing or state management libraries
 - Task name: short, descriptive, under 50 characters, kebab-case (e.g., "react-inventory-app", "react-form-validation")
 
@@ -182,7 +182,7 @@ Verification approaches after implementation:
 7. **README.md MUST be fully populated** with meaningful, task-specific content
 8. **.gitignore** must cover standard React/Node.js exclusions
 9. **Task name** must be short, descriptive, under 50 characters, kebab-case
-10. **Select a different real-world scenario** each time for variety
+10. **Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 """
 PROMPT_REGISTRY = {
     "React (BASIC)": [

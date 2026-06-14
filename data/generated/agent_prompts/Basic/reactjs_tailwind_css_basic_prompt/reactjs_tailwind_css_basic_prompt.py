@@ -27,7 +27,7 @@ CRITICAL TASK GENERATION REQUIREMENTS:
 - The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
 - The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
 - Ensure the candidate can realistically complete the task in the allocated time
-- Select a different real-world scenario each time to ensure variety in task generation
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 - The task must reflect authentic challenges that would be encountered in the role described in the role context
 - The task MUST stay within BASIC-level React and Tailwind CSS expectations: straightforward components, state/props, event handling, basic data fetching or form handling, responsive utility usage, accessible interaction states, and simple utility reuse
 - The task MUST NOT require advanced architecture, complex state libraries, advanced Tailwind configuration work, backend development, or system design
@@ -258,7 +258,7 @@ The task should feel like a real ticket a junior-to-early-mid frontend engineer 
 7. Avoid advanced architecture, advanced configuration, or large open-ended builds.
 8. README.md must be fully populated with meaningful, task-specific content.
 9. The task must be completable within {minutes_range} minutes.
-10. Select a different real-world scenario each time for variety.
+10. Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 """
 
 PROMPT_REGISTRY = {

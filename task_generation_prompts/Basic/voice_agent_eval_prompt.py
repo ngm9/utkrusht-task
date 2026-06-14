@@ -46,7 +46,7 @@ CRITICAL TASK GENERATION REQUIREMENTS:
 - Provide realistic but analyzable data files (call logs with clear failure patterns, a flawed system prompt, a config with suboptimal parameters)
 - The data should contain obvious patterns a BASIC candidate can spot (e.g., high disagreement rate on certain failure types, correlation between config settings and failures)
 - Do NOT give away the solution in the starter materials
-- Select a different real-world scenario each time to ensure variety in task generation
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 
 Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 

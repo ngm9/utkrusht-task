@@ -28,7 +28,7 @@ CRITICAL TASK GENERATION REQUIREMENTS:
 - The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
 - The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies (INTERMEDIATE: 3-5 years)
 - Ensure the candidate can realistically complete the task in the allocated time
-- Select a different real-world scenario each time to ensure variety in task generation
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 - The task must reflect authentic INTERMEDIATE DSA work that a 3-5 yoe engineer would actually own — replacing a brute-force algorithm with a graph traversal / trie / heap / DP that materially changes the complexity, and pinning the new contract with both correctness tests AND a performance test on a realistic input size.
 
 Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
@@ -117,7 +117,7 @@ Based on real-world scenarios, create a DSA task that:
 - Matches INTERMEDIATE proficiency level (3-5 years in the language the scenario implies + core DSA)
 - Can be completed within {minutes_range} minutes — the candidate's edits should land in 1-2 modules + 1 test file
 - Tests practical INTERMEDIATE DSA judgment: picking the right primitive, handling edge cases, writing tests that pin BOTH correctness and the new complexity contract
-- Select a different real-world scenario each time to ensure variety in task generation
+- Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 - Task name: short, descriptive, under 50 characters, kebab-case, and SHOULD incorporate the company/product name from the scenario rather than starting with `dsa-` (e.g., for the routing scenario: `swiftdrop-driver-shortest-path`; for the autocomplete scenario: `shopnest-product-trie-autocomplete`; for the trending scenario: `pulseboard-top-trending-heap`; for the refund scenario: `wanderpay-voucher-coinchange`)
 
 ## REQUIRED OUTPUT JSON STRUCTURE
@@ -213,7 +213,7 @@ Keep the rubric balanced — at most ONE objective should be a generic hygiene c
 8. **README.md MUST be fully populated** with meaningful, task-specific content, and Objectives must describe end-states without naming algorithms or stdlib symbols (see "Objectives" section above for FORBIDDEN phrasings — never say "use Dijkstra", "use a Trie", "use a min-heap of size k", "use bottom-up DP")
 9. **.gitignore** must cover standard exclusions for whichever language the scenario implies (Python: `__pycache__/`, `.pytest_cache/`, `.venv/`; Node: `node_modules/`, `dist/`; Java: `target/`, `.gradle/`; Go: `bin/`, `vendor/`; etc.)
 10. **Task name** must be short, descriptive, under 50 characters, kebab-case, and SHOULD incorporate the company/product name from the scenario rather than starting with `dsa-`
-11. **Select a different real-world scenario** each time for variety
+11. **Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level
 12. **The exact set of files in `code_files` is dictated by the scenario** — match the source/test paths the scenario references and add only the minimum project-metadata files needed for the test command to run on a fresh clone. Do NOT impose a Python-shaped layout on a non-Python scenario.
 """
 
