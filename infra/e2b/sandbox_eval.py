@@ -178,6 +178,53 @@ def _log_readiness(output: str, lines: int = 14) -> None:
         logger.info(f"{_GATE}   ‣ {ln[:200]}")
 
 
+# Broad error markers for the retry-feedback excerpt — compile errors, panics,
+# non-zero exits, failed/refused/timeout, missing deps. Broader than the
+# readiness probe (which is health-focused) so a build/compile failure's real
+# cause is captured, not just the docker pull/extract noise that dominates a
+# naive tail.
+_FAILURE_LINE_RE = re.compile(
+    r"\b(errors?|failed|failure|fatal|panic|exception|traceback|cannot|"
+    r"could not|unable to|not found|undefined|denied|refused|timeout|timed out|"
+    r"no such|exit(?:ed)?[ =]?(?:status |code )?[1-9])\b"
+    r"|^\s*[\w./-]+\.\w+:\d+[:)]"      # file.ext:line: — compiler errors
+    r"|^\s*panic:",
+    re.I,
+)
+
+
+def _failure_excerpt(output: str, *, tail_chars: int = 1000, max_summary: int = 1800) -> str:
+    """Sharp failure excerpt for the retry feedback: the actual error +
+    readiness lines first (so the LLM sees the *cause*, not docker pull/extract
+    noise), then the last chunk of raw output for context. Falls back to a plain
+    tail when nothing matches."""
+    # Dedupe: a crash-looping service repeats the same traceback many times;
+    # collapsing identical lines keeps the budget for DISTINCT signals (e.g. the
+    # run.sh "ERROR: … did not respond" / "exit 1" framing) instead of 8 copies
+    # of one error.
+    hits: list[str] = []
+    seen: set[str] = set()
+    for ln in output.splitlines():
+        s = ln.strip()
+        if not s:
+            continue
+        if _FAILURE_LINE_RE.search(s) or _READINESS_RE.search(s):
+            # Dedup on a digit-normalized key so retry-counter lines that differ
+            # only by a number ("Attempt 1/20…", "Attempt 2/20…") collapse to one.
+            norm = re.sub(r"\d+", "#", s)
+            if norm in seen:
+                continue
+            seen.add(norm)
+            hits.append(s)
+    raw_tail = output[-tail_chars:]
+    if not hits:
+        return output[-(max_summary + tail_chars):]
+    summary = "Key error / readiness lines:\n" + "\n".join(hits[-25:])
+    if len(summary) > max_summary:
+        summary = summary[:max_summary] + "…"
+    return summary + "\n\n--- recent run.sh output ---\n" + raw_tail
+
+
 def _verdict_label(result: SandboxEvalResult) -> str:
     """PASS / FAIL / SKIP — the one-word outcome class for a result."""
     if result.skipped:
@@ -359,7 +406,7 @@ def _run_runsh(
             detail=(f"run.sh exceeded the {_RUN_SH_TIMEOUT_S}s gate wall-clock "
                     "— likely a hang in `docker compose up` or a service "
                     "readiness wait. Tighten the readiness probe."),
-            stdout_tail=combined[-3000:],
+            stdout_tail=_failure_excerpt(combined),
         )
     if code == 0:
         return SandboxEvalResult(
@@ -373,7 +420,7 @@ def _run_runsh(
         detail=f"run.sh exited {code} — the scaffold or its services did not "
                "come up cleanly. Fix the scaffold so the readiness selfcheck "
                "passes (without filling the candidate stubs).",
-        stdout_tail=combined[-3000:],
+        stdout_tail=_failure_excerpt(combined),
     )
 
 

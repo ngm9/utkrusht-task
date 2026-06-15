@@ -34,7 +34,8 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel
 
-from trace_ui import tailer
+from infra.logger_config import logger
+from trace_ui import s3_store, tailer
 from trace_ui.tailer import (
     InvalidRunIdError,
     RunNotFoundError,
@@ -75,10 +76,25 @@ def index() -> FileResponse:
     return FileResponse(_STATIC_DIR / "index.html")
 
 
+def _run_ts_key(r: dict) -> str:
+    """Newest-first sort key — the UTC timestamp embedded in ``run-<ts>``."""
+    rid = r.get("run_id") or ""
+    return rid[4:] if rid.startswith("run-") else rid
+
+
 @app.get("/api/runs")
 def api_runs() -> JSONResponse:
-    """Return the list of runs for the picker (newest first)."""
-    return JSONResponse(tailer.list_runs())
+    """Runs for the picker (newest first): local runs + completed runs archived
+    in S3 (so a teammate without a local copy still sees everyone's runs).
+    Local wins on a run_id collision (it may be live / more complete)."""
+    local = tailer.list_runs()
+    seen = {r.get("run_id") for r in local}
+    merged = list(local)
+    for r in s3_store.list_s3_runs():
+        if r.get("run_id") not in seen:
+            merged.append(r)
+    merged.sort(key=_run_ts_key, reverse=True)
+    return JSONResponse(merged)
 
 
 # Links a completed run produces, scraped from the task-gen logs.
@@ -162,6 +178,50 @@ def api_result(run_id: str) -> JSONResponse:
     """Run-level result summary for the UI's Result panel."""
     run_dir = _resolve_or_400(run_id)
     return JSONResponse(_parse_result(run_dir))
+
+
+# Canonical sidebar stage → the pipeline file-stage prefix whose
+# .stdout/.stderr/.log files back it. The 04_tasks substages
+# (classifier/task_gen/eval/gate/quality/solution) share the 04_tasks files; the
+# UI filters those client-side by line content (subStageOf). ``preflight`` is
+# intentionally omitted — it isn't shown as a sidebar stage.
+_CANON_TO_FILESTAGE = {
+    "input_files": "01_input_files",
+    "scenarios": "02_scenarios",
+    "prompt": "03_prompt",
+    "classifier": "04_tasks",
+    "task_gen": "04_tasks",
+    "eval": "04_tasks",
+    "gate": "04_tasks",
+    "quality": "04_tasks",
+    "solution": "04_tasks",
+}
+
+
+@app.get("/api/runs/{run_id}/stage/{canon}")
+def api_stage_output(run_id: str, canon: str) -> JSONResponse:
+    """Captured output file(s) for one sidebar stage — backs the click-to-view
+    modal. Reads every ``<prefix>.*`` log file in the combo dir for the stage's
+    file prefix (skipping ``*.json`` timing) and returns their text. ``canon`` is
+    validated against an allowlist, so the glob prefix can't be attacker-chosen
+    (no path traversal)."""
+    run_dir = _resolve_or_400(run_id)
+    prefix = _CANON_TO_FILESTAGE.get(canon)
+    if prefix is None:
+        raise HTTPException(status_code=400, detail=f"unknown stage '{canon}'")
+    combo = _combo_dir(run_dir)
+    if combo is None:
+        raise HTTPException(status_code=404, detail="no combo dir for this run")
+    files: list[dict] = []
+    for p in sorted(combo.glob(f"{prefix}.*")):
+        if p.suffix == ".json":  # timing.json is metadata, not log output
+            continue
+        try:
+            text = p.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        files.append({"name": p.name, "stream": _stream_kind(p.name), "content": text})
+    return JSONResponse({"canon": canon, "filestage": prefix, "files": files})
 
 
 # ----------------------------------------------------------------------
@@ -259,12 +319,23 @@ def api_launch(req: RunRequest) -> JSONResponse:
 
 
 def _resolve_or_400(run_id: str) -> Path:
-    """Resolve a run_id, mapping tailer errors onto HTTP 400/404."""
+    """Resolve a run_id, mapping tailer errors onto HTTP 400/404.
+
+    When the run isn't local, fall back to S3: materialize the archived run into
+    the local cache dir (idempotent) and resolve again. This single chokepoint
+    makes every run-scoped endpoint (result / stage / log + trace streams)
+    S3-aware without per-endpoint changes — a completed run a teammate uploaded
+    just works on first open."""
     try:
         return resolve_run_dir(run_id)
     except InvalidRunIdError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     except RunNotFoundError as exc:
+        try:
+            if s3_store.materialize_run(run_id, tailer.RUNS_DIR):
+                return resolve_run_dir(run_id)
+        except Exception as e:  # noqa: BLE001 — S3 optional; fall through to 404
+            logger.warning(f"trace_ui: S3 materialize failed for {run_id}: {e}")
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 

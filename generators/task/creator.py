@@ -22,10 +22,11 @@ from __future__ import annotations
 
 import datetime
 import json
+import re
 import shutil
 import traceback
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from infra.evals import MAX_EVAL_RETRIES, EvalGateError, LLMOutputTruncated
 from infra.github_utils import create_github_template_repo, slugify
@@ -52,8 +53,10 @@ from generators.task._clients import (
     openai_via_portkey,
 )
 from generators.task.evaluator import (
+    blockers_are_deterministic_only,
     build_retry_feedback,
     is_task_hollow,
+    proficiency_profile,
     run_evaluations,
 )
 from generators.task.expected_ports import build_expected_ports
@@ -301,6 +304,38 @@ def resolve_scenarios(
 # The main orchestration
 # ---------------------------------------------------------------------------
 
+_NOT_TO_INCLUDE_HEADING_RE = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]*NOT[ \t]+TO[ \t]+INCLUDE", re.I)
+_MD_HEADING_RE = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]")
+
+
+def strip_not_to_include(readme: str) -> str:
+    """Remove a leaked 'NOT TO INCLUDE …' section from a candidate README.
+
+    Several prompt templates list 'NOT TO INCLUDE in README' as a section, so
+    the task-gen LLM renders it as a literal heading + note in the candidate-
+    facing README — but it's a meta-instruction (what to OMIT), not candidate
+    content. Strip the heading and its body up to the next markdown heading (or
+    EOF). Only matches HEADING lines, so a normal bullet mentioning "do not
+    include" is left untouched. No-op when absent.
+    """
+    if not readme or "NOT TO INCLUDE" not in readme.upper():
+        return readme
+    out: list[str] = []
+    skipping = False
+    for ln in readme.splitlines():
+        if _NOT_TO_INCLUDE_HEADING_RE.match(ln):
+            skipping = True
+            continue
+        if skipping:
+            if _MD_HEADING_RE.match(ln):  # next real section ends the skip
+                skipping = False
+            else:
+                continue
+        out.append(ln)
+    cleaned = "\n".join(out).rstrip()
+    return cleaned + "\n" if readme.endswith("\n") else cleaned
+
+
 def create_task(
     competency_file: Path,
     background_file: Path,
@@ -436,8 +471,14 @@ def create_task(
             )
             for c in competencies if c.get("name")
         ]
+        # non_infra tasks skip the E2B gate, so the template's boot/build recipe
+        # is never used — skip hydrating it (one DB fetch). The classification
+        # (persona for eval routing + template_id persisted on the row) is still
+        # resolved; only plan.template is left None.
         with trace_stage("classifier"):
-            plan = resolve_plan(runtime_comps) if runtime_comps else None
+            plan = resolve_plan(
+                runtime_comps, hydrate_template=(task_shape != "non_infra"),
+            ) if runtime_comps else None
         match = plan.match if plan else None
         template = plan.template if plan else None
         if match:
@@ -478,37 +519,65 @@ def create_task(
         eval_info = None
         last_failure: Dict = {}
         feedback = ""
+        # Fix D: when a previous attempt failed ONLY on deterministic-metadata
+        # criteria (YoE / criterias — both code-stamped), regenerating cannot
+        # change the inputs the critic gated on. Carry the prior candidate here
+        # and re-score it instead of burning a fresh ~30k-token regeneration.
+        reuse_candidate: Optional[Dict] = None
         for attempt in range(1, max_attempts + 1):
             set_attempt(attempt)
             logger.info(f"Task generation attempt {attempt}/{max_attempts}")
-            try:
-                with trace_stage("task_gen"):
-                    candidate = generate_task_with_code(
-                        openai_client, input_data, feedback=feedback,
+            if reuse_candidate is not None:
+                candidate = reuse_candidate
+                reuse_candidate = None
+                logger.info(
+                    f"Attempt {attempt}: re-scoring the prior candidate without "
+                    f"regenerating — previous blockers were deterministic-metadata "
+                    f"only (YoE/criterias are code-stamped, so a fresh task could "
+                    f"not change them); saves a full task_gen call"
+                )
+            else:
+                try:
+                    with trace_stage("task_gen"):
+                        candidate = generate_task_with_code(
+                            openai_client, input_data, feedback=feedback,
+                        )
+                except LLMOutputTruncated as exc:
+                    # F11: the model hit max_tokens mid-output. Feed back a tight
+                    # corrective message and retry.
+                    logger.warning(
+                        f"Attempt {attempt}: LLM output truncated "
+                        f"(partial length={len(exc.partial_text)}); retrying with "
+                        f"shorter-response feedback"
                     )
-            except LLMOutputTruncated as exc:
-                # F11: the model hit max_tokens mid-output. Feed back a tight
-                # corrective message and retry.
-                logger.warning(
-                    f"Attempt {attempt}: LLM output truncated "
-                    f"(partial length={len(exc.partial_text)}); retrying with "
-                    f"shorter-response feedback"
-                )
-                last_failure = {
-                    "task_eval": {"pass": False, "issues": ["LLM output truncated by max_tokens"]},
-                    "code_eval": {"pass": False, "issues": ["no code generated — response cut off"]},
-                }
-                feedback = (
-                    "PREVIOUS ATTEMPT WAS CUT OFF mid-JSON because the response "
-                    "exceeded the token budget. Produce the SAME corrected task "
-                    "JSON but keep the response shorter: trim verbose comments, "
-                    "condense the README, prefer concise code over exhaustive "
-                    "examples. The output MUST end with a valid closing brace "
-                    "for the top-level JSON object."
-                )
-                continue
+                    last_failure = {
+                        "task_eval": {"pass": False, "issues": ["LLM output truncated by max_tokens"]},
+                        "code_eval": {"pass": False, "issues": ["no code generated — response cut off"]},
+                    }
+                    feedback = (
+                        "PREVIOUS ATTEMPT WAS CUT OFF mid-JSON because the response "
+                        "exceeded the token budget. Produce the SAME corrected task "
+                        "JSON but keep the response shorter: trim verbose comments, "
+                        "condense the README, prefer concise code over exhaustive "
+                        "examples. The output MUST end with a valid closing brace "
+                        "for the top-level JSON object."
+                    )
+                    continue
             candidate.setdefault("code_files", {})
             candidate["criterias"] = criterias
+
+            # Fix C: stamp the deterministic proficiency metadata the
+            # PROFICIENCY FIT critic reads, so the task body always carries a
+            # concrete experience target (the field that was previously blank).
+            # ``criterias`` is the code-stamped declared-competency set; judge at
+            # the highest declared level so a mixed combo isn't under-scoped.
+            _levels = [(c.get("proficiency") or "").upper() for c in criterias]
+            _prof = (
+                "ADVANCED" if "ADVANCED" in _levels
+                else "INTERMEDIATE" if "INTERMEDIATE" in _levels
+                else "BASIC"
+            )
+            candidate["years_of_experience"] = proficiency_profile(_prof)[0]
 
             # Wire the generated run.sh into ``run_script`` so the gate runs the
             # run.sh READINESS probe (exit 0/1) instead of falling back to legacy
@@ -600,6 +669,24 @@ def create_task(
                 f"(task_eval.pass={t_pass}, code_eval.pass={c_pass}); "
                 f"will retry with feedback if budget remains"
             )
+            # Fix D: if the ONLY blockers are deterministic-metadata criteria
+            # (PROFICIENCY FIT / CRITERIA COVERAGE), the inputs the critic gated
+            # on — YoE and criterias — are code-stamped and identical next time,
+            # so a full regeneration (~30k output tokens) cannot change the
+            # verdict; the failure is judge variance. Re-score the SAME
+            # candidate (a cheap ~$0.09 re-eval) instead of re-rolling a fresh
+            # task. Content failures (Criteria 1/3/4/6 or any code-eval blocker)
+            # fall through to the normal regenerate-with-feedback path.
+            if blockers_are_deterministic_only(candidate_eval):
+                logger.warning(
+                    f"Attempt {attempt}: blockers were deterministic-metadata "
+                    f"only "
+                    f"{candidate_eval.get('task_eval', {}).get('blocking_issues')}"
+                    f" — re-scoring same candidate without regenerating"
+                )
+                reuse_candidate = candidate
+                feedback = ""
+                continue
             # Pass the failing candidate JSON so the next attempt patches
             # this concrete output instead of regenerating a fresh task with
             # a different scenario / different bugs.
@@ -608,6 +695,17 @@ def create_task(
 
         if task_data is None or eval_info is None:
             raise EvalGateError(max_attempts, last_failure)
+
+        # Defense-in-depth: strip any leaked "NOT TO INCLUDE …" section the
+        # task-gen LLM rendered into the candidate README (a meta-instruction
+        # some prompt templates list as a section). Done before persistence so
+        # the local copy, GitHub repo, and gist all get the clean README.
+        _readme = (task_data.get("code_files") or {}).get("README.md")
+        if isinstance(_readme, str):
+            _clean = strip_not_to_include(_readme)
+            if _clean != _readme:
+                logger.info("Scrubbed leaked 'NOT TO INCLUDE' section from README")
+                task_data["code_files"]["README.md"] = _clean
 
         # ────────────────────────── persistence (B5) ─────────────────────────
         # New lifecycle: INSERT draft → build GitHub artifacts → UPDATE ready.

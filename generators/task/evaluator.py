@@ -16,11 +16,72 @@ globals here.
 from __future__ import annotations
 
 import json
+import re
 from typing import Dict, Optional
 
 from infra.evals import llm_code_eval, llm_task_eval
 
 from generators.task._clients import openai_client
+
+
+# Proficiency → (years-of-experience phrase, time budget in minutes). The
+# task-eval PROFICIENCY FIT critic (infra/evals.py Criterion 2) needs a
+# CONCRETE experience target to validate task complexity against — a blank YoE
+# makes it fail the criterion. The old code read yoe from
+# ``task_data["background"]["yoe"]``, a key the task-gen path never populates,
+# so yoe was ALWAYS "" → a deterministic PROFICIENCY FIT failure no retry could
+# fix. Derive it here instead, and keep the time budget in the SAME table so
+# the YoE and the minutes the critic sees always agree.
+PROFICIENCY_PROFILE: dict[str, tuple[str, int]] = {
+    "ADVANCED": ("6+ years", 25),
+    "INTERMEDIATE": ("3-5 years", 20),
+    "BASIC": ("1-2 years", 15),
+}
+
+
+def proficiency_profile(proficiency: str) -> tuple[str, int]:
+    """Return ``(yoe_phrase, time_budget_minutes)`` for a proficiency level.
+
+    Falls back to the BASIC profile for unknown / blank levels.
+    """
+    return PROFICIENCY_PROFILE.get(
+        (proficiency or "").upper(), PROFICIENCY_PROFILE["BASIC"]
+    )
+
+
+# Criterion numbers whose inputs the task-gen LLM CANNOT change on a retry,
+# because we stamp them deterministically: Criterion 2 (PROFICIENCY FIT) reads
+# the code-derived YoE + time budget, and Criterion 5 (CRITERIA COVERAGE) reads
+# the code-stamped ``criterias`` (creator.py sets ``candidate["criterias"]``
+# from the declared competencies). When an eval fails ONLY on these, the inputs
+# are identical next time, so a full regeneration is wasted spend.
+_DETERMINISTIC_BLOCKER_RE = re.compile(
+    r"criterion\s*2\b|criterion\s*5\b|proficiency\s*fit|criteria\s*coverage",
+    re.I,
+)
+
+
+def blockers_are_deterministic_only(eval_info: Dict) -> bool:
+    """True when an eval failure is attributable ONLY to deterministic-metadata
+    criteria (PROFICIENCY FIT / CRITERIA COVERAGE) and the code eval passed.
+
+    Those criteria gate on fields the generator does not control — YoE, time
+    budget and ``criterias`` are all code-stamped — so a full regeneration
+    cannot change them; the failure is judge variance. The retry loop uses this
+    to re-score the SAME candidate cheaply instead of re-rolling a fresh task.
+
+    Returns False if there are no blockers, if the code eval failed, or if any
+    task blocker references a content criterion (1/3/4/6) — those ARE fixable
+    by regeneration and must keep their normal retry path.
+    """
+    task_eval = eval_info.get("task_eval", {}) or {}
+    code_eval = eval_info.get("code_eval", {}) or {}
+    if not code_eval.get("pass", False):
+        return False
+    blockers = task_eval.get("blocking_issues") or []
+    if not blockers:
+        return False
+    return all(_DETERMINISTIC_BLOCKER_RE.search(str(b)) for b in blockers)
 
 
 # Reminder appended to retry feedback whenever output was hollow — the
@@ -196,16 +257,21 @@ def run_evaluations(
         criteria["proficiency"].upper()
         for criteria in task_data.get("criterias", [])
     ]
-    yoe = task_data.get("background", {}).get("yoe", "")
-    time_constraint = (
-        25 if "ADVANCED" in prof_levels
-        else 20 if "INTERMEDIATE" in prof_levels
-        else 15
-    )
+    # Judge a mixed-level combo at its ceiling, then derive BOTH the YoE phrase
+    # and the time budget from the same profile so the PROFICIENCY FIT critic
+    # always sees a concrete, self-consistent experience target. (The old
+    # `background.yoe` lookup was always blank — see PROFICIENCY_PROFILE.)
+    if "ADVANCED" in prof_levels:
+        prof = "ADVANCED"
+    elif "INTERMEDIATE" in prof_levels:
+        prof = "INTERMEDIATE"
+    else:
+        prof = "BASIC"
+    yoe, time_constraint = proficiency_profile(prof)
 
     task_eval_result = llm_task_eval(
         task_data,
-        prof_levels[-1] if prof_levels else "BASIC",
+        prof,
         yoe,
         time_constraint,
         openai_client,

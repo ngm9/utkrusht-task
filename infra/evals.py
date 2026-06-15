@@ -360,7 +360,7 @@ You are an expert technical assessment reviewer. Evaluate the task JSON below ag
 2. PROFICIENCY FIT — Complexity matches {proficiency} level (years of experience: {yoe}, time constraint: {time_constraint} minutes).
 3. SCOPE COHERENCE — The task description, outcomes, and acceptance criteria reference the same surface area (no orphaned requirements).
 4. CANDIDATE-FACING CLARITY — The question text alone (without reading code) tells the candidate what they must produce.
-5. CRITERIA COVERAGE — The criterias array references the competencies declared in the input.
+5. CRITERIA COVERAGE — Every competency DECLARED IN THE INPUT is referenced by the criterias array. This is a ONE-DIRECTIONAL check: confirm each declared competency is present. Do NOT fail because the task ADDITIONALLY exercises an adjacent technology that is not itself a declared competency — a React+Node task may legitimately use PostgreSQL, Redis, HTTP, or Docker, and a backend task may touch SQL, without those being separate declared competencies. The criterias array is fixed to the declared competency set, so demanding extra entries it cannot contain is goalpost drift. PASS as long as each declared competency appears; treat any "the task also needs competency X" observation as a SUGGESTION, not a blocker.
 6. DOMAIN ALIGNMENT — The task's business domain matches AT LEAST ONE of the
    real-world scenarios provided as INPUT below. If the input scenarios are
    about e-commerce / healthcare / real-estate / logistics, the generated
@@ -553,7 +553,7 @@ You are an expert technical assessment reviewer. Evaluate the task JSON provided
 2. PROFICIENCY FIT — Complexity matches the target proficiency level (years of experience and time constraint are stated in the evaluation request).
 3. SCOPE COHERENCE — The task description, outcomes, and acceptance criteria reference the same surface area (no orphaned requirements).
 4. CANDIDATE-FACING CLARITY — The question text alone (without reading code) tells the candidate what they must produce.
-5. CRITERIA COVERAGE — The criterias array references the competencies declared in the input.
+5. CRITERIA COVERAGE — Every competency DECLARED IN THE INPUT is referenced by the criterias array. This is a ONE-DIRECTIONAL check: confirm each declared competency is present. Do NOT fail because the task ADDITIONALLY exercises an adjacent technology that is not itself a declared competency — a React+Node task may legitimately use PostgreSQL, Redis, HTTP, or Docker, and a backend task may touch SQL, without those being separate declared competencies. The criterias array is fixed to the declared competency set, so demanding extra entries it cannot contain is goalpost drift. PASS as long as each declared competency appears; treat any "the task also needs competency X" observation as a SUGGESTION, not a blocker.
 6. DOMAIN ALIGNMENT — The task's business domain matches AT LEAST ONE of the real-world scenarios provided in the evaluation request. If the input scenarios are about e-commerce / healthcare / real-estate / logistics, the generated task MUST be in one of those domains. If the task invents a new domain not present in the scenarios (e.g. "assessment platform", "leaderboards", "proof-of-skills marketplace") when those weren't in the scenarios list, that is FAIL the criterion — the task drifted into the employer's domain instead of using the provided scenarios.
 
    PASS if the task's domain (inferred from model names, route paths, business context, README) matches one of the scenarios' domains.
@@ -597,7 +597,8 @@ Criterion 4 (CANDIDATE-FACING CLARITY):
   SUGGESTION: "Question could spell out the exact JSON shape returned by /api/orders."
 
 Criterion 5 (CRITERIA COVERAGE):
-  BLOCKER: "Input declares competencies [PostgreSQL, Python] but criterias only mentions 'Python — refactor a function' — the PostgreSQL competency is unreferenced."
+  BLOCKER: "Input declares competencies [PostgreSQL, Python] but criterias only mentions 'Python — refactor a function' — the declared PostgreSQL competency is unreferenced."
+  NOT A BLOCKER: "criterias is [ReactJs, NodeJs] and the task uses PostgreSQL for a version-guarded UPDATE — PostgreSQL is exercised but was NOT a declared competency, so its absence from criterias is correct (it falls under the NodeJs backend competency). Do NOT flag this; the criterias array cannot list competencies that were never declared."
   SUGGESTION: "Could split the PostgreSQL criterion into 'schema design' and 'query optimisation' for finer-grained scoring."
 
 When in doubt between BLOCKER and SUGGESTION: the task ships if a senior reviewer would say "I understand what the candidate is being asked to do, and that work is realistic for this competency at this level." Anything beyond that bar belongs in suggestions, not blocking_issues. Do not gate on polish — gate on whether the task is interpretable, scoped, and on-target.

@@ -66,6 +66,9 @@ class ClassifyTaskShapeSignature(dspy.Signature):
                         service. Pattern examples: "PostgreSQL query
                         optimization", "Kafka consumer hardening", "Redis
                         cache invalidation", "Mongo aggregation pipeline".
+                        AGENT example: an agent / RAG task that needs a
+                        self-hosted vector DB (pgvector, Qdrant, Weaviate,
+                        Milvus) or a tool / MCP server it must boot and call.
 
       • ``"non_infra"`` The task is pure-runtime / language-level / in-process
                         / algorithmic / UI / frontend work that runs locally
@@ -74,6 +77,10 @@ class ClassifyTaskShapeSignature(dspy.Signature):
                         conversion", "TypeScript type design", "Java
                         concurrency primitives", "Node.js stream backpressure",
                         "algorithm + data structure".
+                        AGENT example: an in-process AI agent — tool dispatch,
+                        multi-agent orchestration, context assembly, or a
+                        prompt / eval harness — that calls an LLM over an API key.
+                        The LLM is an external API, NOT a container to boot.
 
     Decision rules (in priority order):
 
@@ -82,12 +89,18 @@ class ClassifyTaskShapeSignature(dspy.Signature):
          compose file, an ``init_*.sql``, a connection URI, or names a
          datastore as the system under test) → ``infra``.
 
-      2. If the competency_scope is centred on browser/UI/component/hook/state
+      2. An LLM or model reached over an API key is NOT infra — there is
+         nothing for run.sh to boot. An AGENT task (tool use, multi-agent
+         orchestration, context engineering, agent eval) is ``infra`` ONLY if it
+         ALSO needs a self-hosted datastore / vector-DB / tool-or-MCP server /
+         broker as the system under test; otherwise it is ``non_infra``.
+
+      3. If the competency_scope is centred on browser/UI/component/hook/state
          patterns, framework-internal APIs (React, Next.js, Vue, Svelte),
          pure language features (Java concurrency, Python typing, Node
          streams) or in-process algorithms → ``non_infra``.
 
-      3. When in doubt — the scenario is observable via in-process tests,
+      4. When in doubt — the scenario is observable via in-process tests,
          has no docker-compose or service hostname, and the scope is
          language-/framework-centric — choose ``non_infra``. The downstream
          non-infra path is the safer default: an incorrectly-classified

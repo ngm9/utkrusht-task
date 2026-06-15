@@ -225,11 +225,20 @@ def _locate_input_files(names: list[str], level: str, since: float) -> tuple[Pat
                 statted.append((p, mt))
         if not statted:
             return None
-        fresh = [(p, mt) for p, mt in statted if mt >= since - 1]
-        pool = fresh or [
-            (p, mt) for p, mt in statted
-            if slug in str(p).lower() and level_l in str(p).lower()
-        ]
+        # Match the combo's EXACT directory as a path SEGMENT (not a substring):
+        # slug 'nodejs' must match the dir literally named 'input_nodejs', NOT
+        # 'input_reactjs_nodejs' (which merely contains 'nodejs'). Level is also
+        # matched as a segment. Applied to BOTH branches so a freshly-written
+        # file from a *different* combo can't win the mtime tiebreak either.
+        want_dir = f"input_{slug}"
+
+        def _in_combo_dir(p: Path) -> bool:
+            segs = [seg.lower() for seg in p.parts]
+            return want_dir in segs and level_l in segs
+
+        combo = [(p, mt) for p, mt in statted if _in_combo_dir(p)]
+        fresh = [(p, mt) for p, mt in combo if mt >= since - 1]
+        pool = fresh or combo
         if not pool:
             return None
         return max(pool, key=lambda item: item[1])[0]
@@ -247,6 +256,40 @@ def _locate_input_files(names: list[str], level: str, since: float) -> tuple[Pat
             f"after generate_input_files. Check the stage 1 log."
         )
     return comp, bg
+
+
+_RESOLVED_INPUTS_MARKER = "__INPUT_FILES_RESOLVED__"
+
+
+def _parse_resolved_inputs(stdout_path: Path) -> tuple[Path, Path] | None:
+    """Read the EXACT competency+background paths stage 1 reported, if present.
+
+    Stage 1 (``generators.input_files``) emits a
+    ``__INPUT_FILES_RESOLVED__ {json}`` line carrying the absolute paths it
+    targeted. Consuming that is exact and robust — unlike re-globbing
+    ``input_files/`` by slug, which mis-resolved a 'NodeJs' selection to the
+    'reactjs_nodejs' combo dir (substring collision + mtime tiebreak when stage 1
+    skipped writing pre-existing files).
+
+    Returns ``(competency, background)`` when the marker is present and both
+    paths exist on disk; otherwise ``None`` so the caller falls back to the
+    legacy locate-by-glob (older ``input_files`` builds without the marker).
+    """
+    try:
+        text = stdout_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    for line in reversed(text.splitlines()):  # last marker wins
+        if not line.startswith(_RESOLVED_INPUTS_MARKER):
+            continue
+        try:
+            payload = json.loads(line[len(_RESOLVED_INPUTS_MARKER):].strip())
+            comp = Path(payload["competency"])
+            bg = Path(payload["background"])
+        except (ValueError, KeyError, TypeError):
+            return None
+        return (comp, bg) if comp.is_file() and bg.is_file() else None
+    return None
 
 
 def _summarise_task_stage(stdout_path: Path) -> str:
@@ -382,14 +425,26 @@ def main() -> int:
         _write_summary(combo_dir, names, level, stages, "ABORTED_AT_INPUT_FILES")
         return 1
 
-    try:
-        comp_json, bg_json = _locate_input_files(names, level, t0)
-    except FileNotFoundError as e:
-        print(f"\n  {e}")
-        _write_summary(combo_dir, names, level, stages, "ABORTED_LOCATING_INPUTS")
-        return 1
-    print(f"    competency: {comp_json.relative_to(REPO_ROOT)}")
-    print(f"    background: {bg_json.relative_to(REPO_ROOT)}")
+    # Prefer the EXACT paths stage 1 reported (robust handoff); only fall back
+    # to the legacy locate-by-glob when the marker is absent (older builds).
+    resolved = _parse_resolved_inputs(combo_dir / "01_input_files.stdout")
+    if resolved is not None:
+        comp_json, bg_json = resolved
+    else:
+        try:
+            comp_json, bg_json = _locate_input_files(names, level, t0)
+        except FileNotFoundError as e:
+            print(f"\n  {e}")
+            _write_summary(combo_dir, names, level, stages, "ABORTED_LOCATING_INPUTS")
+            return 1
+
+    def _rel(p: Path) -> Path:
+        try:
+            return p.relative_to(REPO_ROOT)
+        except ValueError:
+            return p
+    print(f"    competency: {_rel(comp_json)}")
+    print(f"    background: {_rel(bg_json)}")
 
     # --- Stage 2: scenarios -----------------------------------------------
     # `--env` MUST be threaded here too: generators.scenarios defaults to dev,

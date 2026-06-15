@@ -555,6 +555,22 @@ def generate_input_files(competency_name, proficiency, role, domain, folder_name
     click.echo(f"  Competency file: {comp_filename}")
     click.echo(f"  Background file: {bg_filename}")
 
+    # Machine-readable handoff for the pipeline orchestrator
+    # (run_pipeline._parse_resolved_inputs): the EXACT absolute paths this
+    # stage targeted. The orchestrator consumes this instead of re-globbing
+    # input_files/ and guessing by slug-substring + mtime — that guesswork
+    # mis-resolved a 'NodeJs' selection to the 'reactjs_nodejs' combo dir
+    # ('nodejs' is a substring of 'reactjs_nodejs'). Printed unconditionally —
+    # including when the files already exist / were skipped — so the handoff is
+    # always available regardless of whether anything was written this run.
+    click.echo(
+        "__INPUT_FILES_RESOLVED__ "
+        + json.dumps({
+            "competency": str(comp_path.resolve()),
+            "background": str(bg_path.resolve()),
+        })
+    )
+
     if dry_run:
         click.echo("\n--- DRY RUN (no files written) ---")
         click.echo(f"\nCompetency JSON preview:")

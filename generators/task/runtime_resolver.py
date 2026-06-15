@@ -272,8 +272,19 @@ def resolve_plan(
     competencies: Iterable[Competency],
     *,
     supabase=None,
+    hydrate_template: bool = True,
 ) -> ResolvedPlan:
     """Resolve a competency combo into a plan.
+
+    ``hydrate_template`` (default True) controls whether the matched template's
+    full spec (build/test/boot recipe) is fetched. The recipe is ONLY consumed
+    by the E2B build/test gate, which is skipped for ``task_shape == non_infra``
+    tasks — so non_infra callers pass ``hydrate_template=False`` to skip that DB
+    fetch. The classification (``match`` → persona + template_id, both still
+    persisted/used) is unaffected; ``plan.template`` is simply None. With
+    ``template=None`` the cache freshness check (`_is_match_fresh`) degrades to a
+    model-only check, which is correct when the template's build-version doesn't
+    matter (we never boot it).
 
     Lookup order:
       1. ``task_template_match`` cache hit for combo_key (+ freshness check).
@@ -316,7 +327,7 @@ def resolve_plan(
 
         if cached is not None:
             template = (_get_template(client, cached.template_id)
-                        if cached.template_id else None)
+                        if (hydrate_template and cached.template_id) else None)
             if _is_match_fresh(cached_model, cached_version, template):
                 logger.info(
                     f"resolve_plan: combo={combo_key!r} cache HIT "
@@ -372,7 +383,7 @@ def resolve_plan(
     # Hydrate the template spec for the matched id (if any).
     template = None
     registry_version = 1
-    if match.template_id is not None and client is not None:
+    if hydrate_template and match.template_id is not None and client is not None:
         try:
             template = _get_template(client, match.template_id)
             if template is not None:

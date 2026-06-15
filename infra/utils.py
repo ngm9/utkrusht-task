@@ -539,11 +539,16 @@ def get_task_prompt_by_technology_stack(competency_stack, input_data):
     }
     return [t.format(**fmt_args) for t in templates]
 
-def generate_task_with_code(openai_client, input_data: Dict, feedback: str = "") -> Dict:
+def generate_task_with_code(
+    openai_client, input_data: Dict, feedback: str = "",
+    model: str = "claude-opus-4-8",
+) -> Dict:
     """Generate task and code files using language_prompts with Responses API and reasoning.
 
     Args:
-        openai_client: OpenAI client
+        openai_client: OpenAI client. NOTE: the ``model`` must be routable by
+            this client's Portkey provider — pass the anthropic-provider client
+            for ``claude-*`` models and the openai-provider client for ``gpt-*``.
         input_data: Dictionary containing:
             - competencies: List of competency data
             - background: Background data
@@ -552,11 +557,12 @@ def generate_task_with_code(openai_client, input_data: Dict, feedback: str = "")
             back hollow, the caller passes the failure reason here. It is appended
             as a follow-up turn so the LLM CORRECTS its own prior output (it keeps
             full conversation context) instead of regenerating from scratch.
+        model: LLM to generate with. Defaults to ``claude-opus-4-8`` (the
+            production task-gen model); overridable for A/B model comparisons.
     Returns:
         Dict: Generated task data with code files
     """
     try:
-        model = "claude-opus-4-8"  # Latest Claude Opus
         competencies = input_data["competencies"]
 
         # Get competency names and create a single technology stack string
@@ -598,6 +604,12 @@ def generate_task_with_code(openai_client, input_data: Dict, feedback: str = "")
         # max_tokens raised 16k -> 32k (F11). At 16k an INTERMEDIATE task with a
         # multi-file repo + full README could be truncated mid-JSON, causing the
         # downstream parser to fail silently. 32k gives the model room to finish.
+        # OpenAI's gpt-5.x rejects `max_tokens` and requires
+        # `max_completion_tokens`; Anthropic (claude-*) uses `max_tokens`.
+        _token_kwargs = (
+            {"max_completion_tokens": 32000} if model.startswith("gpt-")
+            else {"max_tokens": 32000}
+        )
         response = None
         response_text = None
         for i, prompt in enumerate(task_generation_prompts, 1):
@@ -605,7 +617,7 @@ def generate_task_with_code(openai_client, input_data: Dict, feedback: str = "")
             response = openai_client.chat.completions.create(
                 model=model,
                 messages=messages,
-                max_tokens=32000,
+                **_token_kwargs,
             )
             response_text = response.choices[0].message.content if response.choices else None
             if not response_text:
@@ -653,7 +665,7 @@ def generate_task_with_code(openai_client, input_data: Dict, feedback: str = "")
             response = openai_client.chat.completions.create(
                 model=model,
                 messages=messages,
-                max_tokens=32000,
+                **_token_kwargs,
             )
             response_text = response.choices[0].message.content if response.choices else None
             if not response_text:
