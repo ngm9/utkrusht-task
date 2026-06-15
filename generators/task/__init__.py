@@ -19,8 +19,10 @@ from generators.task.creator import (
     generate_answer_code_and_steps,
 )
 from generators.task.evaluator import (
+    blockers_are_deterministic_only,
     build_retry_feedback,
     is_task_hollow,
+    proficiency_profile,
     run_evaluations,
 )
 from generators.task.gate import GateOutcome, run_gate_for_attempt
@@ -48,8 +50,10 @@ __all__ = [
     "make_combo_key",
     "resolve_plan",
     # evaluator
+    "blockers_are_deterministic_only",
     "build_retry_feedback",
     "is_task_hollow",
+    "proficiency_profile",
     "run_evaluations",
     # gate
     "GateOutcome",

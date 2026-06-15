@@ -50,7 +50,7 @@ load_dotenv()
 # - COMPILATION (BootstrapFewShot/MIPROv2 search loop): use a cheaper model.
 #   Compilation runs many calls in a tight loop, so Haiku 4.5 saves ~5-10x cost
 #   while still being competent enough to score candidate prompts.
-DEFAULT_RUNTIME_MODEL = os.getenv("PROMPT_GENERATOR_MODEL", "openai/gpt-5.4")
+DEFAULT_RUNTIME_MODEL = os.getenv("PROMPT_GENERATOR_MODEL", "openai/gpt-5.5")
 DEFAULT_COMPILE_MODEL = os.getenv("PROMPT_GENERATOR_COMPILE_MODEL", "anthropic/claude-haiku-4-5")
 
 
@@ -113,6 +113,13 @@ def configure_dspy(model: Optional[str] = None, mode: str = "runtime") -> None:
 
     dspy.settings.configure(lm=lm)
 
+    # Capture the DSPy/litellm completions into the pipeline trace sink (no-op
+    # unless PIPELINE_TRACING_ENABLED). DSPy bypasses the OpenAI-SDK trace_client
+    # wrapper, so this litellm callback is how the prompt stage gets traced.
+    from infra.tracing import register_litellm_tracing
+
+    register_litellm_tracing()
+
 
 # ----------------------------------------------------------------------
 # DSPy signatures
@@ -157,7 +164,8 @@ class GeneratePromptSignature(dspy.Signature):
           ### Helpful Tips
           ### Objectives
           ### How to Verify
-          ### NOT TO INCLUDE in README
+          <exclusion directive — an INSTRUCTION about what to omit, NOT a
+           README output section; see HARD CONSTRAINT #2>
       ## REQUIRED OUTPUT JSON STRUCTURE
       ## CRITICAL REMINDERS                  (or "## CRITICAL NOTES")
 
@@ -200,14 +208,22 @@ class GeneratePromptSignature(dspy.Signature):
     ─────────────────────────────────────────────────────────────────────────
     HARD CONSTRAINT #2 — README section names
     ─────────────────────────────────────────────────────────────────────────
-    Inside `## README.md INSTRUCTIONS`, the README section list MUST use
-    these EXACT names, in this order:
+    Inside `## README.md INSTRUCTIONS`, the candidate-facing README has EXACTLY
+    these output sections, in this order — and NO others:
 
       1. Task Overview
       2. Helpful Tips
       3. Objectives
       4. How to Verify
-      5. NOT TO INCLUDE in README
+
+    CRITICAL — "NOT TO INCLUDE" is an INSTRUCTION, NOT a section. The exclusion
+    guidance below is a directive to the task-gen LLM about what to OMIT from the
+    README. The generated prompt MUST NOT list "NOT TO INCLUDE in README" (or any
+    "NOT TO INCLUDE"/"do not include" heading) as a README output section, and
+    the produced README.md MUST NOT contain a heading named "NOT TO INCLUDE …".
+    Render the exclusion guidance as a clearly-labelled directive block (e.g.
+    "## CONTENT TO EXCLUDE FROM THE README (instruction — do not emit as a
+    section)"), kept OUT of the numbered output-section list above.
 
     Do NOT rename "Helpful Tips" to "Guidance", "Tips", "Hints", or
     "Recommendations". Do NOT add `Database Schema Overview`, `Database
@@ -255,7 +271,9 @@ class GeneratePromptSignature(dspy.Signature):
             specific API, library, function, pattern, data structure, or
             algorithm that solves the task.
 
-      • A "NOT TO INCLUDE in README" section in the generated prompt
+      • A CONTENT-TO-EXCLUDE directive in the generated prompt (a clearly-
+        labelled instruction about what to keep OUT of the README — NOT a
+        README output section, and never emitted as a README heading)
         listing at minimum:
           – Setup commands (e.g. `npm install`, `pip install`,
             `docker compose up`, `mvn test`, etc.)
@@ -408,8 +426,9 @@ class GeneratePromptSignature(dspy.Signature):
 
       - "You MUST draw inspiration from ONE of the real-world scenarios
         provided above to create the task"
-      - "Select a different real-world scenario each time to ensure variety
-        in task generation"
+      - "Use the provided real-world scenario as the basis for this task -
+        do not invent a different domain. When multiple scenarios are listed,
+        pick the one whose technical surface area best fits the candidate level"
       - "The task scenario should closely align with the business context,
         technical requirements, and domain described in the selected real-world
         scenario"
@@ -544,6 +563,14 @@ class VerifyPromptSignature(dspy.Signature):
            c. The README uses a drift name like "Guidance", "Tips" (without
               "Helpful"), "Hints", or "Recommendations" instead of the
               canonical `Helpful Tips`.
+           c2. The README's output-section list includes "NOT TO INCLUDE in
+              README" (or any "NOT TO INCLUDE"/"do not include" heading) as a
+              candidate-facing section. That guidance is an INSTRUCTION about
+              what to omit — it must be a clearly-labelled directive block, NOT
+              a numbered README output section. Listing it as a section makes the
+              task-gen LLM render a literal "## NOT TO INCLUDE" heading into the
+              candidate README. The README output sections are EXACTLY: Task
+              Overview, Helpful Tips, Objectives, How to Verify.
            d. The `## REQUIRED OUTPUT JSON STRUCTURE` block uses placeholder
               arrays/objects like `"outcomes": ["outcome 1", "outcome 2"]` or
               `"definitions": {{"term_1": "definition"}}` instead of the
@@ -700,7 +727,7 @@ class PromptGeneratorAgent(dspy.Module):
         # Built FIRST because the shape classifier (STEP 3) needs the scenarios
         # + role_context + sub-skill checklist to make an informed call.
         logger.info("STEP 1 / input_files.py — building detailed_skill_signal")
-        skill_signal, skill_meta = build_detailed_skill_signal(competencies, proficiency)
+        skill_signal, skill_meta = build_detailed_skill_signal(competencies, proficiency, env=env)
         logger.info("  → background_found  = %s", skill_meta.get("background_found"))
         logger.info("  → questions_prompt  = %d chars", skill_meta.get("questions_chars", 0))
         logger.info("  → role_context      = %d chars", skill_meta.get("role_context_chars", 0))

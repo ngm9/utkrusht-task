@@ -477,13 +477,16 @@ def _format_scenarios_with_existing_titles(
         "\n\n## EXISTING TASKS FOR THIS COMPETENCY — DO NOT DUPLICATE\n"
         "Tasks ALREADY SHIPPED in this competency/proficiency:\n"
         f"{bullets}\n\n"
-        "HARD RULE: pick a scenario whose BUSINESS DOMAIN and BUG ARCHETYPE\n"
-        "are clearly different from every task above. If two candidates of\n"
-        "this competency received tasks back-to-back, they must not look\n"
-        "like minor rewordings of the same scenario.\n"
-        "If every remaining scenario is too close to an existing task,\n"
-        "explicitly say so and pick the LEAST similar one — do not silently\n"
-        "regenerate a near-duplicate."
+        "HARD RULE: KEEP the BUSINESS DOMAIN aligned with the scenario\n"
+        "provided above (the task MUST live in the same business domain as\n"
+        "the input scenario — Criterion 6 enforces this). Vary the BUG\n"
+        "ARCHETYPE / technical surface area / specific failure mode instead\n"
+        "so the candidate is doing genuinely different work, not just a\n"
+        "domain reskin of an existing task.\n"
+        "If every remaining bug archetype within this domain is too close\n"
+        "to an existing task, explicitly say so and pick the LEAST similar\n"
+        "one — do not silently regenerate a near-duplicate, and do NOT\n"
+        "switch business domains to escape the de-dup constraint."
     )
     return base + addendum
 
@@ -505,10 +508,28 @@ def get_task_prompt_by_technology_stack(competency_stack, input_data):
             f"Add PROMPT_REGISTRY to the prompt file."
         )
 
+    # Candidate time budget for the {minutes_range} placeholder — scaled by
+    # proficiency so INTERMEDIATE/ADVANCED tasks get a larger window than BASIC.
+    # An explicit input_data["minutes_range"] still overrides.
+    _minutes_by_proficiency = {
+        "BASIC": "15-20",
+        "INTERMEDIATE": "20-25",
+        "ADVANCED": "25-30",
+    }
+    _proficiency = competencies[0].get("proficiency", "").upper() if competencies else ""
+    _minutes_default = _minutes_by_proficiency.get(_proficiency, "15-20")
+
     fmt_args = {
         "organization_background": input_data["background"]["organization"]["organization_background"],
         "role_context": input_data["background"]["role_context"],
-        "minutes_range": input_data.get("minutes_range", "15-20"),
+        # Source of truth = the (user-editable) minutes_range in the background
+        # input file; top-level override wins; proficiency default is the
+        # fallback for older input files that predate the field.
+        "minutes_range": (
+            input_data.get("minutes_range")
+            or input_data.get("background", {}).get("minutes_range")
+            or _minutes_default
+        ),
         "competencies": input_data.get("competencies"),
         "real_world_task_scenarios": _format_scenarios_with_existing_titles(
             input_data.get("scenarios", ""),
@@ -518,11 +539,16 @@ def get_task_prompt_by_technology_stack(competency_stack, input_data):
     }
     return [t.format(**fmt_args) for t in templates]
 
-def generate_task_with_code(openai_client, input_data: Dict, feedback: str = "") -> Dict:
+def generate_task_with_code(
+    openai_client, input_data: Dict, feedback: str = "",
+    model: str = "claude-opus-4-8",
+) -> Dict:
     """Generate task and code files using language_prompts with Responses API and reasoning.
 
     Args:
-        openai_client: OpenAI client
+        openai_client: OpenAI client. NOTE: the ``model`` must be routable by
+            this client's Portkey provider — pass the anthropic-provider client
+            for ``claude-*`` models and the openai-provider client for ``gpt-*``.
         input_data: Dictionary containing:
             - competencies: List of competency data
             - background: Background data
@@ -531,11 +557,12 @@ def generate_task_with_code(openai_client, input_data: Dict, feedback: str = "")
             back hollow, the caller passes the failure reason here. It is appended
             as a follow-up turn so the LLM CORRECTS its own prior output (it keeps
             full conversation context) instead of regenerating from scratch.
+        model: LLM to generate with. Defaults to ``claude-opus-4-8`` (the
+            production task-gen model); overridable for A/B model comparisons.
     Returns:
         Dict: Generated task data with code files
     """
     try:
-        model = "claude-sonnet-4-6"  # Specified model version
         competencies = input_data["competencies"]
 
         # Get competency names and create a single technology stack string
@@ -557,14 +584,16 @@ def generate_task_with_code(openai_client, input_data: Dict, feedback: str = "")
             logger.error(f"No task generation prompts found for technology stack: {competency_stack}")
             raise ValueError(f"Unsupported technology stack: {competency_stack}. Please add prompts for this stack in get_task_prompt_by_technology_stack.")
 
-        # Pricing per million tokens — source: https://platform.claude.com/docs/en/docs/about-claude/models
-        # Claude Opus 4.6: $5/M input, $25/M output
-        # Claude Sonnet 4.6: $3/M input, $15/M output
-        # Claude Haiku 4.5: $1/M input, $5/M output
+        # Pricing per million tokens
         PRICING = {
+            "claude-opus-4-8": {"input": 5.0, "output": 25.0},
             "claude-opus-4-6": {"input": 5.0, "output": 25.0},
             "claude-sonnet-4-6": {"input": 3.0, "output": 15.0},
             "claude-haiku-4-5-20251001": {"input": 1.0, "output": 5.0},
+            "gpt-5.5": {"input": 5.0, "output": 30.0},
+            "gpt-5.4": {"input": 2.5, "output": 15.0},
+            "gpt-5.4-mini": {"input": 0.75, "output": 4.5},
+            "gpt-5.4-nano": {"input": 0.3, "output": 1.5},
             "gpt-5.1-2025-11-13": {"input": 2.0, "output": 8.0},
         }
         model_pricing = PRICING.get(model, {"input": 15.0, "output": 75.0})
@@ -575,6 +604,12 @@ def generate_task_with_code(openai_client, input_data: Dict, feedback: str = "")
         # max_tokens raised 16k -> 32k (F11). At 16k an INTERMEDIATE task with a
         # multi-file repo + full README could be truncated mid-JSON, causing the
         # downstream parser to fail silently. 32k gives the model room to finish.
+        # OpenAI's gpt-5.x rejects `max_tokens` and requires
+        # `max_completion_tokens`; Anthropic (claude-*) uses `max_tokens`.
+        _token_kwargs = (
+            {"max_completion_tokens": 32000} if model.startswith("gpt-")
+            else {"max_tokens": 32000}
+        )
         response = None
         response_text = None
         for i, prompt in enumerate(task_generation_prompts, 1):
@@ -582,7 +617,7 @@ def generate_task_with_code(openai_client, input_data: Dict, feedback: str = "")
             response = openai_client.chat.completions.create(
                 model=model,
                 messages=messages,
-                max_tokens=32000,
+                **_token_kwargs,
             )
             response_text = response.choices[0].message.content if response.choices else None
             if not response_text:
@@ -609,6 +644,9 @@ def generate_task_with_code(openai_client, input_data: Dict, feedback: str = "")
             prompt_output = usage.completion_tokens if usage else 0
             total_input_tokens += prompt_input
             total_output_tokens += prompt_output
+            cached_read = getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", 0) if usage else 0
+            if cached_read:
+                logger.info(f" Cache: {cached_read:,} tokens served from cache (prompt {i})")
 
             logger.info("=" * 70)
             logger.info(f" Prompt {i}/{len(task_generation_prompts)} Response: ")
@@ -627,7 +665,7 @@ def generate_task_with_code(openai_client, input_data: Dict, feedback: str = "")
             response = openai_client.chat.completions.create(
                 model=model,
                 messages=messages,
-                max_tokens=32000,
+                **_token_kwargs,
             )
             response_text = response.choices[0].message.content if response.choices else None
             if not response_text:

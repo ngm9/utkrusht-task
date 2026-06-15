@@ -97,3 +97,58 @@ def test_plan_none_passes_none_plan_to_gate():
     assert outcome == GateOutcome.SKIPPED
     # plan arg to run_sandbox_eval is None when the caller's plan is None
     assert mock.call_args.args[1] is None
+
+
+# ---------------------------------------------------------------------------
+# infra_error retry — a transient sandbox death (StreamReset) must not
+# silently skip the deployability check; retry it a bounded number of times.
+# ---------------------------------------------------------------------------
+
+
+def test_infra_error_is_retried_then_uses_real_verdict(monkeypatch):
+    """A transient infra_error (e.g. sandbox StreamReset mid-run) is retried;
+    once a real verdict comes back the gate uses it instead of skipping."""
+    monkeypatch.setattr("generators.task.gate._INFRA_RETRY_BACKOFF_S", 0.0)
+    flake = SandboxEvalResult(skipped=True, verdict="infra_error", detail="StreamReset")
+    good = SandboxEvalResult(passed=True, skipped=False, verdict="ready", detail="run.sh exit 0")
+    candidate_eval: dict = {}
+    with patch("generators.task.gate.sandbox_eval_enabled", return_value=True), \
+         patch("generators.task.gate.run_sandbox_eval",
+               side_effect=[flake, flake, good]) as mock:
+        outcome, fb = run_gate_for_attempt(
+            _plan(), {"code_files": {"a.py": "x"}}, candidate_eval, attempt=1,
+        )
+    assert outcome == GateOutcome.PASS
+    assert mock.call_count == 3          # 2 flakes + 1 real verdict
+    assert candidate_eval["sandbox_eval"]["verdict"] == "ready"
+
+
+def test_infra_error_persisting_is_skipped_after_bounded_retries(monkeypatch):
+    """If every attempt flakes, the gate gives up as a SKIP (never blocks) —
+    but only after the bounded number of retries, not on the first flake."""
+    monkeypatch.setattr("generators.task.gate._INFRA_RETRY_BACKOFF_S", 0.0)
+    monkeypatch.setattr("generators.task.gate._INFRA_GATE_RETRIES", 2)
+    flake = SandboxEvalResult(skipped=True, verdict="infra_error", detail="StreamReset")
+    candidate_eval: dict = {}
+    with patch("generators.task.gate.sandbox_eval_enabled", return_value=True), \
+         patch("generators.task.gate.run_sandbox_eval", return_value=flake) as mock:
+        outcome, fb = run_gate_for_attempt(
+            _plan(), {"code_files": {"a.py": "x"}}, candidate_eval, attempt=1,
+        )
+    assert outcome == GateOutcome.SKIPPED
+    assert mock.call_count == 3          # 1 initial + 2 retries
+    assert candidate_eval["sandbox_eval"]["verdict"] == "infra_error"
+
+
+def test_deterministic_skip_is_not_retried(monkeypatch):
+    """A deterministic skip (no_template) must NOT be retried — retrying can't
+    change it and would waste sandbox minutes."""
+    monkeypatch.setattr("generators.task.gate._INFRA_RETRY_BACKOFF_S", 0.0)
+    skip = SandboxEvalResult(skipped=True, verdict="no_template", detail="no template")
+    with patch("generators.task.gate.sandbox_eval_enabled", return_value=True), \
+         patch("generators.task.gate.run_sandbox_eval", return_value=skip) as mock:
+        outcome, _ = run_gate_for_attempt(
+            _plan(), {"code_files": {"a.py": "x"}}, {}, attempt=1,
+        )
+    assert outcome == GateOutcome.SKIPPED
+    assert mock.call_count == 1

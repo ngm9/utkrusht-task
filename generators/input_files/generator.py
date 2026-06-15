@@ -32,12 +32,14 @@ from dotenv import load_dotenv
 from supabase import Client, create_client
 from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
 
+from infra.tracing.client import trace_client
+
 # Load environment variables
 load_dotenv()
 
 # Constants
 BASE_DIR = Path(__file__).parent.parent.parent / "data" / "generated" / "input_files"
-MODEL = "gpt-5.4"
+MODEL = "gpt-5.5"
 
 PROFICIENCY_YOE_MAP = {
     "BEGINNER": "0+",
@@ -61,6 +63,17 @@ HARDCODED_ORGANIZATION = {
 }
 
 COMPETENCY_FIELDS = "competency_id, created_at, proficiency, organization_id, name, scope, long_scope"
+
+# Default candidate time budget (the {minutes_range} prompt placeholder), per
+# proficiency. Written into the background input file so a user can EDIT it to
+# influence the generated task's time scope. The task generator reads it back in
+# infra/utils.get_task_prompt_by_technology_stack — keep these values in sync
+# with the fallback map there.
+_MINUTES_RANGE_BY_PROFICIENCY = {
+    "BASIC": "15-20",
+    "INTERMEDIATE": "20-25",
+    "ADVANCED": "25-30",
+}
 
 # Pricing per million tokens for gpt-5-nano (https://platform.openai.com/docs/pricing)
 PRICE_PER_M_INPUT = 0.50    # $0.50 per 1M input tokens
@@ -93,13 +106,16 @@ def init_openai_client() -> openai.OpenAI:
     if not api_key:
         raise click.ClickException("Missing OPENAI_API_KEY in .env file.")
 
-    return openai.OpenAI(
-        api_key=api_key,
-        base_url=PORTKEY_GATEWAY_URL,
-        default_headers=createHeaders(
-            provider="openai",
-            api_key=portkey_key,
+    return trace_client(
+        openai.OpenAI(
+            api_key=api_key,
+            base_url=PORTKEY_GATEWAY_URL,
+            default_headers=createHeaders(
+                provider="openai",
+                api_key=portkey_key,
+            ),
         ),
+        provider="openai",
     )
 
 
@@ -515,6 +531,10 @@ def generate_input_files(competency_name, proficiency, role, domain, folder_name
         "role_context": role_context,
         "questions_prompt": questions_prompt,
         "yoe": yoe,
+        # Candidate time budget — EDIT this to influence the generated task's
+        # time scope. Defaulted by proficiency (BASIC 15-20 / INTERMEDIATE
+        # 20-25 / ADVANCED 25-30).
+        "minutes_range": _MINUTES_RANGE_BY_PROFICIENCY.get(proficiency_upper, "15-20"),
     }
 
     # 6. Resolve folder paths
@@ -534,6 +554,22 @@ def generate_input_files(competency_name, proficiency, role, domain, folder_name
     click.echo(f"\nOutput directory: {output_dir}")
     click.echo(f"  Competency file: {comp_filename}")
     click.echo(f"  Background file: {bg_filename}")
+
+    # Machine-readable handoff for the pipeline orchestrator
+    # (run_pipeline._parse_resolved_inputs): the EXACT absolute paths this
+    # stage targeted. The orchestrator consumes this instead of re-globbing
+    # input_files/ and guessing by slug-substring + mtime — that guesswork
+    # mis-resolved a 'NodeJs' selection to the 'reactjs_nodejs' combo dir
+    # ('nodejs' is a substring of 'reactjs_nodejs'). Printed unconditionally —
+    # including when the files already exist / were skipped — so the handoff is
+    # always available regardless of whether anything was written this run.
+    click.echo(
+        "__INPUT_FILES_RESOLVED__ "
+        + json.dumps({
+            "competency": str(comp_path.resolve()),
+            "background": str(bg_path.resolve()),
+        })
+    )
 
     if dry_run:
         click.echo("\n--- DRY RUN (no files written) ---")

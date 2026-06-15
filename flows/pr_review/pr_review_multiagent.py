@@ -47,8 +47,8 @@ from flows.pr_review.pr_review_utils import (
 
 load_dotenv()
 
-GENERATION_MODEL = "gpt-5.1-2025-11-13"
-EVAL_MODEL = "gpt-5-nano-2025-08-07"
+GENERATION_MODEL = "gpt-5.5"
+EVAL_MODEL = "gpt-5.4-nano"
 MAX_RETRIES = 1
 REPO_OWNER = os.getenv("REPO_OWNER")
 

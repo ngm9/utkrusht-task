@@ -18,6 +18,7 @@ from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
 from pydantic import ValidationError
 
 from infra.classifier.runtime import Competency, TaskTemplateMatch
+from infra.tracing.client import trace_client
 
 _MODEL = "claude-sonnet-4-6"
 
@@ -39,13 +40,16 @@ def _format_parse_error(exc: Exception) -> str:
 
 def build_client() -> openai.OpenAI:
     """Portkey gateway → Anthropic, mirroring task_builder/conversation.py."""
-    return openai.OpenAI(
-        api_key=os.getenv("ANTHROPIC_API_KEY"),
-        base_url=PORTKEY_GATEWAY_URL,
-        default_headers=createHeaders(
-            provider="anthropic",
-            api_key=os.getenv("PORTKEY_API_KEY"),
+    return trace_client(
+        openai.OpenAI(
+            api_key=os.getenv("ANTHROPIC_API_KEY"),
+            base_url=PORTKEY_GATEWAY_URL,
+            default_headers=createHeaders(
+                provider="anthropic",
+                api_key=os.getenv("PORTKEY_API_KEY"),
+            ),
         ),
+        provider="anthropic",
     )
 
 

@@ -237,21 +237,45 @@ def _load_scenarios_index(proficiency: str) -> dict:
 def load_scenarios_for_combo(
     competencies: list[Competency],
     max_scenarios: int = MAX_SCENARIOS,
+    env: str = "dev",
 ) -> list[str]:
-    """Return up to ``max_scenarios`` real scenarios for this combo, or [] if none."""
-    index = _load_scenarios_index(competencies[0].proficiency if competencies else "BASIC")
-    if not index:
-        return []
+    """Return up to ``max_scenarios`` real scenarios for this combo, or [].
+
+    DB-FIRST: the scenario generator (stage 02) persists to the
+    ``generated_scenarios`` Supabase table by default — the JSON write is the
+    opt-in ``--legacy-json`` path. So query the DB first (the same source
+    ``creator.resolve_scenarios`` uses), then fall back to the JSON index for
+    combos not in the DB. Without this, freshly-generated scenarios never reach
+    the prompt-stage signal / shape classifier (they'd look only in the JSON,
+    which the generator didn't write).
+    """
     key = _scenario_key(competencies)
-    raw = index.get(key, [])
-    logger.debug("input_files: scenario lookup key=%r → %d raw entries",
-                 key, len(raw) if isinstance(raw, list) else 0)
+    prof = competencies[0].proficiency.upper() if competencies else "BASIC"
+
+    raw: list = []
+    try:  # DB-first; lazy import keeps this module light + avoids any cycle
+        from generators.scenarios import repository as scenario_repo
+
+        raw = scenario_repo.load_scenarios_for_combo(
+            env=env, combo_key=key, proficiency=prof,
+        ) or []
+        if raw:
+            logger.debug("input_files: scenario lookup key=%r → %d from DB", key, len(raw))
+    except Exception as e:  # noqa: BLE001 — DB optional; fall back to JSON
+        logger.debug("input_files: DB scenario lookup failed (%s) — trying JSON", e)
+        raw = []
+
+    if not raw:  # JSON fallback (legacy combos / DB unreachable)
+        index = _load_scenarios_index(prof)
+        raw = index.get(key, []) if index else []
+        logger.debug("input_files: scenario lookup key=%r → %d raw entries (JSON)",
+                     key, len(raw) if isinstance(raw, list) else 0)
+
     if not isinstance(raw, list):
         return []
     scenarios: list[str] = []
     for item in raw[:max_scenarios]:
-        text = item if isinstance(item, str) else str(item)
-        text = text.strip()
+        text = (item if isinstance(item, str) else str(item)).strip()
         if len(text) > SCENARIO_HARD_CHAR_CAP:
             text = text[:SCENARIO_HARD_CHAR_CAP].rstrip() + "..."
         scenarios.append(text)
@@ -261,17 +285,19 @@ def load_scenarios_for_combo(
 def build_detailed_skill_signal(
     competencies: list[Competency],
     proficiency: str,
+    env: str = "dev",
 ) -> tuple[str, dict]:
     """Build the bundled ``detailed_skill_signal`` string for the agent.
 
     Returns ``(signal_text, metadata_dict)``. The metadata is for the CLI banner
-    (so users can see whether input files were found).
+    (so users can see whether input files were found). ``env`` selects the
+    Supabase environment for the DB-first scenario lookup.
     """
     comp_names = [c.name for c in competencies]
 
     questions = load_questions_prompt(comp_names, proficiency)
     role = load_role_context(comp_names, proficiency)
-    scenarios = load_scenarios_for_combo(competencies)
+    scenarios = load_scenarios_for_combo(competencies, env=env)
 
     parts: list[str] = []
     if questions:

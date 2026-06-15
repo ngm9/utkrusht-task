@@ -1,0 +1,1637 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>trace_ui — live pipeline viewer</title>
+<style>
+  /* ===== THEME TOKENS — dark is the :root default; light overrides the
+     same names via [data-theme="light"]. Every color below is a token so
+     components never branch per-theme. Semantic --lvl-* colors are
+     WCAG-AA-verified (>=4.5:1) against the worst-case pane in BOTH themes. */
+  :root {
+    --bg: #0d1117;
+    --bg-panel: #11161d;
+    --bg-elev: #161b22;
+    --border: #21262d;
+    --fg: #c9d1d9;
+    --fg-dim: #8b949e;
+    --accent: #58a6ff;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --err: #f85149;
+    --active: #1f6feb;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    /* previously-hardcoded translucent surfaces, now theme-aware */
+    --hover: rgba(255,255,255,.04);
+    --active-bg: rgba(31,111,235,.10);
+    --badge-bg: rgba(88,166,255,.15);
+    --conn-live-border: #1d3b27;
+    --scrollbar-thumb: #2d333b;
+    --shadow: rgba(0,0,0,.4);
+    /* semantic log-level colors (text/accent) + tinted row backgrounds */
+    --lvl-error: #ff7b72;
+    --lvl-warn:  #e3b341;
+    --lvl-ok:    #56d364;
+    --lvl-info:  #79c0ff;
+    --lvl-debug: #a5a5b0;
+    --lvl-error-bg: rgba(248,81,73,.12);
+    --lvl-warn-bg:  rgba(227,179,65,.10);
+    /* per-stage badge: hue is per-row (JS hash); sat/lightness flip per theme */
+    --stage-sat: 70%;
+    --stage-l:   64%;
+  }
+  [data-theme="light"] {
+    --bg: #ffffff;
+    --bg-panel: #f6f8fa;
+    --bg-elev: #eef1f4;
+    --border: #d0d7de;
+    --fg: #1f2328;
+    --fg-dim: #59636e;
+    --accent: #0969da;
+    --ok: #1a7f37;
+    --warn: #8a5d00;
+    --err: #cf222e;
+    --active: #0969da;
+    --hover: rgba(0,0,0,.05);
+    --active-bg: rgba(9,105,218,.08);
+    --badge-bg: rgba(9,105,218,.10);
+    --conn-live-border: #aceebb;
+    --scrollbar-thumb: #afb8c1;
+    --shadow: rgba(31,35,40,.20);
+    /* green/amber darkened so they clear AA on light surfaces */
+    --lvl-error: #cf222e;
+    --lvl-warn:  #8a5d00;
+    --lvl-ok:    #1a7f37;
+    --lvl-info:  #0550ae;
+    --lvl-debug: #57606a;
+    --lvl-error-bg: rgba(207,34,46,.08);
+    --lvl-warn-bg:  rgba(138,93,0,.09);
+    --stage-sat: 62%;
+    --stage-l:   40%;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font: 13px/1.5 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    transition: background .18s ease, color .18s ease;
+  }
+  @media (prefers-reduced-motion: reduce) { body { transition: none; } }
+
+  /* ---- top bar ---- */
+  header {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 8px 14px;
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    flex: 0 0 auto;
+  }
+  header h1 {
+    font-size: 14px;
+    margin: 0;
+    font-weight: 600;
+    letter-spacing: .3px;
+    color: var(--fg);
+    white-space: nowrap;
+  }
+  header h1 .dot { color: var(--accent); }
+  header select {
+    background: var(--bg-elev);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+    min-width: 320px;
+    max-width: 42vw;
+  }
+  .totals {
+    margin-left: auto;
+    display: flex;
+    gap: 18px;
+    font-size: 12px;
+    color: var(--fg-dim);
+  }
+  .totals b { color: var(--fg); font-variant-numeric: tabular-nums; }
+  .conn {
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    color: var(--fg-dim);
+  }
+  .conn.live { color: var(--ok); border-color: var(--conn-live-border); }
+  .conn.idle { color: var(--warn); }
+
+  /* ---- theme toggle ---- */
+  .theme-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--bg-elev);
+    color: var(--fg-dim);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px 9px;
+    font: 12px/1 system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+    cursor: pointer;
+    user-select: none;
+    transition: color .15s ease, border-color .15s ease, background .15s ease;
+  }
+  .theme-toggle:hover { color: var(--fg); border-color: var(--accent); background: var(--hover); }
+  .theme-toggle:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .theme-toggle .t-icon { flex: 0 0 auto; display: block; }
+  .theme-toggle .t-moon { display: none; }
+  .theme-toggle .t-sun  { display: block; }
+  [data-theme="light"] .theme-toggle .t-sun  { display: none; }
+  [data-theme="light"] .theme-toggle .t-moon { display: block; }
+
+  /* ---- 3-pane grid ---- */
+  main {
+    flex: 1 1 auto;
+    display: grid;
+    grid-template-columns: 240px 1fr 380px;
+    min-height: 0;
+  }
+  .pane {
+    min-height: 0;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    border-right: 1px solid var(--border);
+  }
+  .pane:last-child { border-right: none; }
+  .pane-head {
+    flex: 0 0 auto;
+    padding: 7px 12px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    color: var(--fg-dim);
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .log-tools { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+  .log-tools select, .log-search {
+    background: var(--bg-elev);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 2px 6px;
+    font: 11px var(--mono);
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  .log-search { width: 130px; }
+  .log-search::placeholder { color: var(--fg-dim); }
+  .mini-btn {
+    background: var(--bg-elev);
+    color: var(--fg-dim);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 1px 7px;
+    font-size: 12px;
+    cursor: pointer;
+    line-height: 1.4;
+  }
+  .mini-btn:hover { color: var(--fg); border-color: var(--accent); }
+  .mini-btn.on { color: var(--accent); border-color: var(--accent); }
+  .pane-body { flex: 1 1 auto; overflow-y: auto; }
+
+  /* ---- stage timeline (left) ---- */
+  .stage {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    border-left: 3px solid transparent;
+  }
+  .stage:hover { background: var(--hover); }
+  .stage.active { background: var(--active-bg); }
+  /* clicked stage → its logs are filtered in the center pane */
+  .stage.selected { background: var(--active-bg); border-left-color: var(--accent); }
+  .stage .ico {
+    width: 14px; height: 14px;
+    flex: 0 0 auto;
+    border-radius: 50%;
+    border: 2px solid var(--border);
+    position: relative;
+  }
+  .stage.ok .ico { background: var(--ok); border-color: var(--ok); }
+  .stage.error .ico, .stage.failed .ico { background: var(--err); border-color: var(--err); }
+  .stage.active .ico {
+    border-color: var(--accent);
+    border-top-color: transparent;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .stage .name { flex: 1 1 auto; font-size: 12.5px; }
+  .stage.pending .name { color: var(--fg-dim); }
+  .stage .dur {
+    font: 11px var(--mono);
+    color: var(--fg-dim);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* ---- log console (center) ----
+     Per-line STAGE BADGE gutter + inline dim timestamp + message. Level shows as
+     a left accent border + colored message (red fail / amber warn / green ok) +
+     a faint row tint for error/warn; info/debug stay neutral. Click a badge for
+     the full timestamp + details (see .log-popover). */
+  #log {
+    font: 12px/1.5 var(--mono);
+    padding: 4px 0 44px;
+    white-space: normal;
+  }
+  .logline {
+    display: grid;
+    grid-template-columns: 86px 1fr;   /* stage badge | message */
+    align-items: baseline;
+    column-gap: 8px;
+    padding: 1px 12px 1px 9px;
+    border-left: 3px solid var(--ll-accent, transparent);
+  }
+  .logline:hover { background: var(--hover); }
+
+  /* level → left accent + (error/warn/ok) tinted row + colored message */
+  .logline.lvl-error { --ll-accent: var(--lvl-error); background: var(--lvl-error-bg); }
+  .logline.lvl-warn  { --ll-accent: var(--lvl-warn);  background: var(--lvl-warn-bg); }
+  .logline.lvl-ok    { --ll-accent: var(--lvl-ok); }
+  .logline.lvl-error .lt { color: var(--lvl-error); }
+  .logline.lvl-warn  .lt { color: var(--lvl-warn); }
+  .logline.lvl-ok    .lt { color: var(--lvl-ok); }
+  .logline.lvl-debug .lt { color: var(--fg-dim); }
+  /* lvl-info keeps default var(--fg) */
+
+  /* stage gutter badge — per-stage hue (JS hash); click → details popover */
+  .logline .ls {
+    grid-column: 1;
+    justify-self: start;
+    max-width: 86px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font: 10px/1.6 var(--mono);
+    letter-spacing: .2px;
+    padding: 0 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    user-select: none;
+    color: hsl(var(--stage-h, 215) var(--stage-sat) var(--stage-l));
+    background: hsl(var(--stage-h, 215) 55% 50% / .14);
+    box-shadow: inset 0 0 0 1px hsl(var(--stage-h, 215) 55% 50% / .30);
+  }
+  [data-theme="light"] .logline .ls { color: var(--fg); }
+  .logline .ls:hover { box-shadow: inset 0 0 0 1px hsl(var(--stage-h, 215) 60% 50% / .7); }
+  .logline .lt {
+    grid-column: 2;
+    min-width: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+  .logline .ts {
+    color: var(--fg-dim);
+    margin-right: 8px;
+    font-variant-numeric: tabular-nums;
+    user-select: none;
+  }
+
+  /* in-pane search: dim non-matches without removing them (filters still work) */
+  #log.searching .logline:not(.match) { opacity: .25; }
+
+  /* density toggle */
+  #log.compact { font-size: 11px; line-height: 1.35; }
+  #log.compact .logline { padding-top: 0; padding-bottom: 0; }
+
+  /* click-a-badge details popover */
+  .log-popover {
+    position: fixed;
+    z-index: 60;
+    max-width: 460px;
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 8px 28px var(--shadow);
+    padding: 9px 11px;
+    font: 11px var(--mono);
+  }
+  .log-popover[hidden] { display: none; }
+  .log-popover .pop-row { display: flex; gap: 8px; padding: 1px 0; align-items: baseline; }
+  .log-popover .pop-k {
+    color: var(--fg-dim); text-transform: uppercase; font-size: 9px;
+    letter-spacing: .4px; min-width: 52px;
+  }
+  .log-popover .pop-v { color: var(--fg); word-break: break-word; min-width: 0; }
+  .log-popover pre {
+    margin: 7px 0 0; padding-top: 7px; border-top: 1px solid var(--border);
+    white-space: pre-wrap; word-break: break-word; color: var(--fg);
+    max-height: 180px; overflow-y: auto;
+  }
+
+  .resume-btn {
+    position: absolute;
+    bottom: 14px; left: 50%;
+    transform: translateX(-50%);
+    background: var(--active);
+    color: #fff;
+    border: none;
+    border-radius: 14px;
+    padding: 5px 14px;
+    font-size: 12px;
+    cursor: pointer;
+    display: none;
+    box-shadow: 0 2px 8px var(--shadow);
+  }
+  .center-wrap { position: relative; flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+
+  /* ---- result panel (right, above traces) ---- */
+  #result { padding: 8px 8px 0; }
+  .result-card {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    padding: 9px 10px;
+    margin-bottom: 8px;
+  }
+  .result-head {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: .6px;
+    color: var(--fg-dim);
+    margin-bottom: 7px;
+  }
+  .r-row { display: flex; gap: 8px; font-size: 12px; padding: 1.5px 0; align-items: baseline; }
+  .r-k {
+    flex: 0 0 58px;
+    color: var(--fg-dim);
+    text-transform: uppercase;
+    font-size: 9.5px;
+    letter-spacing: .4px;
+    padding-top: 2px;
+  }
+  .r-v { flex: 1 1 auto; min-width: 0; color: var(--fg); word-break: break-word; }
+  .r-v.mono { font: 11px var(--mono); }
+  .r-badge { display: inline-block; padding: 0 6px; border-radius: 4px; font-size: 10.5px; font-weight: 600; border: 1px solid currentColor; }
+  .r-badge.ok  { color: var(--lvl-ok); }
+  .r-badge.bad { color: var(--lvl-error); }
+  .r-links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .r-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 9px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-panel);
+    color: var(--accent);
+    text-decoration: none;
+    font-size: 11.5px;
+  }
+  .r-link:hover { border-color: var(--accent); background: var(--hover); }
+
+  /* cost + time by stage */
+  .cost-block { margin-top: 9px; border-top: 1px solid var(--border); padding-top: 7px; }
+  .c-row {
+    display: grid;
+    grid-template-columns: 1fr auto auto;
+    gap: 10px;
+    font-size: 11.5px;
+    padding: 1.5px 0;
+    align-items: baseline;
+  }
+  .c-stage { color: var(--fg-dim); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .c-cost { font: 11px var(--mono); color: var(--fg); font-variant-numeric: tabular-nums; min-width: 64px; text-align: right; }
+  .c-time { font: 11px var(--mono); color: var(--fg-dim); font-variant-numeric: tabular-nums; min-width: 50px; text-align: right; }
+  .c-head { text-transform: uppercase; font-size: 9px; letter-spacing: .4px; }
+  .c-head, .c-head .c-cost, .c-head .c-time { color: var(--fg-dim); }
+  .c-total { border-top: 1px solid var(--border); margin-top: 3px; padding-top: 4px; font-weight: 600; }
+  .c-total .c-stage, .c-total .c-cost, .c-total .c-time { color: var(--fg); }
+  .c-tokens { font: 10px var(--mono); color: var(--fg-dim); margin-top: 4px; }
+
+  /* ---- trace feed (right) ---- */
+  #traces { padding: 8px; }
+  .card {
+    background: var(--bg-elev);
+    border: 1px solid var(--border);
+    border-radius: 7px;
+    margin-bottom: 7px;
+    overflow: hidden;
+  }
+  .card-head {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 7px 9px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .card-head:hover { background: var(--hover); }
+  .badge {
+    font: 10px var(--mono);
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--badge-bg);
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .card .model { font: 11px var(--mono); color: var(--fg); }
+  .card .meta {
+    margin-left: auto;
+    display: flex;
+    gap: 9px;
+    font: 10.5px var(--mono);
+    color: var(--fg-dim);
+    font-variant-numeric: tabular-nums;
+  }
+  .card .meta .ok  { color: var(--lvl-ok); }
+  .card .meta .err { color: var(--lvl-error); }
+  .card-body { display: none; border-top: 1px solid var(--border); }
+  .card.open .card-body { display: block; }
+  .card-body section { padding: 8px 9px; }
+  .card-body section + section { border-top: 1px solid var(--border); }
+  .card-body h4 {
+    margin: 0 0 5px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .5px;
+    color: var(--fg-dim);
+  }
+  .card-body pre {
+    margin: 0;
+    font: 11px/1.45 var(--mono);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 280px;
+    overflow-y: auto;
+    color: var(--fg);
+  }
+  .empty { color: var(--fg-dim); padding: 20px 12px; font-size: 12px; }
+
+  /* ---- new-run button + modal ---- */
+  .new-run-btn {
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 5px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .new-run-btn:hover { filter: brightness(1.08); }
+  .icon-btn {
+    background: var(--bg-elev); color: var(--fg-dim);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 4px 9px; font-size: 14px; line-height: 1; cursor: pointer;
+  }
+  .icon-btn:hover { color: var(--fg); border-color: var(--accent); }
+  .icon-btn.spin { animation: spin .6s linear; }
+
+  .modal-overlay {
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,.5);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 50;
+  }
+  .modal-overlay[hidden] { display: none; }
+  .modal {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    width: min(560px, 92vw);
+    max-height: 82vh;
+    display: flex; flex-direction: column;
+    box-shadow: 0 12px 40px var(--shadow);
+    overflow: hidden;
+  }
+  .modal-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 12px 16px; border-bottom: 1px solid var(--border);
+    font-size: 14px; font-weight: 600; color: var(--fg);
+  }
+  .modal-close { background: none; border: none; color: var(--fg-dim); font-size: 22px; line-height: 1; cursor: pointer; padding: 0 4px; }
+  .modal-close:hover { color: var(--fg); }
+  .modal-controls { display: flex; gap: 8px; padding: 12px 16px; }
+  .comp-search {
+    flex: 1 1 auto;
+    background: var(--bg-elev); color: var(--fg);
+    border: 1px solid var(--border); border-radius: 6px;
+    padding: 7px 10px; font-size: 13px;
+  }
+  .comp-search::placeholder { color: var(--fg-dim); }
+  .modal-controls select {
+    background: var(--bg-elev); color: var(--fg);
+    border: 1px solid var(--border); border-radius: 6px; padding: 0 8px; font-size: 12px;
+  }
+  .modal-hint { padding: 2px 16px 6px; font-size: 11px; color: var(--fg-dim); }
+  .modal-hint code { font: 10.5px var(--mono); color: var(--accent); }
+  .comp-list {
+    flex: 1 1 auto; overflow-y: auto;
+    margin: 0 16px; border: 1px solid var(--border); border-radius: 6px;
+    min-height: 140px;
+  }
+  .comp-item {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 8px 11px; cursor: pointer;
+    border-bottom: 1px solid var(--border);
+  }
+  .comp-item:last-child { border-bottom: none; }
+  .comp-item:hover { background: var(--hover); }
+  .comp-item.selected { background: var(--active-bg); box-shadow: inset 3px 0 0 var(--accent); }
+  .comp-item.disabled { opacity: .38; cursor: not-allowed; }
+  .comp-item.disabled:hover { background: none; }
+  .comp-name { font-size: 13px; color: var(--fg); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .comp-prof {
+    font: 10.5px var(--mono); color: var(--fg-dim);
+    text-transform: uppercase; letter-spacing: .3px;
+    border: 1px solid var(--border); border-radius: 10px; padding: 1px 8px; white-space: nowrap;
+  }
+  .comp-empty { padding: 22px; text-align: center; color: var(--fg-dim); font-size: 12px; }
+  .modal-foot {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 12px 16px; border-top: 1px solid var(--border);
+  }
+  .run-config { display: flex; align-items: center; gap: 14px; font-size: 12px; min-width: 0; }
+  .run-selected { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .run-selected.muted { color: var(--fg-dim); }
+  .run-clear { background: none; border: none; color: var(--accent); font-size: 11px; cursor: pointer; padding: 0; }
+  .run-clear[hidden] { display: none; }
+  .count-label { color: var(--fg-dim); white-space: nowrap; }
+  .count-label input {
+    width: 52px; background: var(--bg-elev); color: var(--fg);
+    border: 1px solid var(--border); border-radius: 5px; padding: 3px 6px; font-size: 12px; margin-left: 4px;
+  }
+  .run-go {
+    background: var(--ok); color: #fff; border: none; border-radius: 6px;
+    padding: 7px 16px; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+  }
+  .run-go:disabled { opacity: .5; cursor: not-allowed; }
+  .modal-msg { padding: 0 16px 12px; font-size: 12px; color: var(--fg-dim); min-height: 0; }
+
+  /* ---- per-stage "view output" button + stage-output modal ---- */
+  .stage .view {
+    flex: 0 0 auto; background: none; border: none; color: var(--fg-dim);
+    cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 5px;
+    border-radius: 5px; opacity: 0; transition: opacity .1s;
+  }
+  .stage:hover .view, .stage.selected .view { opacity: .7; }
+  .stage .view:hover { color: var(--accent); opacity: 1; background: var(--hover); }
+  .stage-modal { width: min(1080px, 95vw); max-height: 90vh; }
+  .stage-modal-search {
+    flex: 1 1 auto; background: var(--bg-elev); color: var(--fg);
+    border: 1px solid var(--border); border-radius: 6px; padding: 6px 10px; font-size: 12px;
+  }
+  .stage-modal-search::placeholder { color: var(--fg-dim); }
+  .stage-modal-body {
+    flex: 1 1 auto; overflow: auto; min-height: 140px;
+    margin: 0 0 0; padding: 6px 0; background: var(--bg);
+    border-top: 1px solid var(--border);
+  }
+  .stage-modal-body .empty { padding: 20px 16px; color: var(--fg-dim); font-size: 12px; }
+
+  /* scrollbars */
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+</style>
+</head>
+<body>
+<header>
+  <h1><span class="dot">●</span> trace_ui</h1>
+  <select id="run-picker" title="Pick a run"></select>
+  <button id="new-run-btn" class="new-run-btn" type="button" title="Run a new pipeline">+ New run</button>
+  <button id="refresh-btn" class="icon-btn" type="button" title="Reload run list + current run logs/traces">↻</button>
+  <span class="conn" id="conn">idle</span>
+  <div class="totals">
+    <span>calls <b id="t-calls">0</b></span>
+    <span>tokens <b id="t-tokens">0</b></span>
+  </div>
+  <button id="theme-toggle" class="theme-toggle" type="button"
+          title="Toggle light / dark theme" aria-label="Toggle color theme" aria-pressed="false">
+    <svg class="t-icon t-sun" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <path fill="currentColor" d="M8 11a3 3 0 1 1 0-6 3 3 0 0 1 0 6Zm0-9a.75.75 0 0 1 .75.75v1a.75.75 0 0 1-1.5 0v-1A.75.75 0 0 1 8 2Zm0 10.5a.75.75 0 0 1 .75.75v1a.75.75 0 0 1-1.5 0v-1A.75.75 0 0 1 8 12.5Zm6-4.5a.75.75 0 0 1-.75.75h-1a.75.75 0 0 1 0-1.5h1A.75.75 0 0 1 14 8ZM3.5 8a.75.75 0 0 1-.75.75h-1a.75.75 0 0 1 0-1.5h1A.75.75 0 0 1 3.5 8Zm8.96-4.46a.75.75 0 0 1 0 1.06l-.7.71a.75.75 0 0 1-1.07-1.06l.71-.71a.75.75 0 0 1 1.06 0ZM5.3 10.7a.75.75 0 0 1 0 1.06l-.71.71a.75.75 0 0 1-1.06-1.06l.7-.71a.75.75 0 0 1 1.07 0Zm7.16 1.77a.75.75 0 0 1-1.06 0l-.71-.71a.75.75 0 0 1 1.06-1.06l.71.7a.75.75 0 0 1 0 1.07ZM5.3 5.3a.75.75 0 0 1-1.07 0l-.7-.71a.75.75 0 0 1 1.06-1.06l.71.7A.75.75 0 0 1 5.3 5.3Z"/>
+    </svg>
+    <svg class="t-icon t-moon" viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+      <path fill="currentColor" d="M9.6 2.1a.75.75 0 0 1-.04.83 4.5 4.5 0 0 0 5.51 6.85.75.75 0 0 1 1.02.87A6.5 6.5 0 1 1 8.73 1.5a.75.75 0 0 1 .87.6Z"/>
+    </svg>
+    <span class="t-label">Light</span>
+  </button>
+</header>
+
+<main>
+  <!-- LEFT: stage timeline -->
+  <div class="pane" id="pane-stages">
+    <div class="pane-head">Stages</div>
+    <div class="pane-body" id="stages"></div>
+  </div>
+
+  <!-- CENTER: live log console -->
+  <div class="pane" id="pane-logs">
+    <div class="pane-head">
+      Logs
+      <div class="log-tools">
+        <input id="log-search" class="log-search" type="search" placeholder="search…" spellcheck="false" />
+        <select id="level-filter" title="Filter by level">
+          <option value="">all levels</option>
+          <option value="error">errors</option>
+          <option value="warn">warnings</option>
+          <option value="ok">ok</option>
+          <option value="info">info</option>
+          <option value="debug">debug</option>
+        </select>
+        <select id="stage-filter" title="Filter by stage"><option value="">all stages</option></select>
+        <button id="density-toggle" class="mini-btn" type="button" title="Toggle compact density">⊟</button>
+      </div>
+    </div>
+    <div class="center-wrap">
+      <div class="pane-body" id="log-body">
+        <div id="log"></div>
+      </div>
+      <button class="resume-btn" id="resume">▼ resume auto-scroll</button>
+    </div>
+  </div>
+
+  <!-- RIGHT: result panel + trace feed -->
+  <div class="pane" id="pane-traces">
+    <div class="pane-head">Result &amp; LLM Traces</div>
+    <div class="pane-body" id="right-body">
+      <div id="result"></div>
+      <div id="traces"></div>
+    </div>
+  </div>
+</main>
+
+<!-- New-run modal: search existing competencies and launch a pipeline -->
+<div id="modal-overlay" class="modal-overlay" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="Run a new pipeline">
+    <div class="modal-head">
+      <span>Run a new pipeline</span>
+      <button id="modal-close" class="modal-close" type="button" aria-label="Close">×</button>
+    </div>
+    <div class="modal-controls">
+      <input id="comp-search" class="comp-search" type="search" placeholder="Search competency…" autocomplete="off" spellcheck="false" />
+      <select id="run-env" title="Environment"><option value="dev">dev</option><option value="prod">prod</option></select>
+    </div>
+    <div class="modal-hint">Pick one or more competencies — all must share the same proficiency (like <code>-n A -n B -p PROF</code>).</div>
+    <div id="comp-list" class="comp-list"></div>
+    <div class="modal-foot">
+      <div class="run-config">
+        <span id="run-selected" class="run-selected muted">no competency selected</span>
+        <button id="run-clear" class="run-clear" type="button" hidden>clear</button>
+        <label class="count-label">scenarios <input id="run-count" type="number" min="1" max="20" value="2" /></label>
+      </div>
+      <button id="run-go" class="run-go" type="button" disabled>Run pipeline</button>
+    </div>
+    <div id="modal-msg" class="modal-msg"></div>
+  </div>
+</div>
+
+<!-- Per-stage output modal: reads the stage's local log file(s) and renders them -->
+<div id="stage-modal-overlay" class="modal-overlay" hidden>
+  <div class="modal stage-modal" role="dialog" aria-modal="true" aria-label="Stage output">
+    <div class="modal-head">
+      <span id="stage-modal-title">Stage output</span>
+      <button id="stage-modal-close" class="modal-close" type="button" aria-label="Close">×</button>
+    </div>
+    <div class="modal-controls">
+      <input id="stage-modal-search" class="stage-modal-search" type="search" placeholder="Filter lines…" autocomplete="off" spellcheck="false" />
+      <span id="stage-modal-meta" class="modal-hint" style="padding:0; align-self:center; white-space:nowrap;"></span>
+    </div>
+    <div id="stage-modal-body" class="log stage-modal-body"></div>
+  </div>
+</div>
+
+<!-- Per-line details, shown when a log-line stage badge is clicked -->
+<div id="log-popover" class="log-popover" hidden></div>
+
+<script>
+"use strict";
+
+// The 9 canonical pipeline stages, in order. Stage trace events use these
+// names; the per-stage log files map onto them via LOG_STAGE_TO_CANON below.
+const STAGES = [
+  "input_files", "scenarios", "prompt", "classifier",
+  "task_gen", "eval", "gate", "quality", "solution",
+];
+const STAGE_LABEL = {
+  input_files: "Input files", scenarios: "Scenarios", prompt: "Prompt",
+  classifier: "Template match", task_gen: "Task gen", eval: "Eval",
+  gate: "E2B gate", quality: "Quality", solution: "Solution",
+};
+// Map a log filename's stage component (e.g. "04_tasks", "01_input_files")
+// onto a canonical stage row so log activity lights up the timeline.
+const LOG_STAGE_TO_CANON = {
+  "01_input_files": "input_files",
+  "02_scenarios": "scenarios",
+  "03_prompt": "prompt",
+  "04_tasks": "task_gen",
+};
+// The 04_tasks stage's substages (template match / task gen / eval / gate /
+// quality / solution) all share one log file, so we classify each line by
+// CONTENT into its canonical substage — that's what makes clicking "Eval" or
+// "Template match" in the timeline filter to just that step. First match wins;
+// anything unmatched is the task-generation body itself.
+const SUBSTAGE_RULES = [
+  [/resolve_plan|RESOLVED |classify_match|cache (HIT|WRITE|STALE)|no_match|template_id=|matched:/i, "classifier"],
+  [/\[e2b-gate\]|verdict:|sandbox gate|booting sandbox|run\.sh|Running E2B|runsh_|compose_failed|pip_failed/i, "gate"],
+  [/quality eval|quality (applied|autofix)/i, "quality"],
+  [/reference solution|answer repo|solution repo|writing solution|wrote solution/i, "solution"],
+  [/Running (task|code) eval|Running task evaluations|eval parsed|eval blocker|Raw LLM (task|code) eval|EVAL GATE|blocking_issues/i, "eval"],
+];
+function subStageOf(line) {
+  for (let i = 0; i < SUBSTAGE_RULES.length; i++) {
+    if (SUBSTAGE_RULES[i][0].test(line)) return SUBSTAGE_RULES[i][1];
+  }
+  return "task_gen";
+}
+// Canonical stage for a log row: file-stage → canon, but the task stage is
+// split into its substages by line content so each is individually filterable.
+function rowCanon(stage, line) {
+  const canon = LOG_STAGE_TO_CANON[stage];
+  if (canon === "task_gen") return subStageOf(line);
+  return canon || stage;
+}
+
+let runId = null;
+let logES = null, traceES = null;
+let autoScroll = true;
+let totalCalls = 0, totalTokens = 0;
+
+const $ = (id) => document.getElementById(id);
+// Escapes for BOTH text and quoted-attribute contexts (quotes included) so an
+// attribute interpolation like value="${esc(x)}" is safe without relying on an
+// upstream invariant.
+const esc = (s) => String(s == null ? "" : s)
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+
+// -------------------------------------------------------------- theme toggle
+(function initTheme() {
+  const KEY = "trace_ui_theme";
+  const root = document.documentElement;
+  function apply(theme) {
+    if (theme === "light") root.setAttribute("data-theme", "light");
+    else root.removeAttribute("data-theme"); // dark is the :root default
+    const t = $("theme-toggle");
+    if (t) {
+      const label = t.querySelector(".t-label");
+      if (label) label.textContent = theme === "light" ? "Dark" : "Light";
+      t.setAttribute("aria-pressed", theme === "light" ? "true" : "false");
+    }
+  }
+  let saved = null;
+  try { saved = localStorage.getItem(KEY); } catch (e) { /* storage blocked */ }
+  let theme;
+  if (saved === "light" || saved === "dark") theme = saved;
+  else theme = window.matchMedia && window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  apply(theme);
+  // track OS changes only while the user hasn't made an explicit choice
+  if (!(saved === "light" || saved === "dark") && window.matchMedia) {
+    const mq = window.matchMedia("(prefers-color-scheme: light)");
+    const onChange = (e) => {
+      let still = null;
+      try { still = localStorage.getItem(KEY); } catch (_) {}
+      if (still !== "light" && still !== "dark") apply(e.matches ? "light" : "dark");
+    };
+    if (mq.addEventListener) mq.addEventListener("change", onChange);
+    else if (mq.addListener) mq.addListener(onChange);
+  }
+  const btn = $("theme-toggle");
+  if (btn) btn.addEventListener("click", () => {
+    const current = root.getAttribute("data-theme") === "light" ? "light" : "dark";
+    const next = current === "light" ? "dark" : "light";
+    apply(next);
+    try { localStorage.setItem(KEY, next); } catch (e) { /* storage blocked */ }
+  });
+})();
+
+// -------------------------------------------------------------- run picker
+// Signature of the last-rendered run set, so a poll tick only rebuilds the
+// <option> list when runs/statuses actually changed (avoids disrupting an open
+// dropdown or the current selection on every tick).
+let runsSig = "";
+
+async function loadRuns() {
+  const picker = $("run-picker");
+  let runs = [];
+  try {
+    const res = await fetch("/api/runs");
+    runs = await res.json();
+  } catch (e) {
+    // Transient poll failure: keep the current view rather than wiping it.
+    if (runId === null) picker.innerHTML = '<option>failed to load /api/runs</option>';
+    return;
+  }
+  if (!runs.length) {
+    picker.innerHTML = '<option value="">no runs found</option>';
+    return;
+  }
+  const sig = runs.map((r) => r.run_id + ":" + r.status).join("|");
+  if (sig !== runsSig) {
+    runsSig = sig;
+    picker.innerHTML = runs.map((r) => {
+      const combo = r.combo || "(no combo)";
+      const tn = r.task_name ? " · " + r.task_name : "";
+      return `<option value="${esc(r.run_id)}">${esc(r.run_id)} — ${esc(combo)} [${esc(r.status)}]${esc(tn)}</option>`;
+    }).join("");
+  }
+  // First load: auto-select the newest run. Later polls: keep the user's
+  // selection (rebuilding innerHTML clears the <select> value, so restore it)
+  // and leave its live SSE streams untouched.
+  if (runId === null) {
+    selectRun(runs[0].run_id);
+  } else {
+    picker.value = runId;
+    refreshResult();  // pick up the Result panel once the run completes
+  }
+}
+
+function selectRun(id) {
+  if (id === runId) return;
+  runId = id;
+  $("run-picker").value = id;
+  resetView();
+  openStreams();
+  refreshResult();
+}
+
+$("run-picker").addEventListener("change", (e) => selectRun(e.target.value));
+
+// Manual refresh: rebuild the run list + reload the current run's logs/traces/result.
+function refreshAll() {
+  runsSig = "";   // force the picker to rebuild on the upcoming loadRuns
+  loadRuns();
+  if (runId) {    // re-select to fully reset the view and re-open the streams
+    const cur = runId;
+    runId = null;
+    selectRun(cur);
+  }
+}
+$("refresh-btn").addEventListener("click", () => {
+  const b = $("refresh-btn");
+  b.classList.remove("spin"); void b.offsetWidth; b.classList.add("spin");  // replay spin
+  refreshAll();
+});
+
+// -------------------------------------------------------------- view reset
+function resetView() {
+  if (logES) { logES.close(); logES = null; }
+  if (traceES) { traceES.close(); traceES = null; }
+  totalCalls = 0; totalTokens = 0;
+  $("t-calls").textContent = "0";
+  $("t-tokens").textContent = "0";
+  $("log").innerHTML = "";
+  pendingLogs = [];  // drop any buffered lines from the previous run
+  hideLogPopover();
+  $("result").innerHTML = "";
+  resultDone = false;
+  $("traces").innerHTML = '<div class="empty">waiting for traces…</div>';
+  autoScroll = true;
+  $("resume").style.display = "none";
+  // stage filter options are per-run; reset the stage filter (level/search persist)
+  $("stage-filter").innerHTML = '<option value="">all stages</option>';
+  knownLogStages.clear();
+  logFilter = "";
+  // Clear per-run stage statuses too, else the previous run's ok/error states
+  // bleed into the new timeline and suppress its active spinners.
+  for (const k in stageState) delete stageState[k];
+  renderStages({});
+  setConn("idle");
+}
+
+function setConn(state) {
+  const el = $("conn");
+  el.className = "conn" + (state === "live" ? " live" : state === "idle" ? " idle" : "");
+  el.textContent = state;
+}
+
+// -------------------------------------------------------------- stage timeline
+const stageState = {}; // canon -> {status, duration_ms}
+function renderStages(map) {
+  const host = $("stages");
+  host.innerHTML = STAGES.map((s) => {
+    const st = map[s] || {};
+    const status = st.status || "pending";
+    const cls = ["stage", status];
+    if (logFilter && s === logFilter) cls.push("selected");
+    const dur = st.duration_ms != null ? fmtDur(st.duration_ms) : "";
+    return `<div class="${cls.join(" ")}" data-canon="${esc(s)}" title="Click to filter logs · ⤢ to view output">
+      <span class="ico"></span>
+      <span class="name">${esc(STAGE_LABEL[s] || s)}</span>
+      <span class="dur">${esc(dur)}</span>
+      <button class="view" type="button" data-view="${esc(s)}" title="View ${esc(STAGE_LABEL[s] || s)} output" aria-label="View output">⤢</button>
+    </div>`;
+  }).join("");
+}
+function fmtDur(ms) {
+  if (ms == null) return "";
+  if (ms < 1000) return ms + "ms";
+  return (ms / 1000).toFixed(1) + "s";
+}
+function applyStageEvent(rec) {
+  const s = rec.stage;
+  if (!s) return;
+  stageState[s] = { status: rec.status || "ok", duration_ms: rec.duration_ms };
+  renderStages(stageState);
+}
+// Light up a stage as "active" when its log starts streaming and no terminal
+// status arrived yet.
+function markStageActive(canon) {
+  if (!canon || stageState[canon]) return;
+  stageState[canon] = { status: "active" };
+  renderStages(stageState);
+}
+
+// -------------------------------------------------------------- log classification
+// Ordered rules — FIRST MATCH WINS. Grounded in this repo's real log vocabulary
+// (E2B gate verdicts, eval pass=True/False, exit codes, tracebacks, Python log
+// levels). Applied case-insensitively to the RAW line. This replaces the old
+// "all stderr is red" — the whole pipeline logs INFO to stderr, so severity
+// must come from the line's CONTENT, not its stream.
+const LOG_RULES = [
+  // E2B gate hard-fail verdicts (logged at INFO but are real FAILs)
+  [/verdict:\s*(runsh_failed|runsh_timeout|compose_failed|pip_failed|compile_error|collection_error|test_run_error|no_tests)\b|\[FAIL\]/i, "error"],
+  // E2B gate success verdicts
+  [/verdict:\s*(ready|ok|no_tests_compile_ok)\b|\[PASS\]/i, "ok"],
+  // gate could not produce a real pass/fail — NOT a task failure (amber)
+  [/verdict:\s*(infra_error|no_template|no_code|no_runsh|skipped)\b|\[SKIP\]|sandbox gate (infra_error|skipped)|accepting SKIP|gate skipped/i, "warn"],
+  // retry-loop / creator failure announcements
+  [/sandbox gate FAILED|Eval gate rejected|EVAL GATE REJECTED TASK|ERROR CREATING TASK|Attempt \d+: evals failed/i, "error"],
+  // LLM eval verdicts — pass=False BEFORE pass=True so the "pass" substring can't go green
+  [/\bpass\s*=\s*false\b/i, "error"],
+  [/\bpass\s*=\s*true\b/i, "ok"],
+  [/"pass"\s*:\s*false/i, "error"],
+  [/"pass"\s*:\s*true/i, "ok"],
+  // process exit codes — exit=0 excluded via negative lookahead
+  [/run\.sh exited [1-9]\d*|\bexit\s*=\s*(?!0\b)\d+|FAIL exit=\d+/i, "error"],
+  [/\bexit\s*=\s*0\b|run\.sh exited 0|◀\s*\S+:\s*ok\b/i, "ok"],
+  // explicit success milestones
+  [/Attempt \d+: (evals \+ gate passed|quality eval autofixed)|TASK CREATION COMPLETED SUCCESSFULLY|Task Creation Successful|proceeding to storage|cache WRITE|Successfully (read|loaded)|Found scenarios for key/i, "ok"],
+  // tracebacks / exceptions (before the - ERROR - rule so frames color too)
+  [/Traceback \(most recent call last\)|^\s*File ".*", line \d+|^\s*raise [A-Za-z_][A-Za-z0-9_]*(Error|Exception)\b|\b[A-Za-z_][A-Za-z0-9_]*(Error|Exception):/i, "error"],
+  // Python logging ERROR/CRITICAL/FATAL records
+  [/\s-\s(ERROR|CRITICAL|FATAL)\s-\s/i, "error"],
+  // Python logging WARNING records
+  [/\s-\sWARNING\s-\s|\bWARN(ING)?\b/i, "warn"],
+  // neutral structural / progress markers (the blanket-red fix: these stay calm)
+  [/^\[\d{1,2}:\d{2}(:\d{2})?\]\s*>>>\s|>>>\s+\d+_[a-z_]+\s*::|▶\s|TASK PIPELINE|PIPELINE DONE|={6,}|─{6,}|Task generation attempt \d+\/\d+|Running (task|code) eval|Running task evaluations|Running E2B run\.sh readiness gate|Applying feedback from previous attempt|Wrote:|Logs:|Tokens -|booting sandbox|sandbox up|wrote \d+ code file/i, "info"],
+  // verbose low-signal output (DEBUG records, indented "[e2b-gate]  | …" docker
+  // tail) — BEFORE the INFO catch-all, since these carry an "- INFO -" prefix
+  [/\s-\sDEBUG\s-\s|^\s*\|\s|\[e2b-gate\]\s+\|/i, "debug"],
+  // catch-all Python INFO — the workhorse that fixes the reported bug
+  [/\s-\sINFO\s-\s/i, "info"],
+];
+function classifyLine(line) {
+  const s = line || "";
+  for (let i = 0; i < LOG_RULES.length; i++) {
+    if (LOG_RULES[i][0].test(s)) return LOG_RULES[i][1];
+  }
+  return "info"; // unmatched (wrapped LLM markdown, blanks) → neutral, never red
+}
+
+// Map raw log-stage ids to short human labels for the gutter badge.
+const STAGE_FRIENDLY = {
+  "01_input_files": "input", "02_scenarios": "scenarios", "03_prompt": "prompt",
+  "04_tasks": "tasks", "05_eval": "eval", "06_gate": "gate",
+  "07_quality": "quality", "08_solution": "solution",
+};
+function friendlyStage(stage) {
+  if (!stage) return "?";
+  if (STAGE_FRIENDLY[stage]) return STAGE_FRIENDLY[stage];
+  return String(stage).replace(/^\d+[_-]/, "") || String(stage);
+}
+// Deterministic hue (0..359) from the raw stage id, so each stage gets a stable
+// distinct badge color without a hand-maintained palette (new stages self-color).
+const _hueCache = new Map();
+function stageHue(stage) {
+  const key = String(stage);
+  if (_hueCache.has(key)) return _hueCache.get(key);
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  const hue = h % 360;
+  _hueCache.set(key, hue);
+  return hue;
+}
+// Peel a recognizable LEADING timestamp so it can be rendered dimmed. Conservative
+// + anchored so ordinary log text is never mis-detected as a timestamp.
+const TS_RE = /^(\s*(?:\[\s*)?(?:\d{4}-\d{2}-\d{2}[ T])?\d{2}:\d{2}:\d{2}(?:[.,]\d{1,6})?(?:Z|[+-]\d{2}:?\d{2})?(?:\s*\])?)\s+/;
+function splitTimestamp(line) {
+  const m = TS_RE.exec(line);
+  if (!m) return { ts: "", rest: line };
+  return { ts: m[1].trim(), rest: line.slice(m[0].length) };
+}
+
+// -------------------------------------------------------------- log console
+const knownLogStages = new Set();
+let logFilter = "";    // stage filter
+let levelFilter = "";  // level filter
+let logSearch = "";    // in-pane text search
+const logBody = $("log-body");
+
+function rowMatches(row) {
+  if (logFilter && row.dataset.canon !== logFilter) return false;
+  if (levelFilter && row.dataset.level !== levelFilter) return false;
+  return true;
+}
+// Single pass that composes stage filter + level filter + search so they never
+// clobber each other. Hidden rows use display:none; search dims non-matches.
+function applyFilters() {
+  const logEl = $("log");
+  const searching = !!logSearch;
+  logEl.classList.toggle("searching", searching);
+  const needle = logSearch.toLowerCase();
+  for (const row of logEl.children) {
+    const visible = rowMatches(row);
+    row.style.display = visible ? "" : "none";
+    if (searching) {
+      const hit = visible && (row.dataset.raw || "").toLowerCase().includes(needle);
+      row.classList.toggle("match", hit);
+    } else {
+      row.classList.remove("match");
+    }
+  }
+}
+
+// Set the stage filter from either the timeline or the dropdown, keep both in
+// sync, and refresh the timeline's selected highlight.
+function setLogStageFilter(logStage) {
+  logFilter = logStage || "";
+  const sf = $("stage-filter");
+  sf.value = [...sf.options].some((o) => o.value === logFilter) ? logFilter : "";
+  applyFilters();
+  renderStages(stageState);
+}
+
+$("stage-filter").addEventListener("change", (e) => setLogStageFilter(e.target.value));
+$("level-filter").addEventListener("change", (e) => { levelFilter = e.target.value; applyFilters(); });
+$("log-search").addEventListener("input", (e) => { logSearch = e.target.value.trim(); applyFilters(); });
+
+// Click a stage in the timeline → filter the center pane to that stage's logs
+// (re-click to clear). Delegated so it survives renderStages re-renders.
+$("stages").addEventListener("click", (e) => {
+  const row = e.target.closest(".stage");
+  if (!row) return;
+  const canon = row.dataset.canon;
+  if (!canon) return;
+  if (e.target.closest(".view")) { openStageModal(canon); return; }  // ⤢ → modal
+  setLogStageFilter(logFilter === canon ? "" : canon);  // toggle that (sub)stage
+});
+$("density-toggle").addEventListener("click", () => {
+  const on = $("log").classList.toggle("compact");
+  $("density-toggle").classList.toggle("on", on);
+  try { localStorage.setItem("trace_ui_density", on ? "compact" : ""); } catch (e) {}
+});
+
+// pause auto-scroll when the user scrolls up; resume when back at the bottom.
+logBody.addEventListener("scroll", () => {
+  const atBottom = logBody.scrollHeight - logBody.scrollTop - logBody.clientHeight < 24;
+  if (atBottom && !autoScroll) { autoScroll = true; $("resume").style.display = "none"; }
+  else if (!atBottom && autoScroll) { autoScroll = false; $("resume").style.display = "block"; }
+});
+$("resume").addEventListener("click", () => {
+  autoScroll = true;
+  $("resume").style.display = "none";
+  logBody.scrollTop = logBody.scrollHeight;
+});
+
+function ensureStageOption(canon) {
+  if (knownLogStages.has(canon)) return;
+  knownLogStages.add(canon);
+  const opt = document.createElement("option");
+  opt.value = canon;
+  opt.textContent = STAGE_LABEL[canon] || canon;
+  $("stage-filter").appendChild(opt);
+}
+
+// Strip the redundant "- <logger> - <LEVEL> - " prefix from a Python log line;
+// the level is already conveyed by color, so the message reads clean.
+function cleanMessage(s) {
+  return s.replace(/^- \S+ - (?:INFO|WARNING|ERROR|DEBUG|CRITICAL|FATAL) - /, "");
+}
+
+// Build one log row: per-stage BADGE gutter + inline dim timestamp + message.
+// The badge is clickable (→ details popover). Side-effects: register the stage
+// filter option + light the timeline. Insertion/scroll are batched in flushLogs.
+// All subprocess output goes in via textContent — never innerHTML (XSS-safe).
+function buildLogRow(d) {
+  const stage = d.stage || "?";
+  const raw = d.line == null ? "" : String(d.line);
+  const canon = rowCanon(stage, raw);   // canonical (sub)stage for filtering
+  ensureStageOption(canon);
+  markStageActive(canon);
+
+  const level = classifyLine(raw);          // classify on the RAW line
+  const split = splitTimestamp(raw);
+
+  const row = document.createElement("div");
+  row.className = "logline lvl-" + level;
+  row.dataset.stage = stage;
+  row.dataset.canon = canon;
+  row.dataset.level = level;
+  row.dataset.stream = d.stream || "stdout";
+  row.dataset.raw = raw;
+  row.style.setProperty("--stage-h", String(stageHue(stage)));
+
+  const ls = document.createElement("span");   // STAGE badge (click → details)
+  ls.className = "ls";
+  ls.textContent = friendlyStage(stage);
+  ls.title = "Click for timestamp + details";
+
+  const lt = document.createElement("span");   // MESSAGE (inline dim timestamp)
+  lt.className = "lt";
+  if (split.ts) {
+    const tsEl = document.createElement("span");
+    tsEl.className = "ts";
+    tsEl.textContent = split.ts;
+    lt.appendChild(tsEl);
+  }
+  lt.appendChild(document.createTextNode(cleanMessage(split.rest)));
+
+  row.appendChild(ls);
+  row.appendChild(lt);
+
+  // honour active filters/search on insert
+  const visible = rowMatches(row);
+  if (!visible) row.style.display = "none";
+  if (logSearch) {
+    row.classList.toggle("match", visible && raw.toLowerCase().includes(logSearch.toLowerCase()));
+  }
+  return row;
+}
+
+// Max rows kept in the DOM. A finished run replays its whole history at once
+// (thousands of lines); keep only the most recent so the page stays responsive
+// (older lines still live in the on-disk log file). Most runs are well under it.
+const MAX_LOG_ROWS = 5000;
+let pendingLogs = [];
+let logFlushScheduled = false;
+
+// SSE delivers one line per message, and selecting a run floods the entire
+// history in at once. Buffer the lines and flush once per animation frame —
+// a single DOM insert and ONE scroll per frame, instead of a forced reflow per
+// line (the cause of the slow-to-load lag on big runs).
+function queueLog(d) {
+  pendingLogs.push(d);
+  if (!logFlushScheduled) {
+    logFlushScheduled = true;
+    requestAnimationFrame(flushLogs);
+  }
+}
+function flushLogs() {
+  logFlushScheduled = false;
+  if (!pendingLogs.length) return;
+  const batch = pendingLogs;
+  pendingLogs = [];
+  const logEl = $("log");
+  const frag = document.createDocumentFragment();
+  for (let i = 0; i < batch.length; i++) frag.appendChild(buildLogRow(batch[i]));
+  logEl.appendChild(frag);
+  // Trim oldest rows only while following the tail, so scrolling up to read
+  // history isn't yanked out from under the user.
+  if (autoScroll) {
+    let over = logEl.childElementCount - MAX_LOG_ROWS;
+    while (over-- > 0 && logEl.firstChild) logEl.removeChild(logEl.firstChild);
+    logBody.scrollTop = logBody.scrollHeight;
+  }
+}
+
+// -------------------------------------------------------------- log details popover
+function hideLogPopover() { $("log-popover").hidden = true; }
+
+function showLogPopover(badge) {
+  const row = badge.closest(".logline");
+  if (!row) return;
+  const raw = row.dataset.raw || "";
+  const ts = splitTimestamp(raw).ts || "(none)";
+  const pop = $("log-popover");
+  const kv = (k, v) => `<div class="pop-row"><span class="pop-k">${esc(k)}</span><span class="pop-v">${esc(v)}</span></div>`;
+  pop.innerHTML =
+    kv("time", ts) +
+    kv("stage", row.dataset.stage || "?") +
+    kv("level", row.dataset.level || "") +
+    kv("stream", row.dataset.stream || "") +
+    `<pre>${esc(raw)}</pre>`;
+  pop.hidden = false;
+  // anchor under the badge, clamped on-screen
+  const r = badge.getBoundingClientRect();
+  let left = r.left;
+  let top = r.bottom + 4;
+  if (left + pop.offsetWidth > window.innerWidth - 8) left = window.innerWidth - pop.offsetWidth - 8;
+  if (top + pop.offsetHeight > window.innerHeight - 8) top = r.top - pop.offsetHeight - 4;
+  pop.style.left = Math.max(8, left) + "px";
+  pop.style.top = Math.max(8, top) + "px";
+}
+
+$("log").addEventListener("click", (e) => {
+  const badge = e.target.closest(".ls");
+  if (!badge) return;
+  e.stopPropagation();
+  showLogPopover(badge);
+});
+document.addEventListener("click", (e) => {
+  if (!$("log-popover").hidden && !e.target.closest("#log-popover") && !e.target.closest(".ls")) {
+    hideLogPopover();
+  }
+});
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") hideLogPopover(); });
+logBody.addEventListener("scroll", hideLogPopover);
+
+// -------------------------------------------------------------- trace feed
+function tokensOf(rec) {
+  const u = rec.usage || {};
+  return (u.input_tokens || 0) + (u.output_tokens || 0);
+}
+function promptText(rec) {
+  const req = rec.request || {};
+  const msgs = req.input || req.messages;
+  if (Array.isArray(msgs)) {
+    return msgs.map((m) => {
+      const role = m.role || "?";
+      const c = typeof m.content === "string" ? m.content : JSON.stringify(m.content, null, 2);
+      return `[${role}]\n${c}`;
+    }).join("\n\n");
+  }
+  if (typeof msgs === "string") return msgs;
+  return JSON.stringify(req, null, 2);
+}
+function appendTrace(rec) {
+  if (totalCalls === 0) $("traces").innerHTML = "";
+  totalCalls += 1;
+  totalTokens += tokensOf(rec);
+  $("t-calls").textContent = String(totalCalls);
+  $("t-tokens").textContent = totalTokens.toLocaleString();
+
+  const u = rec.usage || {};
+  const status = rec.status || "ok";
+  const statusCls = status === "ok" ? "ok" : "err";
+
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML = `
+    <div class="card-head">
+      <span class="badge">${esc(rec.stage || "?")}</span>
+      <span class="model">${esc(rec.model || "?")}</span>
+      <span class="meta">
+        <span title="attempt">#${esc(rec.attempt != null ? rec.attempt : "?")}</span>
+        <span title="in/out tokens">${esc(u.input_tokens || 0)}/${esc(u.output_tokens || 0)}t</span>
+        <span title="latency">${esc(fmtDur(rec.latency_ms))}</span>
+        <span class="${statusCls}" title="status">${esc(status)}</span>
+      </span>
+    </div>
+    <div class="card-body">
+      <section><h4>Request prompt</h4><pre>${esc(promptText(rec))}</pre></section>
+      <section><h4>Response</h4><pre>${esc((rec.response || {}).raw_text || "(empty)")}</pre></section>
+    </div>`;
+  card.querySelector(".card-head").addEventListener("click", () => card.classList.toggle("open"));
+  $("traces").appendChild(card);
+}
+
+// -------------------------------------------------------------- result panel
+let resultDone = false;  // stop polling /result once a terminal result is in
+
+function fmtSecs(s) {
+  if (s == null) return "";
+  s = Math.round(s);
+  if (s < 60) return s + "s";
+  return Math.floor(s / 60) + "m " + (s % 60) + "s";
+}
+
+// Poll the run's result until it's terminal (or has links), then render the
+// Result panel. Cheap JSON; piggybacks the run-list poll. Guarded so it stops
+// once populated and ignores a response that arrives after the run changed.
+async function refreshResult() {
+  if (!runId || resultDone) return;
+  const id = runId;
+  let res;
+  try {
+    res = await (await fetch("/api/runs/" + encodeURIComponent(id) + "/result")).json();
+  } catch (e) { return; }
+  if (id !== runId) return;  // run switched mid-fetch
+  renderResult(res);
+  const terminal = !!(res && ((res.status && res.status !== "running") || res.outcome));
+  if (res && (terminal || (res.links && res.links.length))) resultDone = true;
+}
+
+function renderResult(res) {
+  const el = $("result");
+  if (!res || (!res.task_id && !res.status && !res.outcome && !(res.links && res.links.length))) {
+    el.innerHTML = "";
+    return;
+  }
+  const rows = [];
+  const row = (k, v) => rows.push(`<div class="r-row"><span class="r-k">${esc(k)}</span><span class="r-v">${v}</span></div>`);
+  if (res.task_name) row("task", esc(res.task_name));
+  if (res.task_id) rows.push(`<div class="r-row"><span class="r-k">id</span><span class="r-v mono">${esc(res.task_id)}</span></div>`);
+  const oc = res.outcome || res.status;
+  if (oc) {
+    const bad = /reject|fail|error|abort/i.test(String(res.task_outcome || oc));
+    const detail = res.task_outcome ? " " + esc(res.task_outcome) : "";
+    row("outcome", `<span class="r-badge ${bad ? "bad" : "ok"}">${esc(oc)}</span>${detail}`);
+  }
+  if (res.competencies) {
+    const stack = [].concat(res.competencies).join(" + ") + (res.proficiency ? " (" + res.proficiency + ")" : "");
+    row("stack", esc(stack));
+  }
+  if (res.env) row("env", esc(res.env));
+  if (res.duration_s != null) row("took", esc(fmtSecs(res.duration_s)));
+  const links = (res.links || [])
+    .filter((l) => l && l.url && /^https:\/\//.test(l.url))
+    .map((l) => `<a class="r-link" href="${esc(l.url)}" target="_blank" rel="noopener">${esc(l.label || "link")} ↗</a>`)
+    .join("");
+
+  // cost + time by stage (estimated from token usage × model pricing)
+  let costHtml = "";
+  const c = res.cost;
+  if (c && c.by_stage && c.by_stage.length) {
+    const stRows = c.by_stage.map((r) => `<div class="c-row">
+      <span class="c-stage">${esc(STAGE_LABEL[r.stage] || r.stage)}</span>
+      <span class="c-cost">$${(r.usd || 0).toFixed(4)}</span>
+      <span class="c-time">${esc(r.duration_ms != null ? fmtDur(r.duration_ms) : "·")}</span>
+    </div>`).join("");
+    costHtml = `<div class="cost-block">
+      <div class="c-row c-head"><span>stage</span><span class="c-cost">${c.estimated ? "≈ cost" : "cost"}</span><span class="c-time">time</span></div>
+      ${stRows}
+      <div class="c-row c-total"><span class="c-stage">total</span><span class="c-cost">$${(c.total_usd || 0).toFixed(4)}</span><span class="c-time">${esc(res.duration_s != null ? fmtSecs(res.duration_s) : "")}</span></div>
+      <div class="c-tokens">${Number(c.total_tokens || 0).toLocaleString()} tokens · ${Number(c.input_tokens || 0).toLocaleString()} in / ${Number(c.output_tokens || 0).toLocaleString()} out</div>
+    </div>`;
+  }
+
+  el.innerHTML = `<div class="result-card">
+    <div class="result-head">Result</div>
+    ${rows.join("")}
+    ${costHtml}
+    ${links ? `<div class="r-links">${links}</div>` : ""}
+  </div>`;
+}
+
+// -------------------------------------------------------------- SSE wiring
+function openStreams() {
+  logES = new EventSource("/api/runs/" + encodeURIComponent(runId) + "/stream/logs");
+  logES.onopen = () => setConn("live");
+  logES.onerror = () => setConn("idle");
+  logES.onmessage = (ev) => {
+    try { queueLog(JSON.parse(ev.data)); } catch (e) { /* ignore */ }
+  };
+
+  traceES = new EventSource("/api/runs/" + encodeURIComponent(runId) + "/stream/traces");
+  traceES.onopen = () => setConn("live");
+  traceES.onmessage = (ev) => {
+    let m;
+    try { m = JSON.parse(ev.data); } catch (e) { return; }
+    if (m.kind === "llm_call") appendTrace(m.record);
+    else if (m.kind === "stage") applyStageEvent(m.record);
+  };
+}
+
+// -------------------------------------------------------------- new-run modal
+let compCache = [];        // [{name, proficiency}] from /api/competencies
+let selectedItems = [];    // chosen competencies — a run combines names at ONE proficiency
+
+function selectedProf() { return selectedItems.length ? selectedItems[0].proficiency : null; }
+function isSelected(c) { return selectedItems.some((s) => s.name === c.name && s.proficiency === c.proficiency); }
+
+function openModal() {
+  $("modal-overlay").hidden = false;
+  $("comp-search").value = "";
+  $("modal-msg").textContent = "";
+  selectedItems = [];
+  updateRunConfig();
+  loadCompetencies();
+  setTimeout(() => $("comp-search").focus(), 30);
+}
+function closeModal() { $("modal-overlay").hidden = true; }
+
+// -------------------------------------------------------------- per-stage output modal
+// 04_tasks substages share the 04_tasks log files; filter their lines by content
+// with the SAME subStageOf() the live pane uses.
+const SUBSTAGE_CANONS = new Set(["classifier", "task_gen", "eval", "gate", "quality", "solution"]);
+let stageModalLines = [];   // [{stage, raw, stream}] cached so in-modal search is instant
+
+// Pure log-row renderer — mirrors buildLogRow's STYLING but with NO live-pane
+// side effects (no filter registration, no timeline activation, no search dim).
+function renderStageLine(stage, raw) {
+  const level = classifyLine(raw);
+  const split = splitTimestamp(raw);
+  const row = document.createElement("div");
+  row.className = "logline lvl-" + level;
+  row.style.setProperty("--stage-h", String(stageHue(stage)));
+  const ls = document.createElement("span");
+  ls.className = "ls";
+  ls.textContent = friendlyStage(stage);
+  const lt = document.createElement("span");
+  lt.className = "lt";
+  if (split.ts) {
+    const t = document.createElement("span");
+    t.className = "ts"; t.textContent = split.ts; lt.appendChild(t);
+  }
+  lt.appendChild(document.createTextNode(cleanMessage(split.rest)));
+  row.appendChild(ls); row.appendChild(lt);
+  return row;
+}
+
+function renderStageModalLines(q) {
+  const body = $("stage-modal-body");
+  body.innerHTML = "";
+  const ql = (q || "").toLowerCase();
+  const frag = document.createDocumentFragment();
+  let shown = 0;
+  for (const l of stageModalLines) {
+    if (ql && !l.raw.toLowerCase().includes(ql)) continue;
+    frag.appendChild(renderStageLine(l.stage, l.raw));
+    shown++;
+  }
+  if (!shown) {
+    const e = document.createElement("div");
+    e.className = "empty";
+    e.textContent = stageModalLines.length ? "No lines match the filter." : "No output captured for this stage.";
+    body.appendChild(e);
+  } else {
+    body.appendChild(frag);
+  }
+  $("stage-modal-meta").textContent =
+    shown + (ql ? " / " + stageModalLines.length : "") + " line" + (shown === 1 ? "" : "s");
+}
+
+async function openStageModal(canon) {
+  if (!runId) return;
+  $("stage-modal-title").textContent = (STAGE_LABEL[canon] || canon) + " — output";
+  $("stage-modal-search").value = "";
+  $("stage-modal-meta").textContent = "loading…";
+  const body = $("stage-modal-body");
+  body.innerHTML = '<div class="empty">loading…</div>';
+  $("stage-modal-overlay").hidden = false;
+  let data;
+  try {
+    const res = await fetch("/api/runs/" + encodeURIComponent(runId) + "/stage/" + encodeURIComponent(canon));
+    data = await res.json();
+    if (!res.ok) throw new Error(data && data.detail ? data.detail : "HTTP " + res.status);
+  } catch (e) {
+    stageModalLines = [];
+    body.innerHTML = '<div class="empty">Failed to load stage output: ' + esc(e.message || e) + "</div>";
+    $("stage-modal-meta").textContent = "";
+    return;
+  }
+  // For 04_tasks substages, the backing files are the shared 04_tasks logs —
+  // skip the sub-logs (subsets of stderr) and filter each line to this substage.
+  const isSub = SUBSTAGE_CANONS.has(canon);
+  const lines = [];
+  for (const f of (data.files || [])) {
+    if (isSub && f.stream === "log") continue;
+    const stageId = String(f.name).split(".", 1)[0];   // e.g. "04_tasks"
+    for (const raw of String(f.content || "").split("\n")) {
+      if (raw === "") continue;
+      if (isSub && subStageOf(raw) !== canon) continue;
+      lines.push({ stage: stageId, raw, stream: f.stream });
+    }
+  }
+  stageModalLines = lines;
+  renderStageModalLines("");
+}
+
+function closeStageModal() {
+  $("stage-modal-overlay").hidden = true;
+  stageModalLines = [];
+}
+$("stage-modal-close").addEventListener("click", closeStageModal);
+$("stage-modal-overlay").addEventListener("click", (e) => {
+  if (e.target.id === "stage-modal-overlay") closeStageModal();
+});
+$("stage-modal-search").addEventListener("input", (e) => renderStageModalLines(e.target.value.trim()));
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("stage-modal-overlay").hidden) closeStageModal();
+});
+
+async function loadCompetencies() {
+  const env = $("run-env").value;
+  const list = $("comp-list");
+  list.innerHTML = '<div class="comp-empty">loading…</div>';
+  let data;
+  try {
+    data = await (await fetch("/api/competencies?env=" + encodeURIComponent(env))).json();
+  } catch (e) {
+    list.innerHTML = '<div class="comp-empty">failed to load competencies</div>';
+    return;
+  }
+  if (data.error) { list.innerHTML = `<div class="comp-empty">${esc(data.error)}</div>`; return; }
+  compCache = data.competencies || [];
+  renderCompList();
+}
+
+function renderCompList() {
+  const q = $("comp-search").value.trim().toLowerCase();
+  const prof = selectedProf();
+  const list = $("comp-list");
+  const items = compCache
+    .map((c, i) => ({ c, i }))
+    .filter(({ c }) => !q || c.name.toLowerCase().includes(q) || (c.proficiency || "").toLowerCase().includes(q));
+  if (!items.length) { list.innerHTML = '<div class="comp-empty">no matches</div>'; return; }
+  list.innerHTML = items.map(({ c, i }) => {
+    const sel = isSelected(c);
+    // a run has one -p, so once a proficiency is picked, lock the rest out
+    const disabled = prof && c.proficiency !== prof && !sel;
+    const cls = "comp-item" + (sel ? " selected" : "") + (disabled ? " disabled" : "");
+    return `<div class="${cls}" data-i="${i}">
+      <span class="comp-name">${esc(c.name)}</span>
+      <span class="comp-prof">${esc(c.proficiency || "—")}</span>
+    </div>`;
+  }).join("");
+}
+
+function updateRunConfig() {
+  const sel = $("run-selected");
+  const clear = $("run-clear");
+  if (selectedItems.length) {
+    sel.textContent = selectedItems.map((s) => s.name).join(" + ") + " · " + (selectedProf() || "—");
+    sel.classList.remove("muted");
+    clear.hidden = false;
+    $("run-go").disabled = false;
+  } else {
+    sel.textContent = "no competency selected";
+    sel.classList.add("muted");
+    clear.hidden = true;
+    $("run-go").disabled = true;
+  }
+}
+
+async function launchRun() {
+  if (!selectedItems.length) return;
+  const env = $("run-env").value;
+  let count = parseInt($("run-count").value, 10);
+  if (!(count >= 1 && count <= 20)) count = 2;
+  $("run-go").disabled = true;
+  $("modal-msg").textContent = "starting…";
+  try {
+    const res = await fetch("/api/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ names: selectedItems.map((s) => s.name), proficiency: selectedProf(), count, env }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      $("modal-msg").textContent = "error: " + (data.detail || res.status);
+      $("run-go").disabled = false;
+      return;
+    }
+    $("modal-msg").textContent = "✓ pipeline started — it'll appear at the top of the run list shortly";
+    runsSig = "";  // force the next poll to rebuild the picker so the new run shows
+    loadRuns();
+    setTimeout(closeModal, 1400);
+  } catch (e) {
+    $("modal-msg").textContent = "failed to start: " + e;
+    $("run-go").disabled = false;
+  }
+}
+
+$("new-run-btn").addEventListener("click", openModal);
+$("modal-close").addEventListener("click", closeModal);
+$("modal-overlay").addEventListener("click", (e) => { if (e.target === $("modal-overlay")) closeModal(); });
+$("comp-search").addEventListener("input", renderCompList);
+$("run-env").addEventListener("change", () => { selectedItems = []; updateRunConfig(); loadCompetencies(); });
+$("comp-list").addEventListener("click", (e) => {
+  const item = e.target.closest(".comp-item");
+  if (!item || item.classList.contains("disabled")) return;
+  const c = compCache[parseInt(item.dataset.i, 10)];
+  if (!c) return;
+  const idx = selectedItems.findIndex((s) => s.name === c.name && s.proficiency === c.proficiency);
+  if (idx >= 0) selectedItems.splice(idx, 1);                              // toggle off
+  else selectedItems.push({ name: c.name, proficiency: c.proficiency });  // add (combo)
+  renderCompList();   // refresh selected + proficiency-lock states
+  updateRunConfig();
+});
+$("run-clear").addEventListener("click", () => { selectedItems = []; renderCompList(); updateRunConfig(); });
+$("run-go").addEventListener("click", launchRun);
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && !$("modal-overlay").hidden) closeModal();
+});
+
+// -------------------------------------------------------------- boot
+// restore density preference
+try {
+  if (localStorage.getItem("trace_ui_density") === "compact") {
+    $("log").classList.add("compact");
+    $("density-toggle").classList.add("on");
+  }
+} catch (e) {}
+renderStages({});
+loadRuns();
+// Light polling of the run LIST only (cheap JSON) so newly-started runs appear
+// without a page refresh. Per-run log/trace streaming stays on SSE, untouched.
+setInterval(loadRuns, 4000);
+</script>
+</body>
+</html>
