@@ -396,6 +396,28 @@ class GeneratePromptSignature(dspy.Signature):
           knowledge of the stack to pick the right manifest filename and
           test command.
 
+          RUN.SH DEPLOYABILITY CONTRACT (when this task ships a TEST SUITE
+          the candidate must make pass — i.e. red/failing tests are the
+          deliverable, the candidate's job is to turn them green): if the
+          generated prompt includes a `run.sh`, that `run.sh` is a
+          DEPLOYABILITY probe, NOT a pass/fail gate. It MUST exit 0 when the
+          test runner COLLECTED AND EXECUTED the suite — EVEN IF tests fail
+          (failing-as-designed is the expected state of a fresh checkout) —
+          and exit non-zero ONLY when the project can't boot or the runner
+          can't run: import error, missing dependency, or collection /
+          config / usage error. Concretely for pytest, mirror these exit
+          codes: 0 (all passed) and 1 (ran, some failed) → run.sh exits 0;
+          >= 2 (interrupted / internal / usage error) and 5 (no tests
+          collected) → run.sh exits non-zero. Capture the runner's exit code
+          and branch on it — do NOT wrap the test command in a bare `set -e`,
+          which conflates a designed test failure with a broken scaffold and
+          makes a perfectly deployable task look un-deployable. Example shape
+          (adapt the runner per stack):
+              python -m pytest -q; rc=$?
+              if [ "$rc" -le 1 ]; then exit 0; else exit "$rc"; fi
+          The `### Run.sh Instructions` section of the generated prompt MUST
+          spell this contract out so the produced `run.sh` follows it.
+
     Common-library/install rules (apply in BOTH shapes):
       • `primary_runtime` and the capability `frameworks` (and their common
         libraries) are PRE-INSTALLED by the E2B template. Do NOT include
@@ -714,6 +736,8 @@ class PromptGeneratorAgent(dspy.Module):
         competencies: list[Competency],
         proficiency: str,
         env: str = "dev",
+        task_shape_override: str | None = None,
+        infra_kind: str | None = None,
     ) -> GenerationResult:
         proficiency = proficiency.upper()
         comp_str = ", ".join(f"{c.name} ({proficiency})" for c in competencies)
@@ -758,24 +782,44 @@ class PromptGeneratorAgent(dspy.Module):
         #               resolver entirely; references + generate is all we need
         #   infra     → fetch similar_tasks, future template resolver, etc.
         logger.info("STEP 3 / shape_classifier.py — classifying task shape")
-        shape_decision: ShapeDecision = classify_task_shape(
-            competencies_str=comp_str,
-            competency_scopes=scopes_str,
-            detailed_skill_signal=skill_signal,
-        )
-        logger.info("  → task_shape = %s", shape_decision.task_shape)
-        logger.info("  → reason     = %s", shape_decision.reason)
+        # `task_shape_override` ("infra"/"non_infra") forces the shape and SKIPS the
+        # classifier — the "force infra" path (run_pipeline --task-shape). The
+        # matching scenario steering happens in stage 02; when forcing infra, the
+        # chosen infra_kind's service is threaded into `datastores` below so the
+        # generated prompt boots the right self-hosted service.
+        _forced = task_shape_override if task_shape_override in ("infra", "non_infra") else None
+        _infra_service = None
+        if _forced:
+            from generators.prompts.infra_kinds import resolve as _resolve_infra_kind
+            _ik = _resolve_infra_kind(infra_kind)
+            if _forced == "infra":
+                _infra_service = _ik.get("service")
+            reason = (f"forced by override (infra_kind={_ik['slug']})"
+                      if _forced == "infra" else "forced by override")
+            shape_decision = ShapeDecision(task_shape=_forced, reason=reason, raw_response="")
+            logger.info("  → task_shape = %s (FORCED — classifier skipped)", _forced)
+            logger.info("  → reason     = %s", reason)
+        else:
+            shape_decision = classify_task_shape(
+                competencies_str=comp_str,
+                competency_scopes=scopes_str,
+                detailed_skill_signal=skill_signal,
+            )
+            logger.info("  → task_shape = %s", shape_decision.task_shape)
+            logger.info("  → reason     = %s", shape_decision.reason)
         task_shape = shape_decision.task_shape
 
         # Resolver is still a no-op at prompt-gen time. The LLM honours
         # `task_shape` directly (HARD CONSTRAINT #7), so runtime / persona /
-        # frameworks / datastores stay empty for both branches. They are kept
-        # in the signature for future infra-flow work (template resolution).
+        # frameworks stay empty. For a FORCED infra task we DO seed `datastores`
+        # with the chosen service so the generated prompt boots it.
         template = None
         persona = ""
         runtime = ""
         cap_frameworks: list[str] = []
-        cap_datastores: list[str] = []
+        cap_datastores: list[str] = [_infra_service] if _infra_service else []
+        if _infra_service:
+            logger.info("  → forced-infra service hint: datastores=%s", cap_datastores)
 
         # ─── STEP 4: retriever (reference prompts) ────────────────────
         logger.info("STEP 4 / retriever.py — running fallback ladder "
