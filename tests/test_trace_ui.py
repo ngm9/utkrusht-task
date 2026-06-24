@@ -323,12 +323,13 @@ def test_compute_cost_by_stage(tmp_path: Path) -> None:
         json.dumps({"stage": "task_gen", "duration_ms": 5000}) + "\n", encoding="utf-8"
     )
     c = _compute_cost(run)
-    # claude-sonnet input 3.0/M × 1M = 3.0 ; gpt-5.4 output 2.0/M × 1M = 2.0
-    assert c["total_usd"] == 5.0
+    # Canonical pricing (infra/pricing.py): claude-sonnet input 3.0/M × 1M = 3.0 ;
+    # gpt-5.4 output 15.0/M × 1M = 15.0  → total 18.0.
+    assert c["total_usd"] == 18.0
     assert c["total_tokens"] == 2_000_000
     by = {r["stage"]: r for r in c["by_stage"]}
     assert by["task_gen"]["usd"] == 3.0 and by["task_gen"]["duration_ms"] == 5000
-    assert by["scenarios"]["usd"] == 2.0 and by["scenarios"]["duration_ms"] is None
+    assert by["scenarios"]["usd"] == 15.0 and by["scenarios"]["duration_ms"] is None
     # rows follow canonical timeline order (scenarios before task_gen)
     assert [r["stage"] for r in c["by_stage"]] == ["scenarios", "task_gen"]
     assert _compute_cost(tmp_path / "nope") is None  # no traces dir → None
