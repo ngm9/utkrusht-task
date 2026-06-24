@@ -1,3 +1,4 @@
+import os
 import re
 import json
 import traceback
@@ -138,7 +139,19 @@ PROFICIENCY_LEVELS = ["BEGINNER", "BASIC", "INTERMEDIATE", "ADVANCED", "EXPERT"]
 TASK_GENERATION_SYSTEM_PROMPT = """
 You are a technical architect responsible for generating task definitions for given competencies. These task definitions are going to be given to candidates to solve in a timed format with or without AI assistance.
 You have 15+ years of experience and have taken 500+ interviews so you understand the importance of generating real world scenarios for the given competencies and for the given proficiency levels.
+
+OUTPUT DISCIPLINE (keep generation cheap — this is a multi-turn exchange):
+- Do NOT ask clarifying questions. No one answers them; proceed with sensible defaults.
+- Intermediate turns must be a SHORT plan (a few lines): the scenario you picked and the bug/feature archetype — nothing more.
+- Do NOT restate or render the full repository (file contents, README, tests) as markdown in an intermediate turn. The repository is emitted exactly ONCE, in the FINAL turn, as the required JSON object.
+- Spend your output budget on the final JSON, not on prose, essays, or restating instructions.
 """
+
+# Lean-retry switch (#1). When a retry has feedback, do ONE correction call
+# (rules-as-context + the embedded prior candidate) instead of re-running the
+# full 3-prompt generation and then correcting. Set TASK_GEN_LEAN_RETRY=0 to
+# restore the old regenerate-then-correct behavior for an A/B cost comparison.
+TASK_GEN_LEAN_RETRY = os.getenv("TASK_GEN_LEAN_RETRY", "1") != "0"
 
 def read_json_file_robust(file_path: Path) -> dict:
     """
@@ -491,9 +504,31 @@ def _format_scenarios_with_existing_titles(
     return base + addendum
 
 
+def _dedupe_competencies(competencies):
+    """Drop duplicate (name, proficiency) rows, preserving first-seen order.
+
+    The competencies table can hold multiple rows for the same competency at the
+    same proficiency (e.g. two 'RabbitMQ (INTERMEDIATE)' rows). Without deduping,
+    the registry lookup key gets a repeated entry — 'RabbitMQ (INTERMEDIATE),
+    RabbitMQ (INTERMEDIATE)' — that never matches the prompt's deduped key, so
+    task generation fails with 'No prompt registered for tech stack'.
+    """
+    seen = set()
+    out = []
+    for c in competencies or []:
+        if not c.get("name"):
+            continue
+        key = (c.get("name"), (c.get("proficiency") or "").upper())
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(c)
+    return out
+
+
 def get_task_prompt_by_technology_stack(competency_stack, input_data):
     """Get task prompt by technology stack. Auto-discovered from PROMPT_REGISTRY in each prompt module."""
-    competencies = input_data.get("competencies", [])
+    competencies = _dedupe_competencies(input_data.get("competencies", []))
     key_with_proficiency = ", ".join(
         sorted([f"{c.get('name')} ({c.get('proficiency', '').upper()})" for c in competencies if c.get("name")])
     ) if competencies else ""
@@ -530,7 +565,7 @@ def get_task_prompt_by_technology_stack(competency_stack, input_data):
             or input_data.get("background", {}).get("minutes_range")
             or _minutes_default
         ),
-        "competencies": input_data.get("competencies"),
+        "competencies": competencies,
         "real_world_task_scenarios": _format_scenarios_with_existing_titles(
             input_data.get("scenarios", ""),
             input_data.get("existing_task_titles"),
@@ -563,7 +598,7 @@ def generate_task_with_code(
         Dict: Generated task data with code files
     """
     try:
-        competencies = input_data["competencies"]
+        competencies = _dedupe_competencies(input_data["competencies"])
 
         # Get competency names and create a single technology stack string
         competency_names = [comp.get("name") for comp in competencies] 
@@ -584,19 +619,10 @@ def generate_task_with_code(
             logger.error(f"No task generation prompts found for technology stack: {competency_stack}")
             raise ValueError(f"Unsupported technology stack: {competency_stack}. Please add prompts for this stack in get_task_prompt_by_technology_stack.")
 
-        # Pricing per million tokens
-        PRICING = {
-            "claude-opus-4-8": {"input": 5.0, "output": 25.0},
-            "claude-opus-4-6": {"input": 5.0, "output": 25.0},
-            "claude-sonnet-4-6": {"input": 3.0, "output": 15.0},
-            "claude-haiku-4-5-20251001": {"input": 1.0, "output": 5.0},
-            "gpt-5.5": {"input": 5.0, "output": 30.0},
-            "gpt-5.4": {"input": 2.5, "output": 15.0},
-            "gpt-5.4-mini": {"input": 0.75, "output": 4.5},
-            "gpt-5.4-nano": {"input": 0.3, "output": 1.5},
-            "gpt-5.1-2025-11-13": {"input": 2.0, "output": 8.0},
-        }
-        model_pricing = PRICING.get(model, {"input": 15.0, "output": 75.0})
+        # Pricing per million tokens — canonical table (infra/pricing.py).
+        from infra.pricing import price_per_million
+        _pin, _pout = price_per_million(model)
+        model_pricing = {"input": _pin, "output": _pout}
         total_input_tokens = 0
         total_output_tokens = 0
 
@@ -612,7 +638,44 @@ def generate_task_with_code(
         )
         response = None
         response_text = None
-        for i, prompt in enumerate(task_generation_prompts, 1):
+
+        # LEAN RETRY (#1): on a retry, `feedback` already embeds the prior
+        # candidate task; the 3 base prompts only carry the rules/scenario. So
+        # instead of re-rolling a fresh task across 3 turns (which we throw away
+        # and patch anyway), send the rules as ONE context block + the feedback
+        # in a SINGLE correction call. Halves retry cost on every stack with no
+        # capability loss — the correction turn is what produced the passing
+        # task before too. TASK_GEN_LEAN_RETRY=0 restores the old behavior.
+        _lean = bool(feedback) and TASK_GEN_LEAN_RETRY
+        if _lean:
+            logger.info(
+                "Lean retry: single correction call (skipping 3-prompt regeneration)"
+            )
+            messages.append({"role": "user", "content": "\n\n".join(task_generation_prompts)})
+            messages.append({"role": "user", "content": feedback})
+            response = openai_client.chat.completions.create(
+                model=model, messages=messages, **_token_kwargs,
+            )
+            response_text = response.choices[0].message.content if response.choices else None
+            if not response_text:
+                raise RuntimeError("Empty response from LLM on lean correction turn")
+            if (response.choices[0].finish_reason if response.choices else None) == "length":
+                from infra.evals import LLMOutputTruncated
+                raise LLMOutputTruncated(response_text, attempt=-1)
+            usage = response.usage
+            _li = usage.prompt_tokens if usage else 0
+            _lo = usage.completion_tokens if usage else 0
+            total_input_tokens += _li
+            total_output_tokens += _lo
+            logger.info("=" * 70)
+            logger.info(" Lean Correction Response: ")
+            logger.info(response_text)
+            logger.info(f" Tokens - Input: {_li:,} | Output: {_lo:,}")
+            logger.info("=" * 70)
+
+        # Base generation (first attempt, or old behavior when lean is off). When
+        # lean fired above, this iterates an empty list and is skipped.
+        for i, prompt in enumerate([] if _lean else task_generation_prompts, 1):
             messages.append({"role": "user", "content": prompt})
             response = openai_client.chat.completions.create(
                 model=model,
@@ -654,12 +717,12 @@ def generate_task_with_code(
             logger.info(f" Tokens - Input: {prompt_input:,} | Output: {prompt_output:,}")
             logger.info("=" * 70)
 
-        # Feedback-aware retry turn. When the caller supplies feedback from a
-        # failed prior attempt, append it as a follow-up message so the LLM
-        # corrects its OWN previous response (full conversation context intact)
-        # rather than starting blind. The corrected response replaces
-        # response_text for the JSON parsing below.
-        if feedback:
+        # Feedback-aware retry turn (legacy path, used only when lean retry is
+        # OFF). When the caller supplies feedback from a failed prior attempt,
+        # append it as a follow-up message so the LLM corrects its OWN previous
+        # response (full conversation context intact). The corrected response
+        # replaces response_text for the JSON parsing below.
+        if feedback and not _lean:
             logger.info("Applying feedback from previous attempt — requesting a corrected response")
             messages.append({"role": "user", "content": feedback})
             response = openai_client.chat.completions.create(
@@ -769,7 +832,10 @@ def generate_task_with_code(
             raise RuntimeError(error_msg)
 
         task_data["created_at"] = datetime.now().isoformat()
-        
+        # Surface this attempt's task-gen cost so the retry loop can log a
+        # per-attempt + cumulative spend. The caller pops it before persistence.
+        task_data["_gen_cost_usd"] = round(total_cost, 4)
+
         return task_data
         
     except Exception as e:

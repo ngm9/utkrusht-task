@@ -83,9 +83,12 @@ def test_general_reference_path_unknown_level_falls_back() -> None:
 
 
 def test_zero_reference_combo_hits_level_6() -> None:
-    """PHP+Laravel — the F10 combo — must now anchor on the general reference."""
+    """A combo with NO curated prompt at any level must anchor on the general
+    reference (Level 6). Was PHP+Laravel (the F10 combo), but php_laravel prompt
+    files now exist, so it's no longer reference-less — use a synthetic competency
+    guaranteed to match no filename token and have no tech-family sibling."""
     r = retrieve_references(
-        [Competency("PHP", "INTERMEDIATE"), Competency("PHP - Laravel", "INTERMEDIATE")],
+        [Competency("Nonexistent Synthetic Discipline", "INTERMEDIATE")],
         "INTERMEDIATE",
     )
     assert r.used_general_fallback is True

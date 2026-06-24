@@ -49,10 +49,8 @@ GENERATION_MODEL = "gpt-5.5"
 EVAL_MODEL = "gpt-5.4-nano"
 MAX_RETRIES = 2  # total attempts = MAX_RETRIES + 1 (gives the eval-feedback loop room to converge)
 
-# Pricing per million tokens (https://platform.openai.com/docs/pricing)
-PRICING = {
-    GENERATION_MODEL: {"input": 0.50, "output": 2.00},    # gpt-5-nano
-}
+# Token pricing comes from the canonical table (infra/pricing.py) — no local
+# copy, so GENERATION_MODEL / EVAL_MODEL can't drift out of sync with their rate.
 
 # ============================================================================
 # COST TRACKING
@@ -71,10 +69,8 @@ def extract_usage(response) -> Dict:
 
 def calculate_cost(total_usage: Dict, model: str) -> float:
     """Calculate cost in USD from token usage for a given model."""
-    prices = PRICING.get(model, {"input": 1.25, "output": 10.00})
-    input_cost = (total_usage["input_tokens"] / 1_000_000) * prices["input"]
-    output_cost = (total_usage["output_tokens"] / 1_000_000) * prices["output"]
-    return input_cost + output_cost
+    from infra.pricing import cost_usd
+    return cost_usd(model, total_usage["input_tokens"], total_usage["output_tokens"])
 
 
 def format_cost_summary(usage_by_model: Dict) -> str:

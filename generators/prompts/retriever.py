@@ -33,6 +33,38 @@ PROMPT_ROOT = Path(__file__).parent.parent.parent / "task_generation_prompts"
 # schema so bootstrap-mode generations don't invent their own key names.
 GENERAL_REFERENCE_DIR = PROMPT_ROOT / "_general_reference"
 
+# Agent-engineering competencies share ONE curated baseline prompt — they have no
+# per-competency files, and filename-token matching mis-routes them (e.g. "Context
+# Engineering" matched production_agent via the shared "engineering" token; "Tool
+# Use for Agents" matched nothing and fell to the generic Level-6 reference). Pin
+# the curated agent baseline as the TOP reference for every agent competency so the
+# generator always learns from a real agent prompt.
+# See docs/plans/2026-06-19-agent-task-fake-llm-rootcause.md
+AGENT_COMPETENCIES = {
+    "multi-agent systems",
+    "production agent engineering",
+    "tool use for agents",
+    "context engineering",
+}
+def _agent_baseline_path(proficiency: str) -> Optional[Path]:
+    """The curated, competency-neutral GENERIC AGENT reference for this proficiency.
+
+    Reference-only (defines no PROMPT_REGISTRY). Falls back to the INTERMEDIATE
+    baseline when a level-specific file is absent, so a future agent proficiency
+    never produces a hard miss. Returns None if no agent baseline is present.
+    """
+    level = (proficiency or "").lower()
+    candidate = GENERAL_REFERENCE_DIR / f"agent_general_{level}_prompt.py"
+    if candidate.exists():
+        return candidate
+    fallback = GENERAL_REFERENCE_DIR / "agent_general_intermediate_prompt.py"
+    return fallback if fallback.exists() else None
+
+
+def _is_agent_competency(comp) -> bool:
+    """True when this competency is an agent-engineering competency."""
+    return getattr(comp, "name", "").strip().lower() in AGENT_COMPETENCIES
+
 # Map proficiency level → folder under task_generation_prompts/
 LEVEL_FOLDERS = {
     "BEGINNER": "Beginner",
@@ -307,6 +339,16 @@ def retrieve_references(
 
     def _accept(path: Path) -> bool:
         return path not in excluded and path not in result.references
+
+    # LEVEL 0 — agent baseline pin. Agent-engineering competencies have no
+    # per-competency prompt files; filename-token matching mis-routes them to
+    # backend prompts or the generic Level-6 reference. Pin the curated agent
+    # baseline first so the generator always learns from a real agent prompt.
+    if any(_is_agent_competency(c) for c in competencies):
+        baseline = _agent_baseline_path(proficiency)
+        if baseline and _accept(baseline):
+            result.references.append(baseline)
+            result.notes.append(f"Level 0 (agent baseline): {baseline.name}")
 
     # LEVEL 1 — exact match at the requested level
     exact = _find_exact_match_file(competencies, proficiency)

@@ -215,6 +215,15 @@ def build_retry_feedback(
                 f"E2B sandbox gate FAILED ({verdict}): {detail}\n"
                 f"Sandbox stdout tail (most-recent error first):\n{tail}"
             )
+            _tail_low = (tail or "").lower()
+            if "no module named" in _tail_low or "modulenotfounderror" in _tail_low:
+                parts.append(
+                    "HINT (gate dependency error): a 'No module named X' at the gate "
+                    "means run.sh imported a package before installing deps. run.sh's "
+                    "FIRST step MUST be `pip install -q -r requirements.txt` (the gate "
+                    "sandbox does NOT pre-install task deps), and X must be listed in "
+                    "requirements.txt."
+                )
 
     prior_blob = _format_prior_candidate(prior_candidate)
     if prior_blob:

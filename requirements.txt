@@ -19,4 +19,5 @@ uvicorn[standard]
 sse-starlette
 httpx
 boto3
+claude-agent-sdk  # P6 run-through solver (headless Claude Code agent)
 
