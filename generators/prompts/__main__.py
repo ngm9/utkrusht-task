@@ -110,7 +110,15 @@ def _prepend_task_shape(source: str, task_shape: str) -> str:
 @click.option("--verbose", "-v", is_flag=True, default=False,
               help="Enable detailed step-by-step logging of every internal stage "
                    "(file lookups, Supabase queries, LLM call sizes, verifier feedback).")
-def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_path, verbose):
+@click.option("--task-shape", default="auto",
+              type=click.Choice(["auto", "infra", "non_infra"]),
+              help="Force the task shape. 'auto' (default) lets the classifier decide; "
+                   "'infra'/'non_infra' skip the classifier.")
+@click.option("--infra-kind", default="auto",
+              help="When --task-shape=infra, the self-hosted service to ground the task "
+                   "in (auto/vector-db/redis/kafka/postgres/mcp-server).")
+def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_path,
+        verbose, task_shape, infra_kind):
     """Generate a new task generation prompt file using the DSPy agent."""
 
     # Configure verbose logging if requested. Adds a clean console stream handler
@@ -176,7 +184,11 @@ def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_
             click.echo(f" No compiled file at {cp} -- running uncompiled.")
 
     click.echo(f" Running generator (max {max_iterations} iterations)...")
-    result = agent(competencies=competencies, proficiency=proficiency_upper, env=env)
+    result = agent(
+        competencies=competencies, proficiency=proficiency_upper, env=env,
+        task_shape_override=(None if task_shape == "auto" else task_shape),
+        infra_kind=infra_kind,
+    )
 
     # Report
     click.echo(f"\n{'-'*70}")

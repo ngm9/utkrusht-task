@@ -35,6 +35,11 @@ def _summary(output: str) -> str:
     return _failure_excerpt(output).split("--- recent run.sh output ---")[0]
 
 
+def _raw_tail(output: str) -> str:
+    parts = _failure_excerpt(output).split("--- recent run.sh output ---")
+    return parts[1] if len(parts) > 1 else parts[0]
+
+
 def test_excerpt_leads_with_root_cause_and_framing():
     summary = _summary(_OUTPUT)
     assert "ModuleNotFoundError: No module named 'totally_missing_module_xyz'" in summary
@@ -60,8 +65,46 @@ def test_excerpt_excludes_docker_noise():
     assert "Extracting layers" not in summary
 
 
+def test_raw_tail_excludes_docker_noise():
+    """The raw-output tail half of the excerpt must ALSO drop docker-pull noise.
+    For a docker-compose task the literal last-N-chars is almost entirely
+    Extracting/Pull-complete spam (it streams to stderr → end of the combined
+    output), which buries the real run.sh signal."""
+    tail = _raw_tail(_OUTPUT)
+    assert "Extracting layers" not in tail
+    # ...and the tail still carries real run.sh signal, not just empty bytes.
+    assert "ModuleNotFoundError" in tail or "did not respond" in tail
+
+
+def test_raw_tail_drops_trailing_layer_id_lines():
+    """Bare layer-id progress lines (e.g. `a1b2c3d4e5f6  Pulling`) are dropped
+    so they don't crowd out the tail."""
+    out = (
+        "real error: connection refused on :5432\n"
+        + "a1b2c3d4e5f6   Downloading [===>   ]  12MB/40MB\n" * 50
+    )
+    tail = _raw_tail(out)
+    assert "Downloading" not in tail
+    assert "connection refused" in tail
+
+
 def test_excerpt_falls_back_to_tail_when_no_error_lines():
     benign = "just some benign output line\n" * 50
     ex = _failure_excerpt(benign)
     assert "Key error" not in ex
     assert "benign output" in ex
+
+
+def test_fallback_excludes_docker_noise():
+    """No error lines → plain-tail fallback, but it must still drop docker
+    noise so a lone benign signal isn't buried under pull spam."""
+    benign = (
+        "Pull complete\n" * 100
+        + "service started on port 8080\n"
+        + "Extracting\n" * 100
+    )
+    ex = _failure_excerpt(benign)
+    assert "Key error" not in ex
+    assert "service started on port 8080" in ex
+    assert "Pull complete" not in ex
+    assert "Extracting" not in ex

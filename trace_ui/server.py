@@ -225,6 +225,235 @@ def api_stage_output(run_id: str, canon: str) -> JSONResponse:
 
 
 # ----------------------------------------------------------------------
+# Per-stage ARTIFACTS — the GENERATED files (not logs) a stage produced
+# ----------------------------------------------------------------------
+
+_GEN_ROOT = _REPO_ROOT / "data" / "generated"
+
+_RESOLVED_INPUTS_RE = re.compile(r"__INPUT_FILES_RESOLVED__\s*(\{.*\})")
+_OUTPUT_DIR_RE = re.compile(r"Output directory:\s*(\S+)")
+_COMP_FILE_RE = re.compile(r"Competency file:\s*(\S+)")
+_BG_FILE_RE = re.compile(r"Background file:\s*(\S+)")
+_PROMPT_PATH_RE = re.compile(r"(?:Output path:|Wrote:)\s*(\S+\.py)")
+_LOCKED_RE = re.compile(r"Locked scenarios:\s*(\[.*\])")
+
+
+def _rel(p: Path) -> str:
+    """Repo-relative display path (falls back to the absolute path)."""
+    try:
+        return str(p.resolve().relative_to(_REPO_ROOT.resolve()))
+    except (ValueError, OSError):
+        return str(p)
+
+
+def _within(path: Path, *roots: Path) -> bool:
+    """True iff ``path`` resolves strictly inside one of ``roots`` (anti-traversal)."""
+    try:
+        rp = path.resolve()
+    except OSError:
+        return False
+    for root in roots:
+        try:
+            rp.relative_to(root.resolve())
+            return True
+        except (ValueError, OSError):
+            continue
+    return False
+
+
+def _safe_read(path: Path, *roots: Path) -> Optional[str]:
+    """Read a file only if it resolves inside an allowed root; else None."""
+    if not _within(path, *roots):
+        return None
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def _stage_stdout(combo: Path, prefix: str) -> str:
+    try:
+        return (combo / f"{prefix}.stdout").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+def _input_file_paths(combo: Path) -> tuple[Optional[Path], Optional[Path]]:
+    """(competency, background) absolute paths from 01_input_files.stdout — the
+    machine marker first, then the human ``Output directory:``/``Competency file:``
+    /``Background file:`` lines."""
+    text = _stage_stdout(combo, "01_input_files")
+    for line in reversed(text.splitlines()):
+        m = _RESOLVED_INPUTS_RE.search(line)
+        if m:
+            try:
+                d = json.loads(m.group(1))
+                return Path(d["competency"]), Path(d["background"])
+            except (ValueError, KeyError, TypeError):
+                break
+    od, cf, bf = _OUTPUT_DIR_RE.search(text), _COMP_FILE_RE.search(text), _BG_FILE_RE.search(text)
+    if od and cf:
+        base = Path(od.group(1))
+        return base / cf.group(1), (base / bf.group(1) if bf else None)
+    return None, None
+
+
+def _prompt_path(combo: Path) -> Optional[Path]:
+    """The generated prompt .py path from 03_prompt.stdout (last match wins)."""
+    found = None
+    for line in _stage_stdout(combo, "03_prompt").splitlines():
+        m = _PROMPT_PATH_RE.search(line)
+        if m:
+            found = m.group(1)
+    return Path(found) if found else None
+
+
+def _parse_scenario(text: str) -> dict:
+    """Split a scenario into current / task / success (best-effort, falls back to
+    the whole text under ``current`` when the markers are absent)."""
+    def _seg(start_pat: str, end_pats: list[str]) -> str:
+        m = re.search(start_pat, text, re.I)
+        if not m:
+            return ""
+        start, end = m.end(), len(text)
+        for ep in end_pats:
+            em = re.search(ep, text[start:], re.I)
+            if em:
+                end = min(end, start + em.start())
+        return text[start:end].strip().strip("*").strip()
+
+    current = _seg(r"\*\*Current Implementation:\*\*", [r"\*\*Your Task:\*\*", r"\*\*Success Criteria:\*\*"])
+    task = _seg(r"\*\*Your Task:\*\*", [r"\*\*Success Criteria:\*\*"])
+    success = _seg(r"\*\*Success Criteria:\*\*", [])
+    if not (current or task or success):
+        return {"current": text.strip(), "task": "", "success": ""}
+    return {"current": current, "task": task, "success": success}
+
+
+def _locked_scenarios(combo: Path) -> list[str]:
+    """The locked scenario(s) the task used, parsed from 04_tasks.stderr."""
+    try:
+        text = (combo / "04_tasks.stderr").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    found = None
+    for line in text.splitlines():
+        m = _LOCKED_RE.search(line)
+        if m:
+            found = m.group(1)
+    if not found:
+        return []
+    try:
+        arr = json.loads(found)
+        return [s for s in arr if isinstance(s, str)]
+    except ValueError:
+        return []
+
+
+def _scenario_pool(run_dir: Path, combo: Path) -> list[str]:
+    """Best-effort: the full generated-scenario pool from the DB for this combo."""
+    manifest = _read_json(run_dir / "traces" / "manifest.json") or {}
+    summary = _read_json(combo / "summary.json") or {}
+    comps = manifest.get("competencies") or summary.get("competencies") or []
+    prof = (summary.get("proficiency") or manifest.get("proficiency") or "").upper()
+    env = manifest.get("env") or "dev"
+    names = [c if isinstance(c, str) else (c.get("name") if isinstance(c, dict) else None) for c in comps]
+    names = [n for n in names if n]
+    if not names or not prof:
+        return []
+    key = ", ".join(sorted(f"{n} ({prof})" for n in names))
+    try:
+        from generators.scenarios import repository as scenario_repo
+        return scenario_repo.load_scenarios_for_combo(env=env, combo_key=key, proficiency=prof) or []
+    except Exception:  # noqa: BLE001 — DB optional; locked scenario still shows
+        return []
+
+
+def _task_artifacts(run_dir: Path) -> list[dict]:
+    """task.json + README + code files for the generated task (by task_id)."""
+    manifest = _read_json(run_dir / "traces" / "manifest.json") or {}
+    task_id = manifest.get("task_id")
+    if not task_id:
+        return []
+    tdir = _GEN_ROOT / "task_artifacts" / str(task_id)
+    if not _within(tdir, _GEN_ROOT) or not tdir.is_dir():
+        return []
+    out: list[dict] = []
+    data = _read_json(tdir / "task.json")
+    if data is not None:
+        out.append({"kind": "json", "title": "task.json", "path": _rel(tdir / "task.json"), "data": data})
+    for p in sorted(tdir.rglob("*")):
+        if not p.is_file() or p.name == "task.json":
+            continue
+        content = _safe_read(p, _GEN_ROOT)
+        if content is None:
+            continue
+        if p.name.lower() == "readme.md":
+            out.append({"kind": "markdown", "title": str(p.relative_to(tdir)), "path": _rel(p), "content": content})
+        else:
+            out.append({"kind": "code", "title": str(p.relative_to(tdir)),
+                        "path": _rel(p), "lang": p.suffix.lstrip("."), "content": content})
+    return out
+
+
+@app.get("/api/runs/{run_id}/artifacts/{canon}")
+def api_stage_artifacts(run_id: str, canon: str) -> JSONResponse:
+    """Generated ARTIFACTS for a stage (the files it produced) for the modal's
+    'Artifacts' view. Read-only; every path is confirmed inside data/generated or
+    the run dir (no traversal); missing files are omitted, never a 500. Stages
+    without artifacts (classifier/eval/gate/quality/solution) return an empty list
+    so the modal falls back to logs."""
+    run_dir = _resolve_or_400(run_id)
+    if canon not in _CANON_TO_FILESTAGE:
+        raise HTTPException(status_code=400, detail=f"unknown stage '{canon}'")
+    combo = _combo_dir(run_dir)
+    if combo is None:
+        raise HTTPException(status_code=404, detail="no combo dir for this run")
+
+    artifacts: list[dict] = []
+    roots = (_GEN_ROOT, run_dir)
+
+    if canon == "input_files":
+        comp, bg = _input_file_paths(combo)
+        for path in (comp, bg):
+            if path is None:
+                continue
+            txt = _safe_read(path, *roots)
+            if txt is None:
+                continue
+            try:
+                artifacts.append({"kind": "json", "title": path.name, "path": _rel(path), "data": json.loads(txt)})
+            except ValueError:
+                artifacts.append({"kind": "code", "title": path.name, "path": _rel(path), "lang": "json", "content": txt})
+
+    elif canon == "prompt":
+        pp = _prompt_path(combo)
+        if pp is not None:
+            txt = _safe_read(pp, *roots)
+            if txt is not None:
+                artifacts.append({"kind": "code", "title": pp.name, "path": _rel(pp), "lang": "python", "content": txt})
+
+    elif canon == "scenarios":
+        locked = _locked_scenarios(combo)
+        locked_set = set(locked)
+        items, seen = [], set()
+        for s in (_scenario_pool(run_dir, combo) + locked):
+            if s in seen:
+                continue
+            seen.add(s)
+            d = _parse_scenario(s)
+            d["locked"] = s in locked_set
+            items.append(d)
+        if items:
+            artifacts.append({"kind": "scenarios", "title": f"Scenarios ({len(items)})", "items": items})
+
+    elif canon == "task_gen":
+        artifacts.extend(_task_artifacts(run_dir))
+
+    return JSONResponse({"canon": canon, "artifacts": artifacts})
+
+
+# ----------------------------------------------------------------------
 # Launcher: list competencies + start a new pipeline run
 # ----------------------------------------------------------------------
 
@@ -278,6 +507,8 @@ class RunRequest(BaseModel):
     proficiency: str
     count: int = 2
     env: str = "dev"
+    task_shape: str = "auto"   # auto | infra | non_infra
+    infra_kind: str = "auto"   # only used when task_shape == "infra"
 
 
 def _spawn_pipeline(cmd: list[str]) -> None:
@@ -307,15 +538,29 @@ def api_launch(req: RunRequest) -> JSONResponse:
     if any(any(ord(ch) < 32 for ch in n) for n in names):
         raise HTTPException(status_code=400, detail="competency name contains invalid characters")
     count = req.count if isinstance(req.count, int) and 1 <= req.count <= 20 else 2
+    task_shape = req.task_shape if req.task_shape in ("auto", "infra", "non_infra") else "auto"
+    from generators.prompts import infra_kinds
+    infra_kind = req.infra_kind if infra_kinds.is_valid(req.infra_kind) else "auto"
 
-    cmd = [sys.executable, "run_pipeline.py", "-p", prof, "--env", env, "--count", str(count)]
+    cmd = [sys.executable, "run_pipeline.py", "-p", prof, "--env", env, "--count", str(count),
+           "--task-shape", task_shape]
+    if task_shape == "infra":
+        cmd += ["--infra-kind", infra_kind]
     for n in names:
         cmd += ["-n", n]
     try:
         _spawn_pipeline(cmd)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"failed to launch pipeline: {exc}") from exc
-    return JSONResponse({"ok": True, "names": names, "proficiency": prof, "env": env, "count": count})
+    return JSONResponse({"ok": True, "names": names, "proficiency": prof, "env": env,
+                         "count": count, "task_shape": task_shape, "infra_kind": infra_kind})
+
+
+@app.get("/api/infra-kinds")
+def api_infra_kinds() -> JSONResponse:
+    """Infra-service options for the New-run modal's force-infra dropdown."""
+    from generators.prompts import infra_kinds
+    return JSONResponse({"kinds": infra_kinds.list_kinds()})
 
 
 def _resolve_or_400(run_id: str) -> Path:
