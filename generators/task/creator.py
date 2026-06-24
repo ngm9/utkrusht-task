@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import os
 import re
 import shutil
 import traceback
@@ -61,6 +62,7 @@ from generators.task.evaluator import (
 )
 from generators.task.expected_ports import build_expected_ports
 from generators.task.gate import GateOutcome, run_gate_for_attempt
+from generators.task.trace_check import check_trace_consistency
 from generators.task.repository import (
     TaskValidationError,
     insert_task_competencies,
@@ -336,6 +338,223 @@ def strip_not_to_include(readme: str) -> str:
     return cleaned + "\n" if readme.endswith("\n") else cleaned
 
 
+def _gate_no_progress(candidate_eval: Dict, prev_verdict: Optional[str]) -> tuple[bool, Optional[str]]:
+    """Whether this attempt's E2B gate verdict matches the prior attempt's.
+
+    A repeated identical verdict means regenerating isn't making progress — the
+    failure is environmental/scaffold (e.g. a run.sh import path), not something
+    the LLM can fix by re-rolling — so the retry loop should ABORT instead of
+    burning another (expensive) task-gen call. Returns ``(should_abort, verdict)``.
+    """
+    verdict = (candidate_eval.get("sandbox_eval") or {}).get("verdict")
+    return (bool(verdict) and verdict == prev_verdict, verdict)
+
+
+# Runtime-agnostic dependency bootstrap rules for run.sh. Each entry:
+#   (manifest filename, regex meaning "run.sh ALREADY fetches deps", install cmd,
+#    human label). The regex is broad on purpose so we never double-install
+#   (pip / pip3 / uv pip / python -m pip; npm / pnpm / yarn; go mod/build/run;
+#   cargo fetch/build/run/test).
+_RUNTIME_BOOTSTRAP = [
+    ("requirements.txt",
+     r"\b(?:pip3?|uv\s+pip|python3?\s+-m\s+pip)\s+install\b",
+     "pip install -q -r requirements.txt", "Python dependencies"),
+    ("package.json",
+     r"\b(?:npm\s+(?:ci|install|i)|pnpm\s+(?:install|i)|yarn(?:\s+install)?)\b",
+     "npm install", "Node dependencies"),
+    ("go.mod",
+     r"\bgo\s+(?:mod\s+(?:download|tidy)|build|run|test|install)\b",
+     "go mod download", "Go modules"),
+    ("Cargo.toml",
+     r"\bcargo\s+(?:fetch|build|run|test)\b",
+     "cargo fetch", "Rust crates"),
+]
+
+
+def _ensure_runsh_installs_deps(code_files: Optional[Dict]) -> None:
+    """Inject a dependency-install step into run.sh when the scaffold forgot one.
+
+    Runtime-aware (Python / Node / Go / Rust), NOT Python-only — the pipeline
+    generates tasks across many stacks, so the bootstrap must be too.
+
+    The E2B readiness gate (and a real candidate env) do NOT pre-install a task's
+    own third-party deps; if run.sh imports/builds before fetching them,
+    readiness dies (ModuleNotFoundError, "cannot find package", unresolved
+    import). The prompt is meant to mandate the install, but the DSPy generator
+    drops it and the gate retry hint gets ignored — so enforce it
+    deterministically. For each runtime whose manifest is present and whose
+    install run.sh does NOT already run, insert the install after the
+    shebang/``set``/``cd`` prefix (before the app starts). Mutates ``code_files``
+    in place; no-op for runtimes already handled or absent (never double-installs).
+    """
+    files = code_files or {}
+    run_key = next((k for k in files if k == "run.sh" or k.endswith("/run.sh")), None)
+    if not run_key:
+        return
+    script = files.get(run_key)
+    if not isinstance(script, str):
+        return
+
+    def _has_manifest(name: str) -> bool:
+        return any(k == name or k.endswith("/" + name) for k in files)
+
+    to_add: List[str] = []
+    for manifest, already_re, install_cmd, label in _RUNTIME_BOOTSTRAP:
+        if not _has_manifest(manifest):
+            continue
+        if re.search(already_re, script):
+            continue
+        to_add.append(f'echo "[run] installing {label}..."')
+        to_add.append(install_cmd)
+    if not to_add:
+        return
+
+    lines = script.splitlines()
+    insert_at = 0
+    for i, raw in enumerate(lines):
+        s = raw.strip()
+        if (i == 0 and s.startswith("#!")) or s.startswith("set ") or s.startswith("cd ") \
+                or s == "" or s.startswith("#"):
+            insert_at = i + 1
+            continue
+        break
+    lines[insert_at:insert_at] = to_add
+    files[run_key] = "\n".join(lines) + ("\n" if script.endswith("\n") else "")
+
+
+# Provider-key env vars that mark a task as making real LLM calls on the
+# candidate's own key (the agent tasks).
+_PROVIDER_KEY_VARS = ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "AZURE_API_KEY")
+
+# GitHub note admonition injected into the README of provider-key tasks.
+_ENV_NOTE_LINES = (
+    "> [!NOTE]",
+    "> Copy `.env.example` to `.env` and add your LLM provider key "
+    "(e.g. `OPENAI_API_KEY`).",
+    "> The invariant tests run offline and need no key — only the end-to-end "
+    "agent run does.",
+)
+
+
+def _ensure_readme_env_note(code_files: Optional[Dict]) -> None:
+    """Inject a `> [!NOTE]` env-setup block into the README for provider-key tasks.
+
+    Agent tasks call a real LLM on the candidate's own key, but the generated
+    README often buries (or omits) the "copy .env.example → .env" step — candidates
+    hit confusing auth/key errors as a result. When the scaffold ships a
+    ``.env.example`` declaring a provider key, deterministically add a GitHub note
+    admonition under the README's ``## How to Verify`` section so it can't be
+    missed. The note is a ``>`` blockquote INSIDE the section, never a new ``##``
+    heading (which would break ``parse_markdown_to_json``). Mutates ``code_files``
+    in place; no-op when there is no provider-key ``.env.example``, no README, no
+    headed section, or the README already carries a note admonition.
+    """
+    files = code_files or {}
+    readme_key = next(
+        (k for k in files if k == "README.md" or k.endswith("/README.md")), None
+    )
+    if not readme_key:
+        return
+    readme = files.get(readme_key)
+    if not isinstance(readme, str) or not readme.strip():
+        return
+
+    declares_provider_key = any(
+        (k == ".env.example" or k.endswith("/.env.example"))
+        and isinstance(v, str)
+        and any(var in v for var in _PROVIDER_KEY_VARS)
+        for k, v in files.items()
+    )
+    if not declares_provider_key:
+        return
+    if "[!NOTE]" in readme:  # already carries an admonition — never double-inject
+        return
+
+    lines = readme.splitlines()
+    # Anchor inside "## How to Verify"; fall back to the first "## " header so the
+    # note still lands INSIDE a parsed section (content above the first header is
+    # dropped by the readme parser).
+    anchor = next(
+        (i for i, ln in enumerate(lines)
+         if ln.strip().lower().startswith("## how to verify")),
+        None,
+    )
+    if anchor is None:
+        anchor = next(
+            (i for i, ln in enumerate(lines) if ln.strip().startswith("## ")), None
+        )
+    if anchor is None:
+        return  # no headed section to embed inside — leave the README untouched
+
+    insert_at = anchor + 1
+    lines[insert_at:insert_at] = ["", "\n".join(_ENV_NOTE_LINES), ""]
+    files[readme_key] = "\n".join(lines) + ("\n" if readme.endswith("\n") else "")
+
+
+# Imperative task-verbs that must never START a prerequisite — prerequisites are
+# ASSUMED prior knowledge (declarative), not setup/verify steps.
+_IMPERATIVE_PREREQ_VERBS = frozenset({
+    "run", "use", "test", "configure", "open", "clone", "install", "implement",
+    "execute", "build", "deploy", "set", "create", "write", "add", "fix",
+    "update", "modify", "start", "launch", "ensure",
+})
+
+
+def _imperative_prereq_items(pre_requisites: object) -> List[str]:
+    """Return prerequisite entries phrased as imperative task-steps.
+
+    Prerequisites must describe what the candidate already knows/has (declarative:
+    "Python proficiency", "Comfort with…", "Understanding of…"), NOT actions inside
+    the task ("Run the readiness script", "Configure the .env key" — those belong in
+    README How-to-Verify). Flags any entry whose first word is a task verb. Detection
+    only; non-mutating. The agent prompt rule is the prevention — this is the net.
+    """
+    if not isinstance(pre_requisites, list):
+        return []
+    flagged: List[str] = []
+    for item in pre_requisites:
+        if not isinstance(item, str) or not item.strip():
+            continue
+        words = item.strip().lstrip("-*•").strip().split()
+        if words and words[0].lower().strip(":,.()") in _IMPERATIVE_PREREQ_VERBS:
+            flagged.append(item)
+    return flagged
+
+
+# Cheap-repair routing (#2). A retry triggered by a MECHANICAL failure (the
+# scaffold won't boot / a dep is missing / a build command is wrong) is a small,
+# error-driven patch — a cheaper model fixes it as well as Opus at a fraction of
+# the output cost. Substantive failures (scope, fake-LLM, design) stay on Opus.
+# Generic across every stack: the signal is the failure TEXT, not the language.
+_TASK_GEN_MODEL = os.getenv("TASK_GEN_MODEL", "claude-opus-4-8")
+_TASK_GEN_REPAIR_MODEL = os.getenv("TASK_GEN_REPAIR_MODEL", "claude-sonnet-4-6")
+_CHEAP_REPAIR = os.getenv("TASK_GEN_CHEAP_REPAIR", "1") != "0"
+
+# Stack-agnostic markers that a failure is mechanical (fixable by a small patch
+# driven by the actual error) rather than a design/judgment problem.
+_MECHANICAL_MARKERS = (
+    "no module named", "modulenotfounderror", "no matching distribution",
+    "npm error", "from lock file", "cannot find module", "cannot find package",
+    "not listed in", "could not find a version", "importerror", "go.sum",
+    "criterion 5", "runtime reasonableness", "sandbox gate failed", "runsh_failed",
+    "runsh_timeout", "did not become", "docker compose", "healthcheck",
+    "build failed", "compilation", "unresolved import", "module not found",
+)
+
+
+def _repair_model_for(feedback: str) -> str:
+    """Pick the model for a retry: the cheaper repair model when the failure is
+    mechanical, else the default task-gen model. First attempt (no feedback)
+    always uses the default. Generic — keys off the failure text, not the stack.
+    """
+    if not feedback or not _CHEAP_REPAIR:
+        return _TASK_GEN_MODEL
+    low = feedback.lower()
+    if any(m in low for m in _MECHANICAL_MARKERS):
+        return _TASK_GEN_REPAIR_MODEL
+    return _TASK_GEN_MODEL
+
+
 def create_task(
     competency_file: Path,
     background_file: Path,
@@ -524,8 +743,22 @@ def create_task(
         # change the inputs the critic gated on. Carry the prior candidate here
         # and re-score it instead of burning a fresh ~30k-token regeneration.
         reuse_candidate: Optional[Dict] = None
+        # No-progress guard: if the E2B gate fails with the SAME verdict on two
+        # attempts running, regenerating won't help (the failure is environmental
+        # /scaffold, not LLM-fixable) — abort to stop burning task-gen calls.
+        prev_gate_verdict: Optional[str] = None
+        cumulative_gen_cost = 0.0
         for attempt in range(1, max_attempts + 1):
             set_attempt(attempt)
+            # Fix 1 — make the retry loop visible: log the feedback the LLM is
+            # about to be regenerated with (why the prior attempt failed). This
+            # was previously only in traces/llm_calls.jsonl, invisible in trace_ui.
+            if feedback:
+                _fb_preview = feedback if len(feedback) <= 2000 else feedback[:2000] + " …[truncated]"
+                logger.info(
+                    f"↻ Attempt {attempt}: regenerating with feedback from the prior "
+                    f"attempt — the LLM is told exactly why it failed:\n{_fb_preview}"
+                )
             logger.info(f"Task generation attempt {attempt}/{max_attempts}")
             if reuse_candidate is not None:
                 candidate = reuse_candidate
@@ -538,9 +771,18 @@ def create_task(
                 )
             else:
                 try:
+                    # #2: route a mechanical-failure retry to the cheaper repair
+                    # model (Opus for the first attempt + substantive retries).
+                    _gen_model = _repair_model_for(feedback)
+                    if feedback and _gen_model != _TASK_GEN_MODEL:
+                        logger.info(
+                            f"Attempt {attempt}: mechanical failure → repairing with "
+                            f"cheaper model '{_gen_model}' instead of '{_TASK_GEN_MODEL}'"
+                        )
                     with trace_stage("task_gen"):
                         candidate = generate_task_with_code(
                             openai_client, input_data, feedback=feedback,
+                            model=_gen_model,
                         )
                 except LLMOutputTruncated as exc:
                     # F11: the model hit max_tokens mid-output. Feed back a tight
@@ -565,6 +807,15 @@ def create_task(
                     continue
             candidate.setdefault("code_files", {})
             candidate["criterias"] = criterias
+            # Fix 4 — per-attempt + cumulative task-gen cost visibility (and keep
+            # the internal _gen_cost_usd marker out of the persisted task).
+            _attempt_cost = candidate.pop("_gen_cost_usd", 0.0)
+            cumulative_gen_cost += _attempt_cost
+            if _attempt_cost:
+                logger.info(
+                    f"💸 Attempt {attempt}: task-gen LLM cost ${_attempt_cost:.4f} "
+                    f"| cumulative task-gen this task ${cumulative_gen_cost:.4f}"
+                )
 
             # Fix C: stamp the deterministic proficiency metadata the
             # PROFICIENCY FIT critic reads, so the task body always carries a
@@ -578,6 +829,30 @@ def create_task(
                 else "BASIC"
             )
             candidate["years_of_experience"] = proficiency_profile(_prof)[0]
+
+            # Deterministically ensure run.sh installs the task's deps before any
+            # import/selfcheck — the E2B gate doesn't pre-install them, and the
+            # prompt mandate / gate hint are unreliable (generator drops it, LLM
+            # ignores it). This is what stops the recurring ModuleNotFoundError →
+            # gate-fail → expensive-retry loop, so tasks pass on attempt 1.
+            _ensure_runsh_installs_deps(candidate.get("code_files"))
+
+            # Deterministically surface the env-setup step for provider-key (real
+            # LLM) tasks so candidates don't miss copying .env.example → .env (the
+            # generated README often buries or omits it). Idempotent.
+            _ensure_readme_env_note(candidate.get("code_files"))
+
+            # Prerequisites must read as assumed prior knowledge, not task steps —
+            # a generated task once shipped "Run the readiness script…" as a
+            # prerequisite. The agent prompt rule prevents it; this surfaces any
+            # residual drift loudly for review (detection-only, never blocks).
+            _bad_prereqs = _imperative_prereq_items(candidate.get("pre_requisites"))
+            if _bad_prereqs:
+                logger.warning(
+                    "Attempt %s: prerequisites read as imperative task-steps "
+                    "(should be declarative prior knowledge): %s",
+                    attempt, _bad_prereqs,
+                )
 
             # Wire the generated run.sh into ``run_script`` so the gate runs the
             # run.sh READINESS probe (exit 0/1) instead of falling back to legacy
@@ -621,6 +896,25 @@ def create_task(
                     persona=eval_persona,
                     scenarios=None if agent_freeform else scenarios,
                 )
+
+            # Deterministic trace-fixture consistency check (static; no run, no
+            # key). A shipped trace that's malformed or names a tool / id the repo
+            # never produces ("plausible but impossible vs the code") erodes
+            # candidate trust — fold blockers into the code-eval result so the
+            # SAME retry loop + build_retry_feedback regenerate with the detail;
+            # id mismatches are advisory. Self-scopes: no-op unless a trace fixture
+            # is present, so non-agent tasks are unaffected.
+            _trace = check_trace_consistency(candidate.get("code_files"))
+            _ce = candidate_eval["code_eval"]
+            if _trace["blocking"]:
+                _ce["pass"] = False
+                _ce["blocking_issues"] = list(_ce.get("blocking_issues") or []) + _trace["blocking"]
+                logger.warning(
+                    "Attempt %s: trace consistency FAILED: %s", attempt, _trace["blocking"]
+                )
+            if _trace["suggestions"]:
+                _ce["suggestions"] = list(_ce.get("suggestions") or []) + _trace["suggestions"]
+
             last_failure = candidate_eval
             t_pass = candidate_eval["task_eval"]["pass"]
             c_pass = candidate_eval["code_eval"]["pass"]
@@ -637,6 +931,17 @@ def create_task(
                 if gate_outcome == GateOutcome.RETRY:
                     last_failure = candidate_eval
                     feedback = gate_feedback
+                    abort, _gv = _gate_no_progress(candidate_eval, prev_gate_verdict)
+                    if abort:
+                        logger.warning(
+                            f"Attempt {attempt}: E2B gate failed with the SAME "
+                            f"verdict ('{_gv}') as the prior attempt — no progress. "
+                            f"Aborting the retry loop to stop burning task-gen calls; "
+                            f"this is an environmental/scaffold issue a regeneration "
+                            f"can't fix. Inspect 04_tasks.e2b_gate.log."
+                        )
+                        break
+                    prev_gate_verdict = _gv
                     continue
 
                 # Content-quality eval (spec 003) — single LLM call judges
