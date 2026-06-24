@@ -24,7 +24,7 @@ code-server web IDE. Use `--quick` only when you explicitly want to skip the vid
 |---|---|---|
 | **default** | deploy → I solve in the **code-server web IDE, RECORDED** (RED→fix→GREEN + notes) → grade → write report | ✅ |
 | **`--quick`** | same, but **no video** (faster) — verdict + `solution.diff` + notes only | ✅ |
-| **`--frontend`** | also drive the full candidate FE journey with the JWT (gates) before the recorded solve | ✅ device gates pass with the media flags (below); ⚠️ provisioning UI may still be heavy |
+| **`--frontend`** | also drive the full candidate FE journey with the JWT — every gate through to the **task screen** | ✅ end-to-end (camera flags + provisioning pacing + backend secrets, all below) |
 
 **`--frontend` device/camera/screen-share gate — solved.** Launch agent-browser with
 Chrome's fake-media flags so the camera + screen-share gates pass (the JS media mocks
@@ -43,6 +43,25 @@ For `--frontend`, the deterministic infra is one command via the driver:
 `.venv/bin/python .claude/skills/task-solvability/scripts/stack.py up`  (FE in Docker + verify flask)
 then `… stack.py session --task-id T --class-id C` (creates the session + clears the gates + prints the candidate URL).
 The backend itself is your compose stack: `docker compose -f /home/rsx/Desktop/utkrusht-ai/Utkrushta/docker-compose.local.yml up -d`.
+
+**`--frontend` — two more requirements (learned live; with these the journey reaches the task screen):**
+
+1. **Backend provisioning secrets (REQUIRED).** Provisioning calls fastapi `POST /v2/sessions/start`,
+   which **creates an E2B sandbox and encrypts its SSH key** — so the `fastapi` container's env
+   (`Utkrushta/.env.local`, its `env_file`) MUST contain both `E2B_API_KEY` and `E2B_SECRETS_MASTER_KEY`
+   (both live in `utkrusht-task/.env` — copy them over), then recreate it:
+   `docker compose -f .../Utkrushta/docker-compose.local.yml up -d --force-recreate fastapi`.
+   Without them `/v2/sessions/start` 500s ("API key is required" / "E2B_SECRETS_MASTER_KEY env var not
+   set") and the FE shows **"Failed to provision sandbox."**
+
+2. **Provisioning pacing (don't hang the browser).** On the **"Setting Up Your Environment"** screen, do
+   NOT call `snapshot`/`eval` — its live-log DOM is heavy and those CDP calls time out (this was the
+   earlier "hang"). Just `sleep` + an occasional `screenshot` (the recording keeps rolling); watch
+   `docker logs <fastapi> | grep "sessions/start"` for the `200`; resume `snapshot`/clicks once it settles.
+   Then a **"Screen Sharing Required"** gate appears → click "Start Screen Sharing" (passes via the same
+   media flags) → the **task screen** loads (problem statement + repo + Terminal/Editor/Database + 45-min
+   timer + Submit). The FE provisions its OWN E2B sandbox — `list_active()` and kill everything at teardown
+   (note: `cp` may be aliased to `cp -i`; use `/bin/cp -f`).
 
 ## Outputs — `solvability_runs/<task-slug>/` (NOT `.task_agent_runs`)
 
