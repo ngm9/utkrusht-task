@@ -19,6 +19,7 @@ A trace_ui run_id is ``run-<ts>``; the S3 ``run=`` segment is the bare ``<ts>``.
 from __future__ import annotations
 
 import datetime
+import json
 import os
 import shutil
 import time
@@ -56,6 +57,17 @@ def _bare_ts(run_id: str) -> str:
     return run_id[4:] if run_id.startswith("run-") else run_id
 
 
+def _read_manifest(s3, bucket: str, prefix: str) -> dict:
+    """Fetch a run's ``manifest.json`` (carries task_id / task_name / competencies)
+    so S3 runs show the task name in the picker and are searchable by it. One GET
+    per run during the (60s-cached) index build; failure-isolated."""
+    try:
+        obj = s3.get_object(Bucket=bucket, Key=f"{prefix}manifest.json")
+        return json.loads(obj["Body"].read())
+    except Exception:  # noqa: BLE001 — manifest optional; never break the index
+        return {}
+
+
 def _common_prefixes(s3, bucket: str, prefix: str) -> list[str]:
     out: list[str] = []
     paginator = s3.get_paginator("list_objects_v2")
@@ -89,7 +101,14 @@ def _build_index() -> dict:
                 if seg.startswith("run="):
                     ts = seg.split("=", 1)[1]
                     combo = parent.split("=", 1)[1] if (parent or "").startswith("combo=") else None
-                    out[f"run-{ts}"] = {"prefix": child, "combo": combo, "ts": ts}
+                    mani = _read_manifest(s3, bucket, child)
+                    if not combo and mani.get("competencies"):
+                        combo = ", ".join(mani["competencies"])  # legacy runs w/o combo= partition
+                    out[f"run-{ts}"] = {
+                        "prefix": child, "combo": combo, "ts": ts,
+                        "task_id": mani.get("task_id"),
+                        "task_name": mani.get("task_name"),
+                    }
                 else:
                     stack.append((child, seg))  # dt= / combo= → descend
     except Exception as exc:  # noqa: BLE001 — S3 optional; never break the UI
@@ -124,8 +143,8 @@ def list_s3_runs() -> list[dict]:
             "combo": info.get("combo"),
             "status": "completed",
             "started": _ts_epoch(info.get("ts", "")),
-            "task_id": None,
-            "task_name": None,
+            "task_id": info.get("task_id"),
+            "task_name": info.get("task_name"),
             "source": "s3",
         }
         for run_id, info in _index().items()
