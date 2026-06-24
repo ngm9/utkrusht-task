@@ -1,0 +1,63 @@
+{
+  "build_cmd": "cargo build",
+  "capabilities": {
+    "datastores": [
+      "postgres",
+      "mysql",
+      "redis"
+    ],
+    "frameworks": [
+      "tokio",
+      "sqlx",
+      "serde",
+      "axum",
+      "actix-web",
+      "diesel"
+    ],
+    "language_versions": {
+      "rust": "1.96"
+    },
+    "protocols": [
+      "rest",
+      "websocket"
+    ],
+    "requires": {
+      "browser": false,
+      "gpu": false
+    },
+    "tags": [
+      "rust-base",
+      "family-root"
+    ],
+    "tools": [
+      "cargo",
+      "rustc",
+      "rustfmt",
+      "clippy",
+      "docker",
+      "docker-compose",
+      "git",
+      "jq",
+      "postgresql-client",
+      "netcat-openbsd",
+      "ttyd",
+      "code-server",
+      "adminer"
+    ]
+  },
+  "compile_cmd": "cargo build",
+  "description": "Rust (stable, Debian bookworm) base. Pre-installed: cargo, rustc, rustfmt, clippy, build-essential, libssl-dev, pkg-config, postgresql-client. DinD via docker-ce for tasks that bring a docker-compose datastore. Browser tools: ttyd, code-server, adminer.",
+  "eval_methods": [
+    "test_suite"
+  ],
+  "install_cmd": "curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable",
+  "install_seconds": 90,
+  "install_verify": "cargo --version",
+  "personas": [
+    "backend"
+  ],
+  "primary_runtime": "rust",
+  "status": "built",
+  "template_id": "utkrusht-rust",
+  "test_cmd": "cargo test"
+}

@@ -504,13 +504,32 @@ def run_sandbox_eval(
         # /home/user/task, so the gate must too — otherwise it false-negatives
         # tasks that would actually deploy and boot cleanly.
         try:
+            # rm -rf first: if /root/task already exists as a REAL directory
+            # (e.g. created at boot), a bare `ln -sfn` silently no-ops into
+            # /root/task/task (returns 0) and `cd /root/task` then lands in the
+            # empty real dir — the import check fails with ModuleNotFoundError
+            # even though the code is at /home/user/task. Force a clean alias.
             sb.commands.run(
-                f"ln -sfn {_TASK_DIR} /root/task",
+                f"rm -rf /root/task 2>/dev/null; ln -sfn {_TASK_DIR} /root/task",
                 timeout=10,
                 user="root",
             )
         except Exception as exc:
             logger.warning(f"{_GATE} could not symlink /root/task: {exc}")
+
+        # Diagnostic: list what actually landed so a run.sh failure (e.g.
+        # ModuleNotFoundError) can be traced to a missing package/dir instead of
+        # guessing. Cheap, and the gate log is the place people look.
+        try:
+            _ls = sb.commands.run(
+                f"find {_TASK_DIR} -maxdepth 2 -not -path '*/.*' | sort | head -40",
+                timeout=15, user="root",
+            )
+            logger.info(f"{_GATE}   ── sandbox {_TASK_DIR} contents ──")
+            for _line in (_ls.stdout or "").splitlines():
+                logger.info(f"{_GATE}   • {_line}")
+        except Exception as exc:
+            logger.warning(f"{_GATE} could not list {_TASK_DIR}: {exc}")
 
         # Path A — new default: run.sh IS the gate.
         if run_sh:

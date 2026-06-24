@@ -77,6 +77,16 @@ _AGENT_PIP_PACKAGES = (
     "anthropic==0.39.0",
     "openai==1.58.1",
     "google-generativeai==0.8.3",
+    # Production-agent task scaffolds almost always wire a real LLM behind a
+    # FastAPI endpoint backed by Postgres, loading secrets from a .env. The base
+    # ships only psycopg2 (v2); generated tasks import psycopg (v3) and
+    # python-dotenv, so without these the readiness gate dies on a fresh import
+    # before the candidate writes a line. Pre-bake them so the gate passes on
+    # attempt 1 and doesn't reinstall the same wheels every run.
+    "psycopg[binary]==3.2.9",
+    "python-dotenv==1.0.1",
+    "fastapi==0.115.6",
+    "uvicorn==0.30.6",
     # Local serving for the candidate's session (Ollama-style not
     # needed; the LLM is on the candidate's key via Portkey).
 )
@@ -142,6 +152,10 @@ manifest = {
             "tiktoken",
             "fastembed",
             "langfuse",
+            "psycopg",
+            "python-dotenv",
+            "fastapi",
+            "uvicorn",
         ],
         "requires": {"browser": False, "gpu": False},
         "tags": ["python-ai-agent", "family-member", "agent-frameworks"],
