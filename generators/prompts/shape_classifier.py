@@ -84,6 +84,15 @@ class ClassifyTaskShapeSignature(dspy.Signature):
 
     Decision rules (in priority order):
 
+      0. If ``user_directive`` is non-empty, it is an AUTHORITATIVE human
+         instruction and OUTRANKS every rule below. When the directive
+         explicitly asks for deployment, containerization, Docker /
+         docker-compose, an external service / datastore, or otherwise
+         describes infra-shaped work → ``infra``. When it explicitly asks for
+         a pure local / in-process / no-container task → ``non_infra``. Only
+         fall through to the rules below when the directive is empty or says
+         nothing about task shape.
+
       1. If the SCENARIO text explicitly requires connecting to a DB / cache /
          queue / external broker (mentions a service hostname, a docker
          compose file, an ``init_*.sql``, a connection URI, or names a
@@ -116,6 +125,13 @@ class ClassifyTaskShapeSignature(dspy.Signature):
         desc="Comma-separated competency names with proficiency, e.g. "
              "'React (ADVANCED)' or 'PostgreSQL (INTERMEDIATE), Python (INTERMEDIATE)'."
     )
+    user_directive: str = dspy.InputField(
+        desc="AUTHORITATIVE free-text user instruction for this run, or empty. When "
+             "non-empty it OUTRANKS the scope/scenario heuristics for the shape "
+             "decision: if it asks for deployment / containers / docker-compose / an "
+             "external service, return 'infra'; if it asks for a pure local task, "
+             "return 'non_infra'. Empty → decide from scope + scenarios as usual."
+    )
     competency_scopes: str = dspy.InputField(
         desc="Authoritative scope text per competency from Supabase — the in/out-of-scope "
              "guardrails for this proficiency level."
@@ -137,6 +153,7 @@ def classify_task_shape(
     competencies_str: str,
     competency_scopes: str,
     detailed_skill_signal: str,
+    user_directive: str = "",
 ) -> ShapeDecision:
     """Run the shape classifier and return a normalized :class:`ShapeDecision`.
 
@@ -149,6 +166,7 @@ def classify_task_shape(
     classifier = dspy.ChainOfThought(ClassifyTaskShapeSignature)
     result = classifier(
         competencies=competencies_str,
+        user_directive=user_directive or "",
         competency_scopes=competency_scopes,
         detailed_skill_signal=detailed_skill_signal,
     )
@@ -175,10 +193,11 @@ def classify_task_shape(
         "shape_classifier: task_shape=%s — %s", shape, reason or "(no reason given)"
     )
     logger.info(
-        "shape_classifier: decided from competencies=%r (scopes=%dc, signal=%dc)",
+        "shape_classifier: decided from competencies=%r (scopes=%dc, signal=%dc, directive=%dc)",
         competencies_str,
         len(competency_scopes or ""),
         len(detailed_skill_signal or ""),
+        len(user_directive or ""),
     )
     cot = (getattr(result, "reasoning", "") or "").strip()
     if cot:

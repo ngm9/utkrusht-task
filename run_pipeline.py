@@ -71,9 +71,20 @@ def scenarios_file_for(level: str) -> Path:
 # ----------------------------------------------------------------------
 
 def _pick_python() -> str:
-    """Prefer the project venv interpreter; fall back to whatever ran us."""
-    venv_py = REPO_ROOT / ".venv" / "bin" / "python"
-    return str(venv_py) if venv_py.exists() else sys.executable
+    """Prefer the project venv interpreter; fall back to whatever ran us.
+
+    Checks BOTH the POSIX (``.venv/bin/python``) and Windows
+    (``.venv/Scripts/python.exe``) venv layouts. On Windows the POSIX path
+    never exists, so without the Scripts check the runner silently falls back to
+    the system interpreter — which may lack pipeline-only deps like ``e2b``,
+    making stage 4 (``multiagent.py generate_tasks``) fail with
+    ``No module named 'e2b'`` while stages 0-3 still pass.
+    """
+    for parts in (("bin", "python"), ("Scripts", "python.exe")):
+        venv_py = REPO_ROOT.joinpath(".venv", *parts)
+        if venv_py.exists():
+            return str(venv_py)
+    return sys.executable
 
 
 def _parse_names(raw: list[str]) -> list[str]:

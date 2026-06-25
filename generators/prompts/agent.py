@@ -138,6 +138,28 @@ class GeneratePromptSignature(dspy.Signature):
     competencies. Do NOT invent your own section structure.
 
     ─────────────────────────────────────────────────────────────────────────
+    HARD CONSTRAINT #0 — primary_directive is AUTHORITATIVE (overrides all)
+    ─────────────────────────────────────────────────────────────────────────
+    The `primary_directive` input MAY BE EMPTY. When it is non-empty it is an
+    AUTHORITATIVE human instruction for THIS run and is the PRIMARY thing that
+    shapes the generated prompt. You MUST mold the generated task to satisfy
+    every requirement it states — its requested topic, sub-topic emphasis,
+    artifacts (e.g. "include deployment: Dockerfile + docker-compose + run.sh"),
+    and framing. Where the directive conflicts with the soft style of
+    `reference_prompts` or `detailed_skill_signal`, the directive WINS — but you
+    must still obey the canonical structure (HARD CONSTRAINTS #1–#7) and the
+    output JSON contract.
+
+    The ONE thing the directive may NOT override is `competency_scopes` (HARD
+    CONSTRAINT #4): the directive cannot push the task beyond the competency's
+    allowed scope/proficiency. If the directive asks for something out of scope,
+    honor the directive's intent as far as the scope permits and stay within
+    scope — do not generate out-of-proficiency requirements.
+
+    When `primary_directive` is empty, ignore it entirely and generate exactly
+    as you otherwise would from scopes + references + signal.
+
+    ─────────────────────────────────────────────────────────────────────────
     HARD CONSTRAINT #1 — STRUCTURAL MIMICRY (most important)
     ─────────────────────────────────────────────────────────────────────────
     The INSTRUCTIONS string MUST follow the exact section ordering used by
@@ -161,8 +183,8 @@ class GeneratePromptSignature(dspy.Signature):
       ## .gitignore INSTRUCTIONS
       ## README.md INSTRUCTIONS
           ### Task Overview
-          ### Helpful Tips
           ### Objectives
+          ### Helpful Tips
           ### How to Verify
           <exclusion directive — an INSTRUCTION about what to omit, NOT a
            README output section; see HARD CONSTRAINT #2>
@@ -212,8 +234,8 @@ class GeneratePromptSignature(dspy.Signature):
     these output sections, in this order — and NO others:
 
       1. Task Overview
-      2. Helpful Tips
-      3. Objectives
+      2. Objectives
+      3. Helpful Tips
       4. How to Verify
 
     CRITICAL — "NOT TO INCLUDE" is an INSTRUCTION, NOT a section. The exclusion
@@ -251,25 +273,25 @@ class GeneratePromptSignature(dspy.Signature):
             Describes the business scenario, current state, and why the
             problem matters. NEVER empty. NO bold time-budget callouts.
           – Objectives:    4-6 bullets max.
-          – How to Verify: 4-6 bullets max.
           – Helpful Tips:  4-5 bullets max.
+          – How to Verify: 4-6 bullets max.
 
       • Per-section framing rules the generated prompt MUST include:
           – Objectives: "Frame objectives around outcomes rather than
             specific technical implementations. Objectives describe the
             'what' and 'why', never the 'how'." Each bullet states an
             observable end-state, not a step or an API/library to use.
-          – How to Verify: "Frame verification in terms of observable
-            outcomes. Describe WHAT to verify and the expected behavior,
-            not the specific implementation to write." Each bullet is a
-            check the candidate can run (test output, response shape,
-            latency observation, log line, memory reading).
           – Helpful Tips: "Provide practical guidance without revealing
             specific implementations." Each bullet starts with an action
             word: "Consider", "Think about", "Explore", "Review",
             "Analyze". Tips guide discovery — they MUST NOT name the
             specific API, library, function, pattern, data structure, or
             algorithm that solves the task.
+          – How to Verify: "Frame verification in terms of observable
+            outcomes. Describe WHAT to verify and the expected behavior,
+            not the specific implementation to write." Each bullet is a
+            check the candidate can run (test output, response shape,
+            latency observation, log line, memory reading).
 
       • A CONTENT-TO-EXCLUDE directive in the generated prompt (a clearly-
         labelled instruction about what to keep OUT of the README — NOT a
@@ -470,6 +492,14 @@ class GeneratePromptSignature(dspy.Signature):
     flag empty as a constraint).
     """
 
+    primary_directive: str = dspy.InputField(
+        desc="AUTHORITATIVE free-text user directive for this run, or empty. When "
+             "non-empty it is the PRIMARY shaping input — the generated prompt MUST "
+             "satisfy every requirement it states (topic, emphasis, artifacts like "
+             "'include deployment'), and it overrides the soft style of "
+             "reference_prompts / detailed_skill_signal where they conflict. It may "
+             "NOT exceed competency_scopes. Empty → ignore it (generate as usual)."
+    )
     competencies: str = dspy.InputField(
         desc="Comma-separated competency names with proficiency (e.g. 'Python (BASIC), SQL (BASIC)')"
     )
@@ -533,6 +563,13 @@ class VerifyPromptSignature(dspy.Signature):
     plausibly produce a deployable task. Do NOT block on minor stylistic issues.
 
     HARD-FAIL conditions (must reject):
+      0. DIRECTIVE IGNORED: if `primary_directive` is non-empty and the prompt
+         fails to honor it — it omits a requested artifact (e.g. the directive
+         asks to "include deployment" but there is no docker-compose / run.sh),
+         ignores the requested topic/emphasis, or contradicts the directive —
+         REJECT, and say exactly which part of the directive was not satisfied.
+         (When `primary_directive` is empty, skip this check entirely.) The
+         directive does NOT excuse a scope violation — condition 1 still applies.
       1. SCOPE VIOLATION: Required candidate skills exceed competency_scopes.
          Example: BASIC scope says "limited async understanding" but the prompt
          requires async/await throughout — REJECT.
@@ -591,8 +628,8 @@ class VerifyPromptSignature(dspy.Signature):
               what to omit — it must be a clearly-labelled directive block, NOT
               a numbered README output section. Listing it as a section makes the
               task-gen LLM render a literal "## NOT TO INCLUDE" heading into the
-              candidate README. The README output sections are EXACTLY: Task
-              Overview, Helpful Tips, Objectives, How to Verify.
+              candidate README. The README output sections are EXACTLY, in order:
+              Task Overview, Objectives, Helpful Tips, How to Verify.
            d. The `## REQUIRED OUTPUT JSON STRUCTURE` block uses placeholder
               arrays/objects like `"outcomes": ["outcome 1", "outcome 2"]` or
               `"definitions": {{"term_1": "definition"}}` instead of the
@@ -619,6 +656,11 @@ class VerifyPromptSignature(dspy.Signature):
     """
 
     new_prompt_file: str = dspy.InputField(desc="The candidate prompt file source")
+    primary_directive: str = dspy.InputField(
+        desc="AUTHORITATIVE user directive for this run, or empty. When non-empty, "
+             "verify the candidate prompt actually honors it (HARD-FAIL condition 0). "
+             "Empty → skip the directive check."
+    )
     competencies: str = dspy.InputField(desc="Target competencies + proficiency")
     task_shape: str = dspy.InputField(
         desc='Authoritative infra decision: "infra" or "non_infra". Gate the '
@@ -736,15 +778,20 @@ class PromptGeneratorAgent(dspy.Module):
         competencies: list[Competency],
         proficiency: str,
         env: str = "dev",
+        directive: str = "",
         task_shape_override: str | None = None,
         infra_kind: str | None = None,
     ) -> GenerationResult:
         proficiency = proficiency.upper()
+        directive = (directive or "").strip()
         comp_str = ", ".join(f"{c.name} ({proficiency})" for c in competencies)
 
         logger.info("=" * 72)
-        logger.info("AGENT START — competencies=%s  proficiency=%s  env=%s",
-                    [c.name for c in competencies], proficiency, env)
+        logger.info("AGENT START — competencies=%s  proficiency=%s  env=%s  directive=%dc",
+                    [c.name for c in competencies], proficiency, env, len(directive))
+        if directive:
+            logger.info("AGENT START — primary_directive ACTIVE: %s",
+                        directive[:300].replace("\n", " "))
         logger.info("=" * 72)
 
         # ─── STEP 1: detailed_skill_signal from input files ───────────
@@ -782,6 +829,14 @@ class PromptGeneratorAgent(dspy.Module):
         #               resolver entirely; references + generate is all we need
         #   infra     → fetch similar_tasks, future template resolver, etc.
         logger.info("STEP 3 / shape_classifier.py — classifying task shape")
+        shape_decision: ShapeDecision = classify_task_shape(
+            competencies_str=comp_str,
+            competency_scopes=scopes_str,
+            detailed_skill_signal=skill_signal,
+            user_directive=directive,
+        )
+        logger.info("  → task_shape = %s", shape_decision.task_shape)
+        logger.info("  → reason     = %s", shape_decision.reason)
         # `task_shape_override` ("infra"/"non_infra") forces the shape and SKIPS the
         # classifier — the "force infra" path (run_pipeline --task-shape). The
         # matching scenario steering happens in stage 02; when forcing infra, the
@@ -890,6 +945,7 @@ class PromptGeneratorAgent(dspy.Module):
 
             logger.info("  calling Generate (ChainOfThought)...")
             gen_out = self.generate(
+                primary_directive=directive,
                 competencies=comp_str,
                 proficiency=proficiency,
                 task_shape=task_shape,
@@ -917,6 +973,7 @@ class PromptGeneratorAgent(dspy.Module):
                 logger.info("  calling Review (ChainOfThought)...")
                 verify_out = self.verify(
                     new_prompt_file=new_prompt,
+                    primary_directive=directive,
                     competencies=comp_str,
                     task_shape=task_shape,
                     runtime=runtime,
