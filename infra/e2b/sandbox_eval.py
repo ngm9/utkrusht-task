@@ -192,6 +192,19 @@ _FAILURE_LINE_RE = re.compile(
     re.I,
 )
 
+# Docker-compose pull/extract progress that dominates a naive tail of a
+# docker-backed run.sh — it streams to stderr, which lands at the END of the
+# combined output, so output[-N:] is almost all layer-pull spam. Dropped from
+# the raw-tail half of the excerpt so the tail carries real run.sh signal
+# (the "Key error / readiness lines" block already excludes it).
+_DOCKER_NOISE_RE = re.compile(
+    r"\b(Extracting|Pull complete|Pulling fs layer|Pulling from|Pulling|"
+    r"Downloading|Download complete|Waiting|Verifying Checksum|Already exists|"
+    r"Pulled)\b"
+    r"|^\s*[0-9a-f]{10,}\s",   # bare layer-id progress lines
+    re.I,
+)
+
 
 def _failure_excerpt(output: str, *, tail_chars: int = 1000, max_summary: int = 1800) -> str:
     """Sharp failure excerpt for the retry feedback: the actual error +
@@ -216,9 +229,18 @@ def _failure_excerpt(output: str, *, tail_chars: int = 1000, max_summary: int = 
                 continue
             seen.add(norm)
             hits.append(s)
-    raw_tail = output[-tail_chars:]
+    # Build the raw-output tail from MEANINGFUL lines only — drop docker-pull
+    # progress noise (Extracting / Pull complete / layer-id spam). For a
+    # docker-compose task the literal last-N-chars is almost entirely that
+    # noise (it streams to stderr → end of combined output), which buries the
+    # real run.sh signal. See run-20260616T042756Z.
+    meaningful = "\n".join(
+        ln for ln in output.splitlines()
+        if ln.strip() and not _DOCKER_NOISE_RE.search(ln)
+    ) or output
+    raw_tail = meaningful[-tail_chars:]
     if not hits:
-        return output[-(max_summary + tail_chars):]
+        return meaningful[-(max_summary + tail_chars):]
     summary = "Key error / readiness lines:\n" + "\n".join(hits[-25:])
     if len(summary) > max_summary:
         summary = summary[:max_summary] + "…"

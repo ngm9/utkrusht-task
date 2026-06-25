@@ -122,6 +122,15 @@ def _prepend_task_shape(source: str, task_shape: str) -> str:
                    "(file lookups, Supabase queries, LLM call sizes, verifier feedback).")
 def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_path,
         instructions, instructions_file, verbose):
+@click.option("--task-shape", default="auto",
+              type=click.Choice(["auto", "infra", "non_infra"]),
+              help="Force the task shape. 'auto' (default) lets the classifier decide; "
+                   "'infra'/'non_infra' skip the classifier.")
+@click.option("--infra-kind", default="auto",
+              help="When --task-shape=infra, the self-hosted service to ground the task "
+                   "in (auto/vector-db/redis/kafka/postgres/mcp-server).")
+def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_path,
+        verbose, task_shape, infra_kind):
     """Generate a new task generation prompt file using the DSPy agent."""
 
     # Resolve the optional authoritative directive. --instructions and
@@ -208,6 +217,9 @@ def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_
         proficiency=proficiency_upper,
         env=env,
         directive=directive,
+        competencies=competencies, proficiency=proficiency_upper, env=env,
+        task_shape_override=(None if task_shape == "auto" else task_shape),
+        infra_kind=infra_kind,
     )
 
     # Report
