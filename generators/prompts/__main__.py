@@ -107,11 +107,43 @@ def _prepend_task_shape(source: str, task_shape: str) -> str:
 @click.option("--compiled-path", default="prompt_generator/compiled/agent_bootstrap.json",
               help="Path to a compiled agent JSON. If file exists, demos are loaded "
                    "into the generator. Pass empty string to disable.")
+@click.option("--instructions", "-i", default=None,
+              help="AUTHORITATIVE free-text directive for this run (e.g. "
+                   "'NodeJs must include deployment: Dockerfile, docker-compose, run.sh'). "
+                   "When given, the generator treats it as the primary shaping input and "
+                   "can force an infra-shaped task. Omit for the normal flow. "
+                   "Mutually exclusive with --instructions-file.")
+@click.option("--instructions-file", default=None,
+              type=click.Path(exists=True, dir_okay=False, path_type=Path),
+              help="Read the directive from a file (for long text). "
+                   "Mutually exclusive with --instructions.")
 @click.option("--verbose", "-v", is_flag=True, default=False,
               help="Enable detailed step-by-step logging of every internal stage "
                    "(file lookups, Supabase queries, LLM call sizes, verifier feedback).")
-def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_path, verbose):
+def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_path,
+        instructions, instructions_file, verbose):
+@click.option("--task-shape", default="auto",
+              type=click.Choice(["auto", "infra", "non_infra"]),
+              help="Force the task shape. 'auto' (default) lets the classifier decide; "
+                   "'infra'/'non_infra' skip the classifier.")
+@click.option("--infra-kind", default="auto",
+              help="When --task-shape=infra, the self-hosted service to ground the task "
+                   "in (auto/vector-db/redis/kafka/postgres/mcp-server).")
+def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_path,
+        verbose, task_shape, infra_kind):
     """Generate a new task generation prompt file using the DSPy agent."""
+
+    # Resolve the optional authoritative directive. --instructions and
+    # --instructions-file are mutually exclusive; neither → empty string →
+    # the generator behaves exactly as it did before this flag existed.
+    if instructions is not None and instructions_file is not None:
+        raise click.UsageError(
+            "--instructions and --instructions-file are mutually exclusive; pass only one."
+        )
+    if instructions_file is not None:
+        directive = Path(instructions_file).read_text(encoding="utf-8").strip()
+    else:
+        directive = (instructions or "").strip()
 
     # Configure verbose logging if requested. Adds a clean console stream handler
     # so step-by-step trace lines flow inline with the banner output.
@@ -146,6 +178,11 @@ def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_
     click.echo(f" Proficiency:  {proficiency_upper}")
     click.echo(f" Env:          {env}")
     click.echo(f" Output path:  {output_path}")
+    if directive:
+        preview = directive.replace("\n", " ")
+        if len(preview) > 120:
+            preview = preview[:120] + "..."
+        click.echo(f" Directive:    ON — {preview}")
     click.echo()
 
     # Check if the file already exists
@@ -164,7 +201,6 @@ def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_
 
     # Load compiled demos if available
     if compiled_path:
-        from pathlib import Path
         cp = Path(compiled_path)
         if cp.exists():
             try:
@@ -176,7 +212,15 @@ def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_
             click.echo(f" No compiled file at {cp} -- running uncompiled.")
 
     click.echo(f" Running generator (max {max_iterations} iterations)...")
-    result = agent(competencies=competencies, proficiency=proficiency_upper, env=env)
+    result = agent(
+        competencies=competencies,
+        proficiency=proficiency_upper,
+        env=env,
+        directive=directive,
+        competencies=competencies, proficiency=proficiency_upper, env=env,
+        task_shape_override=(None if task_shape == "auto" else task_shape),
+        infra_kind=infra_kind,
+    )
 
     # Report
     click.echo(f"\n{'-'*70}")

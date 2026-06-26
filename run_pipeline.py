@@ -71,9 +71,20 @@ def scenarios_file_for(level: str) -> Path:
 # ----------------------------------------------------------------------
 
 def _pick_python() -> str:
-    """Prefer the project venv interpreter; fall back to whatever ran us."""
-    venv_py = REPO_ROOT / ".venv" / "bin" / "python"
-    return str(venv_py) if venv_py.exists() else sys.executable
+    """Prefer the project venv interpreter; fall back to whatever ran us.
+
+    Checks BOTH the POSIX (``.venv/bin/python``) and Windows
+    (``.venv/Scripts/python.exe``) venv layouts. On Windows the POSIX path
+    never exists, so without the Scripts check the runner silently falls back to
+    the system interpreter — which may lack pipeline-only deps like ``e2b``,
+    making stage 4 (``multiagent.py generate_tasks``) fail with
+    ``No module named 'e2b'`` while stages 0-3 still pass.
+    """
+    for parts in (("bin", "python"), ("Scripts", "python.exe")):
+        venv_py = REPO_ROOT.joinpath(".venv", *parts)
+        if venv_py.exists():
+            return str(venv_py)
+    return sys.executable
 
 
 def _parse_names(raw: list[str]) -> list[str]:
@@ -359,6 +370,15 @@ def main() -> int:
                     help="Focus area(s) for scenarios. Comma-separated or repeated.")
     ap.add_argument("--domain", default=None,
                     help="Pin all scenarios to one business domain.")
+    ap.add_argument("--task-shape", default="auto",
+                    choices=["auto", "infra", "non_infra"],
+                    help="Force the task shape. 'auto' (default) lets the classifier "
+                         "decide; 'infra' forces an infra task AND steers the scenarios "
+                         "toward the --infra-kind service.")
+    ap.add_argument("--infra-kind", default="auto",
+                    help="When --task-shape=infra, the self-hosted service to ground the "
+                         "task in: auto/vector-db/redis/kafka/postgres/mcp-server "
+                         "(see generators/prompts/infra_kinds.py).")
     ap.add_argument("--skip-preflight", action="store_true",
                     help="Skip the preflight stage (not recommended).")
     ap.add_argument("--python", default=None,
@@ -460,6 +480,12 @@ def main() -> int:
         scenario_cmd += ["--focus-areas", area]
     if args.domain:
         scenario_cmd += ["--domain", args.domain]
+    # Force-infra: steer every scenario toward the chosen self-hosted service so
+    # the generated task genuinely needs infra (not docker-compose bolted onto a
+    # mockable one). The matching shape force happens in stage 3 below.
+    if args.task_shape == "infra":
+        from generators.prompts.infra_kinds import resolve as _resolve_infra_kind
+        scenario_cmd += ["--focus-areas", _resolve_infra_kind(args.infra_kind)["directive"]]
     rec = _run_stage(combo_dir, "02_scenarios", scenario_cmd)
     stages.append(rec)
     if rec["exit_code"] != 0:
@@ -468,11 +494,15 @@ def main() -> int:
         return 1
 
     # --- Stage 3: prompt generator ----------------------------------------
-    rec = _run_stage(combo_dir, "03_prompt", [
+    prompt_cmd = [
         py, "-m", "generators.prompts",
         "--name", ", ".join(names),
         "--proficiency", level, "--env", args.env, "--force", "--verbose",
-    ])
+        "--task-shape", args.task_shape,
+    ]
+    if args.task_shape == "infra":
+        prompt_cmd += ["--infra-kind", args.infra_kind]
+    rec = _run_stage(combo_dir, "03_prompt", prompt_cmd)
     stages.append(rec)
     if rec["exit_code"] != 0:
         print("\n  prompt_generator FAILED — aborting.")

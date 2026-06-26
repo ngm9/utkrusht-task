@@ -4,18 +4,15 @@ TASK_SHAPE = "infra"
 
 
 PROMPT_TOOL_USE_FOR_AGENTS_INTERMEDIATE_CONTEXT = """
-Let me provide you with some context about the company and role.
+Let me provide you with some context about the company and role:
 
 Company Context:
 {organization_background}
 
-Role Context:
+Roles and Responsibilities:
 {role_context}
 
-Target Competencies:
-{competencies}
-
-Use this context ONLY to understand who is hiring, the expected engineering maturity, and the kind of production environment the candidate may work in. The employer's industry is NOT necessarily the task domain. The business domain for the assessment task must come from the real-world scenarios provided later unless no concrete scenario is available.
+Based on this information, could you summarize what you understand about the company and role requirements?
 """
 
 PROMPT_TOOL_USE_FOR_AGENTS_INTERMEDIATE_INPUT_AND_ASK = """
@@ -30,291 +27,271 @@ INPUT ROLE CONTEXT:
 INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 {real_world_task_scenarios}
 
-TIME EXPECTATION:
-The task must fit in {minutes_range} for a strong INTERMEDIATE candidate.
-
-QUESTION CALIBRATION SIGNAL:
+INPUT QUESTION PROMPT / SKILL SIGNAL:
 {question_prompt}
+
+TASK FOCUS:
+The candidate is an intermediate AI Agent Engineer working on a production-facing tool-using agent. The task must be a realistic engineering work item where an existing local project has a small but meaningful flaw in tool definition, schema validation, orchestration, retries, idempotency, state handling, traceability, or safe tool invocation. The candidate should improve the implementation and verify the behavior using tests and a seeded local datastore.
 
 You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task. Use the provided real-world scenario as the basis for this task - do not invent a different domain. When multiple scenarios are listed, pick the one whose technical surface area best fits the candidate level. The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario.
 
-The task must be a realistic build-it repository for a tool-using LLM agent. It should center on a production failure at the tool boundary: wrong tool choice, unsafe side-effecting tool invocation, malformed tool arguments, missing validation, brittle retry behavior, poor structured tool errors, missing traceability, or weak handoff from tool output back to the LLM. The candidate should implement a focused fix in code, not write an essay.
+WHAT THIS TASK TESTS:
+- Ability to understand the division of responsibility between the LLM planner, the orchestration layer, and deterministic tools
+- Ability to design or repair clear tool schemas with required fields, validation rules, and structured error outputs
+- Ability to reason about multi-step tool workflows, retries, idempotency, fallback behavior, and partial success
+- Ability to inspect agent traces, logs, or seeded records to diagnose wrong tool arguments, missing fields, duplicate side effects, or stale state
+- Ability to implement pragmatic fixes in a small codebase without turning the task into a framework installation exercise
+- Ability to preserve auditability, traceability, privacy-aware logging, and predictable tool contracts
+- Ability to communicate expected behavior through tests and concise documentation
 
-This is an INTERMEDIATE task. The candidate has a few years of experience building or maintaining production-facing agents, but is not expected to design an entire agent platform. Keep the work scoped to ONE clear tool-use decision, or at most two tightly related decisions, and make it completable within the time budget.
+EVALUATION SIGNALS:
+- Strong candidates keep strict validation, business rules, and side-effect safety in code rather than relying only on the LLM prompt
+- Strong candidates use structured input and output contracts for tools, including explicit machine-readable error codes
+- Strong candidates account for retry safety, idempotency, and state consistency when a tool has side effects
+- Strong candidates preserve existing behavior while fixing the targeted flaw
+- Strong candidates add or update focused tests that prove the bug is fixed and avoid over-engineering unrelated architecture
+- Weak candidates only add prose instructions to a prompt, ignore validation or idempotency boundaries, or hide failures instead of returning structured errors
 
-The generated repository must include a REAL LLM/agent loop. The LLM must be the planner/router/reasoning component that selects or repairs tool calls. Tools must provide deterministic business actions, data retrieval, validation, or side effects. Do NOT create a FakeLLM, deterministic stand-in, regex intent parser, keyword router, or simulated model. The candidate-filled stubs are the agent logic around real tool use, not a replacement for the model.
+CRITICAL TASK GENERATION REQUIREMENTS:
+- The generated task must be completable within {minutes_range} minutes for an INTERMEDIATE proficiency candidate
+- The task must include a FULLY FUNCTIONAL starter project with a FULLY POPULATED local datastore seeded through SQL
+- The task must use docker-compose for the datastore needed by the chosen scenario, plus run.sh and kill.sh
+- The candidate should work in an existing implementation, not build a full agent platform from scratch
+- Include enough broken behavior and tests for the candidate to discover the issue, but do not reveal the exact code changes in the README
+- Keep the task focused on one primary tool-use-agent competency area with one or two supporting concerns
+- Do not require advanced research topics, custom agent framework internals, production cloud configuration, credentials management, or broad system redesign
 
-Before proceeding to the detailed task generation instructions, briefly confirm your understanding by summarizing:
-1. Which scenario you selected and what production tool-use failure the task will model.
-2. Which tool-use capability the candidate must improve: schema, validation, dispatch, retry, structured error handling, side-effect gating, audit logging, or tool-result post-processing.
-3. Which files the candidate will inspect and which focused stubs they will complete.
+Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
+
+1. What will the task be about? Describe the selected business domain, the agent workflow, the tool or tools involved, the datastore-backed state, and the specific flaw the candidate must fix.
+2. What will the task look like? Describe the starter files, docker-compose datastore setup, seed data, tests, README framing, and what observable behavior will prove the candidate solved the problem.
+
+Please provide a brief summary of your understanding before proceeding with the full task generation.
 """
 
 PROMPT_TOOL_USE_FOR_AGENTS_INTERMEDIATE_INSTRUCTIONS = """
-## GOAL
-As a technical architect super experienced in LLM-driven agents, tool-calling systems, Python, PostgreSQL-backed state, and production integration design, you are given a list of real world scenarios and proficiency levels for Tool Use for Agents. Generate ONE INTERMEDIATE build-it assessment task that evaluates whether a candidate can make a tool-using agent safer, more reliable, and more traceable at the boundary between the LLM and business tools.
 
-The output must be a FULLY FUNCTIONAL repository scaffold. It must be deliberately incomplete in a small number of candidate-facing stubs, but the starting environment must be FULLY POPULATED with realistic code, fixtures, database initialization, run scripts, and candidate-facing checks. The candidate should be able to clone the task, provide their own model provider key in `.env`, start the PostgreSQL-backed environment with `./run.sh`, inspect the code and traces, then implement the missing tool-use logic.
+## GOAL
+As a technical architect super experienced in tool-using agents, you are given a list of real world scenarios and proficiency levels for tool-using agents. You must generate a realistic, hands-on engineering assessment for an INTERMEDIATE AI Agent Engineer who can design, debug, and refine LLM-driven agents that plan, select, and invoke tools with clear schemas, validation, state handling, retries, and traceability. The task should feel like a production bugfix or enhancement ticket in an agent platform, not a toy exercise or trivia question.
 
 ## CONTEXT & CANDIDATE EXPECTATION
-The candidate is an INTERMEDIATE AI Agent Engineer working on a production-facing agent that uses tools to retrieve data, perform business actions, and coordinate multi-step workflows. The task should test applied judgment around tool definitions, structured arguments, validation, retries, idempotency, side-effect gating, audit logging, post-processing, and safe recovery after tool failures.
+The candidate has a few years of experience building or maintaining production-facing agents that call internal tools, APIs, or datastore-backed capabilities. They are expected to work independently on standard integrations and moderately complex multi-tool flows, while relying on senior engineers for broad autonomy boundaries or high-risk compliance decisions. The assessment should test applied competence in tool contracts, orchestration, validation, idempotency, error handling, state, evaluation traces, and pragmatic test-driven repair.
 
-The task is not a trivia question, framework syntax drill, system-design essay, or prompt-only review. It is a realistic coding work item where the candidate improves a small tool-use path in a runnable agent repository.
-
-**CRITICAL**: The candidate must interact with a real agent loop. The repository must call a REAL model through a runtime SDK or router such as LiteLLM, OpenAI SDK, Anthropic SDK, LangChain, or LangGraph. The candidate provides their own provider key at runtime via `.env`.
-
-**CRITICAL**: Do NOT create a FakeLLM, StubLLM, deterministic stand-in for the model, regex intent parser, keyword router, or any placeholder that pretends to be the LLM. Do NOT use `time.sleep()` or `asyncio.sleep()` to simulate agent or tool thinking. Determinism for grading is not required; production grades the candidate's diff with an LLM judge. Fixtures may make tool inputs and database state deterministic, but they must never replace the model's tool-selection or repair behavior.
+The generated task must be completable within {minutes_range} minutes. It should require focused code reading and implementation, not broad system design. The candidate should receive a FULLY FUNCTIONAL starter project with a FULLY POPULATED local datastore so they can run tests, observe the failing behavior, and implement the fix.
 
 ## INSTRUCTIONS
 
 ### Nature of the Task
-- Generate ONE realistic INTERMEDIATE build-it task centered on Tool Use for Agents.
-- The task must be grounded in ONE selected real-world scenario from `{real_world_task_scenarios}`. If several scenarios are present, choose the one whose technical surface area best fits an intermediate tool-use task. Do not drift into the employer's industry unless the selected scenario itself uses that domain.
-- **CRITICAL**: Keep the task focused on tool boundaries: clear tool contracts, JSON schemas, argument validation, safe dispatch, structured tool errors, retry/fallback behavior, side-effect gating, idempotency, state handoff, audit logging, and post-processing of tool outputs.
-- **CRITICAL**: The agent must include a real LLM-driven planning or tool-selection step. The candidate may implement validation, dispatch, retry, repair-loop, state, or policy code, but the model must still be the component that reasons about which tool call to attempt or how to respond after a structured tool error.
-- **CRITICAL**: Scope the implementation to approximately 60-140 candidate-written lines across 1-2 files. The task should fit in {minutes_range}; do not require building a full platform, multi-agent supervisor, vector search layer, large authentication system, or complex frontend.
-- Acceptable task archetypes include:
-  - Preventing unsafe side-effecting tool calls until required confirmation or state is present.
-  - Validating and normalizing model-produced tool arguments before dispatch.
-  - Returning structured tool errors such as `{{"code": "VALIDATION_ERROR", "message": "...", "retryable": false, "attempts": 1}}` so the LLM can recover safely.
-  - Retrying only safe, idempotent tool calls for transient errors with bounded attempts.
-  - Recording traceable audit rows for every tool invocation with `trace_id`, `tool_name`, arguments summary, status, latency, and error code.
-  - Repairing malformed tool calls by feeding structured validation errors back to the model with bounded retries.
-  - Handling pagination or result limits before passing tool output back to the LLM.
-- Do NOT require advanced concepts outside the stated scope, such as fine-tuning models, building a distributed workflow engine, implementing a full auth provider, creating a vector database retrieval platform, complex multi-agent orchestration, or writing a long design document.
-- The starting repository must contain realistic traces, fixtures, prompts, and database state that expose the issue indirectly. Do NOT label files as flawed or explain the fix in comments.
-- The candidate-facing `question` and `README.md` must describe symptoms and desired outcomes, not implementation steps or exact function names.
-- The evaluator-facing `answer` may describe the expected fix, root cause, and tradeoffs, but code_files and README.md must not reveal the solution.
+- The task must present a realistic work item involving an LLM-driven agent that invokes one or more deterministic tools for data retrieval, business actions, computation, or coordination.
+- **CRITICAL**: The business domain, endpoint names, tool names, table names, and failure mode must come from ONE of the provided real-world scenarios. Do not invent a different domain or default to a generic chatbot.
+- **CRITICAL**: Keep the scope at INTERMEDIATE level. The candidate may repair a schema, add validation, improve idempotency, coordinate a small multi-tool flow, normalize tool outputs, or add structured error handling. Do not require building a full agent framework, implementing vector search from scratch, designing a full production incident response process, or solving open-ended architecture.
+- **CRITICAL**: The task must exercise Tool Use for Agents, not general web CRUD. The code should make it clear where the LLM-facing tool contract begins, where deterministic orchestration or validation belongs, and where datastore-backed state or audit logs are written.
+- **CRITICAL**: Include a real flaw in the starter implementation that maps to the competency scope, such as missing required response fields, malformed tool-call arguments, duplicate side-effect tool calls on retry, missing idempotency keys, lack of validation before persisting LLM output, unsafe retry behavior, stale state reads, or failure to preserve normalized tool result shape.
+- **CRITICAL**: The candidate should have to implement a focused fix and verify it through tests. The task should not be answerable by only editing documentation or adding comments.
+- The generated task should include existing tests that fail before the fix and pass after the fix. You may also include a small replay script or fixture-driven test that demonstrates agent trace behavior.
+- The candidate should be able to inspect seeded database rows, logs, or test fixtures to understand the workflow. However, do NOT expose database credentials or connection details in the README.
+- The generated project should be concise: one service or worker module, one tool contract or schema module, one datastore access module, one test file or small test suite, plus scripts and README.
+- The work item should have multiple reasonable implementation paths, but the expected behavior must be specific and observable.
+- If you include diagrams, ensure they are written in mermaid format, properly indented and also in code blocks.
 
 ## AI AND EXTERNAL RESOURCE POLICY
-Candidates are permitted and encouraged to use any external resources they find helpful, including but not limited to Google, Stack Overflow, Python documentation, PostgreSQL documentation, agent framework documentation, and AI-powered tools, agentic IDEs, or Large Language Models (LLMs).
+Candidates are permitted and encouraged to use any external resources they find helpful, including but not limited to Google, Stack Overflow, tool-use-agent documentation, framework documentation, and AI-powered tools, agentic IDEs, or Large Language Models (LLMs).
 
-- The use of AI tools is allowed as part of the assessment workflow.
-- The task should evaluate the candidate's ability to understand, modify, and validate a realistic codebase rather than memorizing APIs.
-- The submitted work must still satisfy the behavior expected by the repository and must preserve safety, correctness, and maintainability.
-- Do not include restrictions in the generated task that prohibit candidates from using LLMs, documentation, or other external resources.
+- The task is designed to evaluate applied engineering judgment, debugging ability, and implementation quality, not memorization.
+- Candidates may use AI assistance to understand the codebase, generate test ideas, or explore implementation options.
+- Candidates remain responsible for validating the final behavior with the provided tests and for ensuring the solution is secure, reliable, and maintainable.
+- The README should not discourage external resources or imply that AI tools are prohibited.
 
 ## Code Generation Instructions
-Generate a Python-based agent repository with a real LLM client and a PostgreSQL-backed state or audit store. The repository must include a small service or CLI entry point, realistic tools, prompts, tool schemas, database access helpers, fixtures, candidate-facing invariant tests, and scripts.
+Generate a complete, runnable local project under `/root/task`. The project should model a small agent workflow where an LLM-facing orchestration layer calls deterministic tools and writes or reads state from the datastore. The codebase must be intentionally small enough for an intermediate candidate to understand quickly, but realistic enough that the failure mode reflects real production agent work.
 
 **FILE LOCATION**: All code and scripts must reference /root/task as the base directory.
 
-The generated repository should generally include:
-- `agent/__init__.py` as a minimal package marker.
-- `agent/config.py` to load `.env` values and model configuration.
-- `agent/llm_client.py` as a complete real-model wrapper using LiteLLM, OpenAI SDK, Anthropic SDK, or a comparable real provider SDK. This file is provided complete and is not the candidate's main work.
-- `agent/prompts.py` with system and developer prompts that guide tool use, distinguish system policy from user instructions, and describe when to call tools, ask clarifying questions, decline unsafe requests, or recover from structured tool errors.
-- `agent/tool_schemas.py` or `agent/tools.py` with realistic tool definitions and JSON-style argument contracts.
-- `agent/orchestrator.py`, `agent/tool_dispatch.py`, `agent/policy.py`, or similar candidate-focused files containing small stubs with `raise NotImplementedError`.
-- `agent/db.py` for PostgreSQL connection helpers and state/audit persistence.
-- `agent/__main__.py` or `app.py` for a CLI or minimal service entry point and `--selfcheck`.
-- `fixtures/` with realistic scenario inputs, trace examples, or tool-call cases.
-- `invariants/test_*.py` with candidate-facing pytest tests that verify behavior after the candidate finishes. These tests must NOT be run by `run.sh`.
-- `requirements.txt` listing the Python dependencies used by the repository.
-- `.env.example` showing provider key variables and the local PostgreSQL connection string.
-- `docker-compose.yml`, `init_database.sql`, `run.sh`, `kill.sh`, `.gitignore`, and `README.md`.
+The generated code should include:
+- An agent or orchestration module that receives a user request or replay event, decides which tool function to call, validates or normalizes tool results, and returns a structured response
+- One or more tool modules with explicit input and output contracts, using structured types where appropriate
+- A datastore access layer that reads seeded records or writes audit/state rows
+- A focused failing test suite that captures the current bug and expected fixed behavior
+- A README that explains the work item at a high level without revealing the exact implementation
+- Scripts to start the datastore and run tests from a clean environment
 
-The LLM client must call a real model by default when a provider key is present. The readiness path may skip the model ping when no key is present, but this must not become an LLM-free task. A good pattern is:
-- `AGENT_TEST_MODE` may be used only for offline fixture or invariant paths that validate tool inputs and schemas without a provider key.
-- `AGENT_TEST_MODE` must never be described as the real agent behavior.
-- The normal candidate path must call a real provider using the candidate's key.
-- A key-gated `_ping_model()` may run only when a provider key exists and must call the model directly without executing candidate stubs or unsafe tools.
+The implementation should avoid unnecessary complexity. Do not require the candidate to call a live LLM provider, configure API keys, use paid services, or rely on network services outside docker-compose. Simulate LLM output or tool-call emissions with fixtures, local functions, or seeded trace rows so the candidate can focus on tool-use-agent engineering fundamentals.
 
-Do not instruct the downstream task to run `pip install`, `apt-get install`, or other installation commands inside `run.sh` for the runtime or common libraries. The E2B template provides the runtime and common libraries. The repository may still include `requirements.txt` so candidates know what the project uses.
+Common valid task patterns include:
+- Validate an LLM-produced structured response before persisting it, returning a machine-readable validation error instead of writing malformed state
+- Add an idempotency key to a side-effect tool contract and ensure replayed agent turns do not duplicate external actions
+- Repair a multi-tool orchestration so independent read-only tool calls are performed concurrently while preserving result shape
+- Normalize paginated or heterogeneous tool outputs before passing them back to the LLM planner
+- Add bounded retry and fallback behavior for transient tool failures without retrying unsafe side-effect operations
+- Add trace correlation IDs and structured error objects so failures can be diagnosed in replay tests
 
 ## Infrastructure Requirements
-This is an infra-shaped task. The generated task MUST include PostgreSQL as the external datastore because tool-using agents in these scenarios need durable business state, conversation/task state, tool invocation audit rows, or traceable side-effect records.
+This is an infra-shaped task. The generated task MUST include a local datastore provisioned with docker-compose, a seed SQL file, a run.sh script, and a kill.sh cleanup script. Use the datastore actually required by the selected scenario. For the provided tool-use-agent scenarios, this will usually be PostgreSQL-compatible storage for agent state, coverage rules, traces, disputes, idempotency records, or audit logs. Do not add extra datastores that the scenario does not exercise.
 
-The generated task MUST include:
-- `docker-compose.yml` defining a PostgreSQL service.
-- `init_database.sql` creating the tables and seed data needed by the chosen scenario.
-- `run.sh` that starts PostgreSQL with Docker Compose, waits for readiness, performs a simple database smoke check, verifies the Python scaffold imports or self-checks, and exits 0 on the UNSOLVED starter repository.
-- `kill.sh` that tears down containers, volumes, networks, images, and `/root/task` idempotently.
-
-`run.sh` is a readiness/self-check script, not the grader. It must NOT run the candidate-facing invariant tests because those are expected to fail until the candidate completes the task.
+The datastore must be FULLY POPULATED with realistic seed data that supports the failing tests and the candidate workflow. The project must run locally without external credentials.
 
 ### Docker-compose Instructions
-Create a `docker-compose.yml` file for PostgreSQL.
+Create `/root/task/docker-compose.yml`.
 
-**MUST NOT include any version specification** in `docker-compose.yml`.
-
-The PostgreSQL service must:
-- Use a standard PostgreSQL image such as `postgres:16`.
-- Set standard initialization environment variables inline under the service: `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB`.
-- Use the same user, password, and database name in `init_database.sql`, the healthcheck, and the application connection string.
-- Mount `./init_database.sql` into `/docker-entrypoint-initdb.d/init_database.sql:ro`.
-- Define a persistent named volume for PostgreSQL data.
-- Include a healthcheck using `pg_isready` with the same database user and database.
-- Use `restart: unless-stopped`.
-
-**SECURITY-CRITICAL**: ports MUST be bound to localhost only using `127.0.0.1:5432:5432`. Do not expose PostgreSQL on `0.0.0.0`, and do not use an unqualified `5432:5432` mapping.
-
-Do not use `.env` files or `${{VAR}}` host indirection for database initialization values in `docker-compose.yml`. Inline service environment values are required because the image will not initialize without them.
+- **MUST NOT include any version specification** in docker-compose.
+- **MUST NOT include environment variables or .env file references** from the host.
+- Use explicit values directly in the compose file only for the local assessment datastore.
+- **SECURITY-CRITICAL**: ports MUST be bound to localhost only using `127.0.0.1:<port>:<port>` for every datastore exposed to the host.
+- Include only the datastore services required by the chosen scenario. Do not add Redis, queues, search engines, or app containers unless the scenario explicitly requires them.
+- Configure a healthcheck so `run.sh` can wait for the datastore to be ready before running tests or migrations.
+- Mount the SQL seed file into the datastore initialization directory when using PostgreSQL-compatible storage.
+- Use stable container, volume, and network names that include the generated task name or a short task-specific prefix.
 
 ### init_database.sql Instructions
-Create an `init_database.sql` file that fully initializes the scenario's PostgreSQL state. It should be realistic but small enough for a candidate to understand quickly.
+Create `/root/task/init_database.sql`.
 
-The SQL should:
-- Create all tables required by the chosen scenario, such as conversation state, tool invocation audit rows, business entities, bookings, orders, accounts, or requests.
-- Insert realistic seed rows that match the scenario and fixtures.
-- Include enough data to exercise success, validation failure, retryable failure, unsafe side-effect prevention, and traceability paths where relevant.
-- Use primary keys, foreign keys, timestamps, status fields, and simple constraints where helpful.
-- Avoid complex stored procedures, triggers, or advanced DBA topics that would distract from Tool Use for Agents.
-- Use the same database name and user assumed by `docker-compose.yml` and application configuration.
+- The SQL file must create all tables needed by the starter project and tests.
+- The SQL file must seed realistic records for the chosen domain: tool metadata, business records, agent traces, retry records, idempotency records, validation examples, or audit logs as appropriate.
+- Seed data must be sufficient for the tests to demonstrate the existing bug before the candidate fix and the expected behavior after the fix.
+- Keep the schema small and understandable. Prefer 2-5 tables with clear names over a large enterprise schema.
+- Include constraints where they support the task, such as NOT NULL fields, uniqueness on idempotency keys, or foreign keys between agent turns and tool calls.
+- Do not include secrets, production-looking credentials, or unrelated sample data.
+- Ensure seeded IDs and values match the fixtures and tests exactly.
 
 ### Run.sh Instructions
-Create a `run.sh` file at the repository root.
+Create `/root/task/run.sh`.
 
-The script must:
-- Start with `#!/usr/bin/env bash` and `set -euo pipefail`.
-- `cd /root/task`.
-- Start PostgreSQL using `docker compose up -d`.
-- Wait until PostgreSQL is healthy using `docker compose ps`, `pg_isready`, or a small Python database connection loop.
-- Perform a small read/write/delete or select smoke check against PostgreSQL to confirm the initialized schema is usable.
-- Run an import or self-check command such as `python -m agent --selfcheck` that verifies the scaffold, fixtures, tool definitions, prompts, and database connection load.
-- Exit 0 on the unsolved starter repository.
-- Print clear logs for each readiness step.
-- End with a clear success message such as `Ready: PostgreSQL is healthy and the agent scaffold loads.`
-
-The script must NOT:
-- Run `pytest`, `invariants/`, or any grader-like test suite.
-- Invoke candidate stubs that raise `NotImplementedError`.
-- Run the live agent loop.
-- Require an API key at readiness time.
-- Call unsafe write tools as part of readiness.
-- Use `pip install`, `apt-get install`, `npm install`, or similar dependency installation commands for the runtime or common libraries.
-
-If the self-check includes a model ping, it must be key-gated: when no provider key is present, print a note and skip the ping; when a provider key is present, ping the model directly without executing candidate stubs or tool side effects.
+- The script must use `#!/usr/bin/env bash` and `set -euo pipefail`.
+- It must use `/root/task` as the working directory.
+- It must start the datastore with `docker compose up -d`.
+- It must wait for the datastore healthcheck or readiness command before running tests.
+- It must run the project’s native test command for the selected runtime after the datastore is ready.
+- It must not install the primary runtime or common libraries already present in the environment.
+- It must not use `apt-get install`, global package-manager installs, or external service setup.
+- It must print clear progress messages for starting infrastructure, waiting for readiness, and running tests.
+- It must exit non-zero if tests fail.
 
 ## kill.sh file instructions
-Create a `kill.sh` file at the repository root that is safe and idempotent. It must:
+Create `/root/task/kill.sh` that performs complete, idempotent cleanup. The script MUST use `#!/usr/bin/env bash` and may use `set +e` so cleanup continues even if some resources are already absent.
 
-1. Start with `#!/usr/bin/env bash` and `set -euo pipefail`.
-2. Print a clear message before each cleanup phase.
-3. Change to `/root/task` if the directory exists, but continue safely if it does not.
-4. Stop running Docker Compose services with `docker compose down --remove-orphans || true`.
-5. Remove Docker volumes created by the task with `docker compose down -v --remove-orphans || true` or explicit `docker volume rm ... || true`.
-6. Remove Docker networks created by the task with `docker network rm ... || true`.
-7. Force-remove task-related Docker images if any were created, using `docker rmi -f ... || true`.
-8. Run `docker system prune -a --volumes -f || true`.
-9. Remove `/root/task` with `rm -rf /root/task || true`.
+The script must follow this 9-step shape:
 
-Every destructive command must use `|| true` where needed so repeated cleanup attempts do not fail. The script must print logs at every step and finish with the exact final message:
-`Cleanup completed successfully!`
+1. Print a log line indicating cleanup is starting.
+2. Stop docker-compose services from `/root/task` using `docker compose down --remove-orphans || true`.
+3. Remove docker-compose volumes using `docker compose down -v --remove-orphans || true`.
+4. Remove any task-specific named Docker volumes with `docker volume rm ... || true`.
+5. Remove any task-specific Docker networks with `docker network rm ... || true`.
+6. Force-remove task-specific Docker images if any were built, using `docker rmi -f ... || true`.
+7. Run `docker system prune -a --volumes -f || true`.
+8. Remove the task directory using `rm -rf /root/task || true`.
+9. Print the final message `Cleanup completed successfully!`.
+
+Every destructive command must be idempotent and include `|| true`. The script must print logs at every step so candidates and evaluators can see what cleanup is doing.
 
 The output should be a valid json schema:
-- `README.md`: Candidate-facing overview using exactly the required README sections.
-- `.gitignore`: Local Python, environment, cache, and database artifacts to ignore.
-- `.env.example`: Provider key placeholders and local database connection string.
-- `requirements.txt`: Python package names needed by the generated repository.
-- `docker-compose.yml`: PostgreSQL service with localhost-only port binding and no version field.
-- `init_database.sql`: Full database initialization and seed data for the selected scenario.
-- `run.sh`: Readiness script that starts PostgreSQL and validates the scaffold without running grader tests.
-- `kill.sh`: Idempotent teardown script following the required nine-step cleanup shape.
-- `agent/`: Python package containing the real LLM client, prompts, tools, tool schemas, database helpers, orchestration, and candidate stubs.
-- `fixtures/`: Small realistic fixture files that drive the scenario.
-- `invariants/`: Candidate-facing tests that validate completed behavior but are not executed by `run.sh`.
+- `README.md` with concise candidate-facing task instructions
+- `docker-compose.yml` with only the required datastore services
+- `init_database.sql` with schema and seed data
+- `run.sh` to start infrastructure and run the native test command
+- `kill.sh` to stop services, remove volumes and networks, prune Docker resources, and remove `/root/task`
+- Runtime manifest such as `pyproject.toml`, `package.json`, `pom.xml`, `Cargo.toml`, or equivalent for the selected implementation stack
+- Source files implementing the starter agent workflow, tool contracts, datastore access, and intentionally flawed behavior
+- Test files that fail before the candidate fix and pass after the fix
 
 ## Code file requirements
-All generated code must be realistic, internally consistent, and runnable as a starter scaffold.
-
-The code must:
-- Use Python for the agent implementation.
-- Use PostgreSQL for the scenario's durable state, tool audit trail, or business records.
-- Include a real LLM client wrapper built on a real provider SDK or router.
-- Keep candidate work focused in 1-2 files with clearly named functions that raise `NotImplementedError` and include neutral contract descriptions only.
-- Include structured logging or audit persistence for tool calls where relevant.
-- Use structured tool inputs and outputs. Tool errors should be machine-readable, with fields such as code, message, retryable, attempts, and trace_id when applicable.
-- Separate business tools from the LLM orchestration layer. Strict validation, authorization-like checks, idempotency checks, and side-effect gating should live in code or tools, not purely in model instructions.
-- Avoid leaking the solution in comments, docstrings, README text, variable names, or tests.
-- Include candidate-facing invariant tests that are clear enough to run after implementation but do not become step-by-step solution instructions.
-- Keep fixtures small, realistic, and aligned with database seed data.
-
-Do NOT:
-- Include a fake model or deterministic model stand-in.
-- Use regex or keyword matching as the agent's tool-selection brain.
-- Simulate work or latency with sleeps.
-- Ask candidates to implement authentication providers, billing platforms, full observability stacks, or advanced distributed systems.
-- Hide the entire task in a single monolithic file.
-- Include external secrets or real credentials.
-- Include database host, port, username, password, or client-tool suggestions in the README.
-
-If you include diagrams, ensure they are written in mermaid format, properly indented and also in code blocks.
+- All generated files must live under `/root/task`.
+- The code must be syntactically valid and runnable.
+- The code must avoid external paid APIs and live LLM calls. Use deterministic fixtures, fake LLM outputs, seeded trace rows, or local test doubles.
+- The code must include a clearly named module for tool definitions or tool contracts.
+- The code must include a clearly named module for agent orchestration or workflow execution.
+- The code must include explicit validation logic or a clear TODO-adjacent defect that the candidate must repair.
+- The code must use structured errors for validation, authorization, retry, idempotency, or tool invocation failures where relevant.
+- Tests must assert observable outcomes such as no malformed rows being inserted, one side-effect row after repeated replay, stable idempotency keys, preserved normalized result shape, bounded retry counts, or structured error codes.
+- Do not include hidden evaluator-only files in `code_files`. Everything needed to run and understand the task should be visible.
+- The starting code should contain a realistic flaw, but it must not be so broken that the project cannot start or the tests cannot run.
+- Keep file count reasonable. Prefer 8-14 files total including scripts, manifest, README, source, tests, and SQL.
+- Do not include Dockerfile unless the app itself must run in a container. For these tasks, prefer running the app/tests locally against the docker-compose datastore.
 
 ## .gitignore INSTRUCTIONS
-Generate a `.gitignore` suitable for a Python agent repository with Docker-backed PostgreSQL. It should include:
-- Python caches and build artifacts such as `__pycache__/`, `*.pyc`, `.pytest_cache/`, `.mypy_cache/`, `.ruff_cache/`, `dist/`, and `build/`.
-- Virtual environments such as `.venv/`, `venv/`, and `env/`.
-- Environment and secret files such as `.env`, `.env.*`, while allowing `.env.example` to be committed.
-- Local logs, coverage files, and temporary artifacts.
-- OS/editor files such as `.DS_Store` and `.vscode/`.
-- Local database dumps or generated runtime data if the repository creates them.
+Create `/root/task/.gitignore` with practical ignores for the selected runtime and local execution. Include runtime caches, test caches, virtual environments or dependency directories, log files, coverage output, editor files, and OS metadata. Do not ignore source files, tests, README, docker-compose.yml, init_database.sql, run.sh, or kill.sh.
 
 ## README.md INSTRUCTIONS
 The README must be concise and open-ended. Each section should have only the essential points needed to understand the task. Do NOT overload with too many bullets — quality over quantity. The candidate should figure out the implementation approach on their own.
 
 Do NOT directly tell candidates what to implement — provide direction and guidance to help them discover solutions.
 
-The README.md file must contain EXACTLY these sections in this order and no other markdown section headings:
+The candidate-facing README has EXACTLY these output sections, in this order, and NO others:
+
+1. Task Overview
+2. Helpful Tips
+3. Objectives
+4. How to Verify
 
 ### Task Overview
-Write 3-4 meaningful sentences. No bullet list. Describe the business scenario, current state, and why the problem matters. This section is NEVER empty. Do not include bold time-budget callouts. Describe observable symptoms and business impact, not the implementation approach. Do not name specific stub files or functions.
+Write 3-4 meaningful sentences. No bullet list. Describe the business scenario, current state, and why the problem matters. NEVER empty. NO bold time-budget callouts. Mention that the local project is already wired to a datastore and tests, but do not include setup commands, database connection details, or the exact solution.
 
 ### Helpful Tips
 Write 4-5 bullets max. Provide practical guidance without revealing specific implementations. Each bullet must start with an action word: `Consider`, `Think about`, `Explore`, `Review`, or `Analyze`. Tips guide discovery — they MUST NOT name the specific API, library, function, pattern, data structure, or algorithm that solves the task.
 
 ### Objectives
-Write 4-6 bullets max. Frame objectives around outcomes rather than specific technical implementations. Objectives describe the "what" and "why", never the "how". Each bullet must state an observable end-state, not a step or an API/library to use.
+Write 4-6 bullets max. Frame objectives around outcomes rather than specific technical implementations. Objectives describe the 'what' and 'why', never the 'how'. Each bullet states an observable end-state, not a step or an API/library to use.
 
 ### How to Verify
-Write 4-6 bullets max. Frame verification in terms of observable outcomes. Describe WHAT to verify and the expected behavior, not the specific implementation to write. Each bullet should be a check the candidate can run, such as readiness output, invariant test output, response shape, latency observation, log row, audit record, or database state.
+Write 4-6 bullets max. Frame verification in terms of observable outcomes. Describe WHAT to verify and the expected behavior, not the specific implementation to write. Each bullet is a check the candidate can run, such as test output, response shape, latency observation, log line, database row count, or structured error response.
 
 ## CONTENT TO EXCLUDE FROM THE README (instruction — do not emit as a section)
-Keep the following out of README.md:
-- Setup commands such as `pip install`, `docker compose up`, `pytest`, or `./run.sh` command recipes beyond high-level verification phrasing.
-- Direct solutions or architectural decisions.
-- Step-by-step implementation guides.
-- Specific APIs, method names, library names, pattern names, or data-structure names that reveal the solution.
-- Code snippets that give away the answer.
-- Directive phrases like "you should implement", "add this middleware", "create this class", or "use this specific API".
-- Database connection details, including host, port, username, password, database name, or client-tool suggestions.
-- `<DROPLET_IP>` placeholders.
-- Separate sections such as Database Schema Overview, Database Access, Performance Issues, Deliverables, or Not To Include.
+Keep the following OUT of the README:
+- Setup commands such as `npm install`, `pip install`, `docker compose up`, `mvn test`, or similar
+- Direct solutions or architectural decisions
+- Step-by-step implementation guides
+- Specific APIs, method names, library names, pattern names, or data-structure names that reveal the solution
+- Code snippets that give away the answer
+- Directive phrases like `you should implement`, `add this middleware`, `create this class`, or `use <specific API>`
+- Database-connection details including host, port, username, password, client-tool suggestions, or `<DROPLET_IP>` placeholders
+- Extra README sections such as `Database Schema Overview`, `Database Access`, `Performance Issues`, `NOT TO INCLUDE`, `Guidance`, `Tips`, or `Recommendations`
 
 ## REQUIRED OUTPUT JSON STRUCTURE
-Output a single raw JSON object with EXACTLY these keys and no others. Each value must be fully populated for the generated task.
+Return a single valid JSON object with the following canonical keys. Each field must contain the generated task content described below, not commentary about the process.
 
 {{
-  "name": "A kebab-case GitHub repository name under 50 characters that starts with an action verb and summarizes the tool-use agent task.",
-  "title": "A human-readable display title in '<action verb> <subject>' format, 50-80 characters long, different from the repository name.",
-  "question": "The full candidate-facing task description written as a realistic work-item message that states the production symptoms, high-level business goal, safety constraints, use of their own model provider key, and where to begin without revealing the implementation details.",
-  "code_files": "An object mapping every required filepath to its complete file contents, including README.md, .gitignore, .env.example, requirements.txt, docker-compose.yml, init_database.sql, run.sh, kill.sh, Python agent package files, fixtures, and candidate-facing invariant tests.",
-  "answer": "Evaluator-facing high-level solution guidance describing root causes, expected fix shape, key tradeoffs, and evidence in the starter repository without providing chain-of-thought or duplicating full solution files.",
-  "definitions": "An object of concise term-to-definition pairs for domain terms and agent/tool-use concepts that appear in the task, such as tool schema, structured tool error, idempotency, side-effecting tool, trace_id, confirmation gate, or retryable error.",
-  "hints": "A single-line non-revealing hint that nudges the candidate toward inspecting the agent trace, tool contract, validation boundary, or audit records without naming the exact fix.",
-  "outcomes": "Expected results after completion in 2-3 lines focusing on safe tool use, correct business behavior, structured recovery, traceability, and production-clean code with clear naming, error handling, logging, and maintainable structure. Use simple english.",
-  "pre_requisites": "A bullet list of tools and knowledge needed, including Python, basic PostgreSQL-backed local development, real LLM provider keys, tool-calling agents, JSON-style schemas, structured errors, and running candidate-facing tests.",
-  "short_overview": "A bullet list summarising the business problem, the tool-use failure under investigation, the technical focus, and the expected safe production outcome."
+  "name": "A kebab-case GitHub repository name under 50 characters that summarizes the task and is different from the display title.",
+  "title": "A human-readable display name in '<action verb> <subject>' format, 50-80 characters, describing the candidate work item.",
+  "question": "The full candidate-facing task description as a concise work item that explains the scenario, the failing behavior, the expected deliverable, and the time-bounded scope without revealing the exact implementation.",
+  "code_files": {{
+    "README.md": "The complete README.md content with exactly the four required sections in order: Task Overview, Helpful Tips, Objectives, and How to Verify, written concisely and without solution-revealing details.",
+    "docker-compose.yml": "The complete docker-compose.yml content for only the datastore services required by the selected scenario, with localhost-only port bindings, no version field, no .env references, and appropriate healthchecks.",
+    "init_database.sql": "The complete SQL initialization file that creates the schema and seeds all datastore records needed by the starter code and tests.",
+    "run.sh": "The complete executable shell script that starts docker-compose infrastructure, waits for datastore readiness, and runs the runtime-native test command from /root/task.",
+    "kill.sh": "The complete executable shell script that idempotently stops compose services, removes volumes, networks, task images, prunes Docker resources, deletes /root/task, and prints cleanup progress including the final success message.",
+    ".gitignore": "The complete .gitignore content appropriate for the selected runtime and local test execution.",
+    "pyproject.toml or package.json or equivalent runtime manifest": "The complete native runtime manifest needed to run the local project and tests without installing the runtime itself.",
+    "source files": "A mapping of source file paths to complete file contents for the starter agent workflow, tool contracts, datastore access, validation or idempotency logic, and the intentional flaw the candidate must repair.",
+    "test files": "A mapping of test file paths to complete file contents for focused tests that fail before the candidate fix and pass when the expected tool-use-agent behavior is implemented."
+  }},
+  "answer": "A high-level evaluator-facing solution approach explaining the intended fix, the reasoning behind it, how it respects tool-use-agent boundaries, and which tests or observations should pass after completion.",
+  "definitions": "An object mapping important task-specific terms to concise definitions, including relevant agent/tool concepts, domain terms, structured error terms, and datastore-backed state terms used in the task.",
+  "hints": "A single line nudging investigation toward the relevant agent trace, tool contract, validation boundary, retry path, or persisted state without revealing the exact fix.",
+  "outcomes": "Expected results after completion in 2-3 lines focusing on measurable behavior such as valid structured responses, safe side effects, stable retries, preserved tool outputs, passing tests, and clean datastore state. Use simple english.",
+  "pre_requisites": "A bullet list of tools and knowledge needed, including reading a small codebase, running local tests, understanding structured tool contracts, interpreting agent traces, and reasoning about datastore-backed state.",
+  "short_overview": "A bullet list summarising the business problem, the agent/tool workflow, the specific technical focus, and the expected observable outcome."
 }}
 
-Use these EXACT keys. Do NOT use synonyms such as `task_title`, `files`, `repo`, `context`, `prompt`, or `solution`. Do NOT emit `criterias`; the pipeline injects it. Output raw JSON only with no markdown fences and no commentary outside the JSON object.
-
 ## CRITICAL REMINDERS
-- Output must be valid JSON only — no markdown fences and no explanatory prose around the object.
-- The task must be infra-shaped and MUST include `docker-compose.yml`, `init_database.sql`, `run.sh`, and `kill.sh`.
-- `docker-compose.yml` MUST NOT include any version specification.
-- PostgreSQL environment variables `POSTGRES_USER`, `POSTGRES_PASSWORD`, and `POSTGRES_DB` must be inline in the service definition; do not use `.env` or `${{VAR}}` host indirection for initialization values.
-- **SECURITY-CRITICAL**: PostgreSQL ports MUST be bound to localhost only using `127.0.0.1:5432:5432`.
-- `run.sh` must start PostgreSQL, wait for readiness, perform a database smoke check, and validate the scaffold without running invariant tests or invoking candidate stubs.
-- `kill.sh` must follow the nine-step cleanup shape, use idempotent `|| true` cleanup commands, remove `/root/task`, and end with `Cleanup completed successfully!`.
-- The repository MUST include a REAL LLM/agent loop using a provider SDK, router, or agent framework. The candidate supplies their own provider key at runtime.
-- NEVER include a FakeLLM, StubLLM, deterministic stand-in for the model, regex intent parser, keyword router, or sleep-based simulation.
-- Candidate stubs are the tool-use logic: validation, dispatch, repair, retry, side-effect gating, state handling, post-processing, or audit logging.
-- Keep the task focused on Tool Use for Agents, not generic model fallback, pure prompt writing, fine-tuning, frontend work, or a database-only exercise.
-- README.md must contain exactly the four required sections in the required order: Task Overview, Helpful Tips, Objectives, How to Verify.
-- README.md must not include setup commands, database connection details, direct solutions, step-by-step implementation guidance, or headings outside the required four.
-- The `answer` field is evaluator-facing; never leak the reference fix into `code_files`, comments, README.md, or hints.
-- Keep the implementation intermediate-level and solvable within {minutes_range}.
+1. Output must be valid JSON only — no markdown explanations and no surrounding code fences. Emit the raw JSON object starting with `{{` and ending with `}}`.
+2. The generated task MUST be an infra-shaped local project with docker-compose.yml, init_database.sql, run.sh, and kill.sh.
+3. **FILE LOCATION**: All code and scripts must reference /root/task as the base directory.
+4. docker-compose.yml **MUST NOT include any version specification**.
+5. docker-compose.yml **MUST NOT include environment variables or .env file references**.
+6. **SECURITY-CRITICAL**: every datastore port exposed to the host MUST be bound to localhost only using `127.0.0.1:<port>:<port>`.
+7. Include only the datastore required by the chosen scenario. Do not invent extra infrastructure.
+8. Do not include a Dockerfile unless the app itself must run in a container; prefer local runtime-native tests against the docker-compose datastore.
+9. run.sh must use `docker compose up -d`, wait for readiness, and run the native test command.
+10. kill.sh must follow the 9-step cleanup shape, use `|| true` for idempotency, print logs at every step, run `docker system prune -a --volumes -f`, remove `/root/task`, and end with `Cleanup completed successfully!`.
+11. README.md must contain exactly Task Overview, Helpful Tips, Objectives, and How to Verify, in that order, and no other sections.
+12. README.md must not include setup commands, database connection details, direct solutions, code snippets, or solution-revealing API/library/function/pattern names.
+13. The starter code must be FULLY FUNCTIONAL except for the intended failing behavior captured by tests.
+14. The datastore must be FULLY POPULATED with realistic seed data that matches tests and fixtures.
+15. The task must stay within INTERMEDIATE Tool Use for Agents scope: schema contracts, validation, orchestration, retries, idempotency, state, traceability, fallback behavior, and pragmatic debugging.
+16. Do not require live LLM API keys, cloud services, paid APIs, production credentials, or broad platform setup.
+17. Do not turn the task into generic CRUD, generic SQL tuning, or pure framework syntax recall. The central skill must be tool use for agents.
+18. The answer field is evaluator-facing and may describe the expected solution, but the README and question must not give the fix away.
+19. Ensure all JSON string values are validly escaped, especially file contents that contain quotes, newlines, shell scripts, SQL, or code.
+20. The `code_files` object must include complete file contents, not placeholders or summaries.
 """
 
 PROMPT_REGISTRY = {
