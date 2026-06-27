@@ -113,6 +113,16 @@
     min-width: 320px;
     max-width: 42vw;
   }
+  header .run-search {
+    background: var(--bg-elev);
+    color: var(--fg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+    width: 170px;
+  }
+  header .run-search::placeholder { color: var(--fg-dim); }
   .totals {
     margin-left: auto;
     display: flex;
@@ -659,6 +669,7 @@
 <body>
 <header>
   <h1><span class="dot">●</span> trace_ui</h1>
+  <input id="run-search" class="run-search" type="search" placeholder="search runs / tasks…" spellcheck="false" title="Filter runs by run id, competency, or task name" />
   <select id="run-picker" title="Pick a run"></select>
   <button id="new-run-btn" class="new-run-btn" type="button" title="Run a new pipeline">+ New run</button>
   <button id="refresh-btn" class="icon-btn" type="button" title="Reload run list + current run logs/traces">↻</button>
@@ -884,41 +895,74 @@ const esc = (s) => String(s == null ? "" : s)
 // <option> list when runs/statuses actually changed (avoids disrupting an open
 // dropdown or the current selection on every tick).
 let runsSig = "";
+let allRuns = [];     // every run from /api/runs (local + S3), newest first
+let runQuery = "";    // current search-box filter (run id / competency / task name)
+
+// A run matches the query when EVERY whitespace token appears somewhere in its
+// searchable text (run id + combo + task name + task id + status). Empty query
+// matches all. Works for local and S3 runs alike (S3 runs now carry task_name).
+function runMatches(r, q) {
+  if (!q) return true;
+  const hay = [r.run_id, r.combo, r.task_name, r.task_id, r.status]
+    .filter(Boolean).join(" ").toLowerCase();
+  return q.toLowerCase().split(/\s+/).every((t) => hay.includes(t));
+}
+
+// Rebuild the <option> list from allRuns filtered by runQuery. Cheap + only
+// touches the DOM when the (query + run set) signature actually changed, so it
+// doesn't disrupt an open dropdown on every poll tick.
+function renderPicker() {
+  const picker = $("run-picker");
+  const filtered = allRuns.filter((r) => runMatches(r, runQuery));
+  const sig = runQuery + "||" + filtered.map((r) => r.run_id + ":" + r.status).join("|");
+  if (sig === runsSig) return;
+  runsSig = sig;
+  if (!filtered.length) {
+    picker.innerHTML = `<option value="">no runs match “${esc(runQuery)}”</option>`;
+    return;
+  }
+  picker.innerHTML = filtered.map((r) => {
+    const combo = r.combo || "(no combo)";
+    const tn = r.task_name ? " · " + r.task_name : "";
+    const cloud = r.source === "s3" ? " ☁" : "";   // archived-in-S3 marker
+    return `<option value="${esc(r.run_id)}">${esc(r.run_id)} — ${esc(combo)} [${esc(r.status)}]${esc(tn)}${cloud}</option>`;
+  }).join("");
+  // Keep the viewed run selected if it survived the filter.
+  if (runId && filtered.some((r) => r.run_id === runId)) picker.value = runId;
+}
 
 async function loadRuns() {
   const picker = $("run-picker");
-  let runs = [];
   try {
     const res = await fetch("/api/runs");
-    runs = await res.json();
+    allRuns = await res.json();
   } catch (e) {
     // Transient poll failure: keep the current view rather than wiping it.
     if (runId === null) picker.innerHTML = '<option>failed to load /api/runs</option>';
     return;
   }
-  if (!runs.length) {
+  if (!allRuns.length) {
     picker.innerHTML = '<option value="">no runs found</option>';
     return;
   }
-  const sig = runs.map((r) => r.run_id + ":" + r.status).join("|");
-  if (sig !== runsSig) {
-    runsSig = sig;
-    picker.innerHTML = runs.map((r) => {
-      const combo = r.combo || "(no combo)";
-      const tn = r.task_name ? " · " + r.task_name : "";
-      return `<option value="${esc(r.run_id)}">${esc(r.run_id)} — ${esc(combo)} [${esc(r.status)}]${esc(tn)}</option>`;
-    }).join("");
-  }
+  renderPicker();
   // First load: auto-select the newest run. Later polls: keep the user's
   // selection (rebuilding innerHTML clears the <select> value, so restore it)
   // and leave its live SSE streams untouched.
   if (runId === null) {
-    selectRun(runs[0].run_id);
+    selectRun(allRuns[0].run_id);
   } else {
     picker.value = runId;
     refreshResult();  // pick up the Result panel once the run completes
   }
 }
+
+// Live filter as the user types — re-render the picker without touching the
+// currently-viewed run or its streams.
+$("run-search").addEventListener("input", (e) => {
+  runQuery = e.target.value.trim();
+  renderPicker();
+});
 
 function selectRun(id) {
   if (id === runId) return;
