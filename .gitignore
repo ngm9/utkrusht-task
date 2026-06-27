@@ -65,3 +65,6 @@ prompt_generator/compiled/
 
 # ----- OS -----
 desktop.ini
+
+# solvability run outputs (videos, reports)
+solvability_runs/
