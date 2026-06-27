@@ -214,7 +214,14 @@ class GeneratePromptSignature(dspy.Signature):
       - "If you include diagrams, ensure they are written in mermaid format,
         properly indented and also in code blocks"
       - "**MUST NOT include any version specification**" in docker-compose
-      - "**MUST NOT include environment variables or .env file references**"
+      - For a datastore service, REQUIRE the standard init env vars inline in
+        `environment:` — postgres MUST set
+        `POSTGRES_USER`/`POSTGRES_PASSWORD`/`POSTGRES_DB`, mysql the `MYSQL_*`
+        equivalents — because the image will NOT initialize without them (the
+        container exits, so the DB and its healthcheck never come up). Forbid
+        only `.env` files / `${VAR}` host indirection, NOT inline service env
+        values. The init SQL, healthcheck, and connection string must use the
+        same user/database.
       - "**SECURITY-CRITICAL**: ports MUST be bound to localhost only using
         `127.0.0.1:<port>:<port>`" — for every datastore exposed to the host
       - The 9-numbered-step `## kill.sh file instructions` block — copy its
@@ -292,6 +299,13 @@ class GeneratePromptSignature(dspy.Signature):
             not the specific implementation to write." Each bullet is a
             check the candidate can run (test output, response shape,
             latency observation, log line, memory reading).
+            For tasks that call a real LLM (a `.env.example` declaring
+            OPENAI_API_KEY / ANTHROPIC_API_KEY), How to Verify MUST open with a
+            GitHub note admonition embedded INSIDE the section as a `>`
+            blockquote (NEVER a new `##` heading — that breaks readme parsing):
+            a "> [!NOTE]" line, then "> Copy `.env.example` to `.env` and set
+            your provider key. The invariant tests run offline and need no key;
+            only the end-to-end run does."
 
       • A CONTENT-TO-EXCLUDE directive in the generated prompt (a clearly-
         labelled instruction about what to keep OUT of the README — NOT a
@@ -329,7 +343,13 @@ class GeneratePromptSignature(dspy.Signature):
       "hints"          — single line nudging investigation WITHOUT revealing
                          the fix
       "outcomes"       — 2-3 lines on measurable expected results
-      "pre_requisites" — bullet list of tools/knowledge needed
+      "pre_requisites" — bullet list of ASSUMED PRIOR KNOWLEDGE / skills the
+                         candidate already brings. DECLARATIVE capability phrases
+                         ONLY ("Python 3.11 proficiency", "Comfort with…",
+                         "Familiarity with…", "Understanding of…", "A provider
+                         key via .env"). NEVER imperative setup/verify steps
+                         ("Run…", "Use…", "Test…", "Configure…", "Install…") —
+                         those are README How-to-Verify content, not prerequisites.
       "short_overview" — bullet list summarising business problem + technical
                          focus + expected outcome
 
@@ -340,11 +360,16 @@ class GeneratePromptSignature(dspy.Signature):
       "hints": "A single line hint on what a good intermediate-level approach
                 to analyze and optimize could include. These hints must NOT
                 give away the specific optimizations needed."
+      "pre_requisites": ["Python 3.11 proficiency; able to run pytest locally",
+                "Comfort with Docker-backed PostgreSQL and parameterized SQL",
+                "Understanding of tool-calling agents and structured outputs"]
 
     BAD (drift):
       "outcomes": ["outcome 1", "outcome 2"]
       "hints": ["hint 1"]
       "definitions": {{"term_1": "definition", "term_2": "definition"}}
+      "pre_requisites": ["Run the readiness script and ensure Postgres starts",
+                "Configure the LLM key in .env", "Test via curl to POST /endpoint"]
 
     ─────────────────────────────────────────────────────────────────────────
     HARD CONSTRAINT #4 — competency_scopes is the source of truth
@@ -405,7 +430,13 @@ class GeneratePromptSignature(dspy.Signature):
           `kill.sh` using `docker compose down`. Decide the specific
           datastores by READING the scenario text in `detailed_skill_signal`
           — do not invent extras. The `datastores` input list (if provided)
-          is informational only.
+          is informational only. `run.sh` is a READINESS/self-check, NOT the
+          grader: it brings the datastore(s) up, waits for health, verifies the
+          starter compiles/loads with the runtime's BUILD command (e.g.
+          `cargo build`, `go build`, `npm ci && npm run build`, an import
+          smoke), then exits 0 — on the UNSOLVED starter. It MUST NOT run the
+          grader test suite (designed to fail until the candidate solves the
+          task); the candidate/grader runs the tests separately.
 
       (b) `task_shape == "non_infra"` → pure-runtime / language-level /
           algorithmic / async-concurrency / in-process / UI / frontend
@@ -441,10 +472,12 @@ class GeneratePromptSignature(dspy.Signature):
           spell this contract out so the produced `run.sh` follows it.
 
     Common-library/install rules (apply in BOTH shapes):
-      • `primary_runtime` and the capability `frameworks` (and their common
-        libraries) are PRE-INSTALLED by the E2B template. Do NOT include
-        `apt-get install`, `pip install`, or `npm install` for the runtime
-        or its common libs in `run.sh`.
+      • The `primary_runtime` itself is PRE-INSTALLED by the E2B template — do
+        NOT `apt-get`/system-install the runtime. BUT the task's OWN third-party
+        deps are NOT pre-installed, so `run.sh`'s FIRST step MUST install them:
+        `pip install -q -r requirements.txt` (Python) / the runtime's manifest
+        install (npm ci, go mod download, …). Skipping it fails the readiness
+        gate on the first attempt with ModuleNotFoundError.
       • `persona="mobile"` → no Dockerfile, no compose; run the runtime's
         native test command for that platform.
       • `persona="dba"` / `persona="data"` → `init_database.sql` + Compose;
@@ -457,6 +490,32 @@ class GeneratePromptSignature(dspy.Signature):
         is optional — the candidate runs the task locally with the runtime's
         native test command against the runtime's native manifest.
       • `persona="sdet"` → test suite shape; template ships the runner.
+
+    ─────────────────────────────────────────────────────────────────────────
+    HARD CONSTRAINT #8 — AGENT REALNESS (agent-engineering competencies only)
+    ─────────────────────────────────────────────────────────────────────────
+    When the competencies are agent-engineering competencies — Multi-Agent
+    Systems, Production Agent Engineering, Tool Use for Agents, Context
+    Engineering, or any LLM/agent-orchestration competency — the generated task
+    MUST exercise a REAL LLM/agent loop:
+
+      - The candidate's code MUST call a REAL model through the runtime's SDK or
+        a router (e.g. litellm, the OpenAI / Anthropic SDK). The candidate
+        supplies their own provider key at runtime via .env.
+      - The candidate-filled stubs ARE the agent logic — context construction,
+        tool selection/dispatch, retry/timeout handling, output parsing,
+        memory/state. They are NOT a fake model.
+      - FORBIDDEN: a `FakeLLM` / `StubLLM` / regex or keyword "intent parser"
+        standing in for the model; `time.sleep()` / `asyncio.sleep()` used to
+        SIMULATE an agent or tool "thinking"; any "deterministic stand-in for the
+        LLM". Those produce tasks that test plumbing, not agent engineering.
+      - Determinism for GRADING is NOT required: production grades the candidate's
+        diff with an LLM judge and never runs the code, so a real
+        (non-deterministic) model is fine. Use fixtures only to make tool INPUTS /
+        retrieval corpora deterministic — never to replace the model.
+      - "LLM-free" / "no API key" applies ONLY to the generation-time READINESS
+        GATE (which imports the package + validates fixtures/schemas without a
+        key). It MUST NOT be generalized to the task itself.
 
     ─────────────────────────────────────────────────────────────────────────
     SOFT GUIDANCE — Scenario sourcing

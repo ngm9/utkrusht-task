@@ -1,14 +1,21 @@
+# GENERIC AGENT-ENGINEERING REFERENCE PROMPT (competency-neutral, INTERMEDIATE).
+# Reference-only: the prompt-generator pins this as the TOP structural template
+# for ALL agent competencies (Multi-Agent Systems, Production Agent Engineering,
+# Tool Use for Agents, Context Engineering). It defines NO PROMPT_REGISTRY, so it
+# never resolves to a competency / is never used to generate a task directly.
+# Derived from the corrected production_agent baseline (regenerate after editing it).
+
 # task_generation_prompts/Intermediate/production_agent_engineering_intermediate_prompt/production_agent_engineering_intermediate_prompt.py
 #
 # CURATED task-generation prompt module for AI-agent BUILD-IT tasks.
-# Competency: "Production Agent Engineering"  ·  Proficiency: INTERMEDIATE
+# Competency: "Agent Engineering"  ·  Proficiency: INTERMEDIATE
 #
 # DROP-IN for infra/utils.py::_build_prompt_registry. The loader filesystem-walks
 # task_generation_prompts/<Level>/<slug>/<slug>.py (level "Intermediate" IS in the
 # walk: infra/utils.py:55) and calls registry.update(PROMPT_REGISTRY). Contract
 # (do NOT change without updating the loader):
 #   * Export a top-level dict named exactly  PROMPT_REGISTRY.
-#   * Key it exactly "Production Agent Engineering (INTERMEDIATE)" — the
+#   * Key it exactly "Agent Engineering (INTERMEDIATE)" — the
 #     "<name> (<PROFICIENCY-UPPER>)" string get_task_prompt_by_technology_stack
 #     builds + sorts from the competency (infra/utils.py:449-451).
 #   * Value is a LIST of prompt strings, replayed as sequential user turns
@@ -32,7 +39,7 @@
 # competencies — the gen-LLM must NOT emit it. is_task_hollow requires only
 # title-or-name + question + code_files (evaluator.py:78-86).
 
-PROMPT_PRODUCTION_AGENT_ENGINEERING_INTERMEDIATE_CONTEXT = """
+PROMPT_AGENT_GENERIC_INTERMEDIATE_CONTEXT = """
 Let me provide you with some context about the company and role.
 
 Company Context:
@@ -51,9 +58,9 @@ employer's domain. You are generating an assessment for a senior engineer who ha
 actually shipped production agents — calibrate accordingly.
 """
 
-PROMPT_PRODUCTION_AGENT_ENGINEERING_INTERMEDIATE_INPUT_AND_ASK = """
+PROMPT_AGENT_GENERIC_INTERMEDIATE_INPUT_AND_ASK = """
 You are generating ONE realistic, INTERMEDIATE "build-it" assessment task
-for a Production Agent Engineering candidate. The candidate clones a real agent
+for a Agent Engineering candidate. The candidate clones a real agent
 repository, sets their own API key in `.env`, runs `./run.sh`, and writes
 ~80-150 lines of code inside it using real agent frameworks. This is a coding
 session, NOT a write-a-memo / essay / quiz exercise. Debugging is just a
@@ -126,9 +133,9 @@ Before generating, briefly internalize:
    stubbed to create the senior decision.
 """
 
-PROMPT_PRODUCTION_AGENT_ENGINEERING_INTERMEDIATE_INSTRUCTIONS = """
+PROMPT_AGENT_GENERIC_INTERMEDIATE_INSTRUCTIONS = """
 ## GOAL
-Generate ONE INTERMEDIATE Production Agent Engineering "build-it" task: a real,
+Generate ONE INTERMEDIATE Agent Engineering "build-it" task: a real,
 runnable agent repository that is deliberately incomplete. It ships broken agent
 code plus candidate stubs that raise `NotImplementedError`, and the candidate
 makes it production-safe by filling those stubs and fixing the planted flaws.
@@ -174,7 +181,7 @@ a REAL model call, NOT a specific library.
 
 Per-competency emphasis — a real model call matters MOST where the MODEL'S OWN
 DECISIONS are the assessed skill:
-  - Tool Use for Agents / Multi-Agent Systems / Production Agent Engineering →
+  - Tool Use for Agents / Multi-Agent Systems / Agent Engineering →
     a REAL model call is ESSENTIAL: tool-selection / coordination / agent
     reasoning IS the skill. A regex/keyword "decision" tests nothing.
   - Context Engineering → the assessed skill is the CONTEXT the candidate builds
@@ -282,7 +289,7 @@ code, and NOT as a generation-time pytest gate.
   TASKS listed in `real_world_task_scenarios` (the de-dup block) — keep diverse.
 
 ## COMPETENCY SCOPE (center the chosen scenario on a senior decision drawn here)
-Production Agent Engineering at INTERMEDIATE covers the full agent lifecycle:
+Agent Engineering at INTERMEDIATE covers the full agent lifecycle:
 - Architecture & orchestration: API layer, orchestrator, tools, workers, queues,
   datastores; ReAct, planner-executor, reflection/repair, multi-agent.
 - Multi-step planning, task decomposition, bounded reasoning loops.
@@ -522,7 +529,7 @@ full senior-IC advanced task (no multi-subsystem sprawl). Solvable within
 # ──────────────────────────────────────────────────────────────────────────
 
 _ARCHETYPE_PRODUCTION_AGENT_ENGINEERING = """
-## COMPETENCY ARCHETYPE — Production Agent Engineering
+## COMPETENCY ARCHETYPE — Agent Engineering
 Center the task on PRODUCTION ROBUSTNESS of a single agent. Valid senior
 decisions: bound an unbounded reasoning/reflection loop; model fallback/routing
 via the LiteLLM router on a primary 5xx; a pre-call cost/budget ceiling; retry +
@@ -591,19 +598,16 @@ loop+cost task.
 # Shared base, replayed as sequential user turns; the per-competency archetype
 # is appended LAST so each competency gets a shape-specialized variant.
 _BASE_INTERMEDIATE = [
-    PROMPT_PRODUCTION_AGENT_ENGINEERING_INTERMEDIATE_CONTEXT,
-    PROMPT_PRODUCTION_AGENT_ENGINEERING_INTERMEDIATE_INPUT_AND_ASK,
-    PROMPT_PRODUCTION_AGENT_ENGINEERING_INTERMEDIATE_INSTRUCTIONS,
+    PROMPT_AGENT_GENERIC_INTERMEDIATE_CONTEXT,
+    PROMPT_AGENT_GENERIC_INTERMEDIATE_INPUT_AND_ASK,
+    PROMPT_AGENT_GENERIC_INTERMEDIATE_INSTRUCTIONS,
 ]
 
 _ARCHETYPE_BY_COMPETENCY = {
-    "Production Agent Engineering": _ARCHETYPE_PRODUCTION_AGENT_ENGINEERING,
+    "Agent Engineering": _ARCHETYPE_PRODUCTION_AGENT_ENGINEERING,
     "Multi-Agent Systems": _ARCHETYPE_MULTI_AGENT_SYSTEMS,
     "Tool Use for Agents": _ARCHETYPE_TOOL_USE,
     "Context Engineering": _ARCHETYPE_CONTEXT_ENGINEERING,
 }
 
-PROMPT_REGISTRY = {
-    f"{_competency} (INTERMEDIATE)": _BASE_INTERMEDIATE + [_archetype]
-    for _competency, _archetype in _ARCHETYPE_BY_COMPETENCY.items()
-}
+# Reference-only skeleton -- intentionally defines no PROMPT_REGISTRY.

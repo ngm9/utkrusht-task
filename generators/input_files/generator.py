@@ -75,9 +75,9 @@ _MINUTES_RANGE_BY_PROFICIENCY = {
     "ADVANCED": "25-30",
 }
 
-# Pricing per million tokens for gpt-5-nano (https://platform.openai.com/docs/pricing)
-PRICE_PER_M_INPUT = 0.50    # $0.50 per 1M input tokens
-PRICE_PER_M_OUTPUT = 2.00   # $2.00 per 1M output tokens
+# Token pricing comes from the canonical table (infra/pricing.py) keyed by
+# MODEL — no local rate, so it can't drift when MODEL changes (it was still the
+# old gpt-5-nano rate after MODEL moved to gpt-5.5).
 
 
 def init_supabase(env: str = "dev") -> Client:
@@ -166,9 +166,8 @@ def extract_usage(response) -> dict:
 
 def calculate_cost(total_usage: dict) -> float:
     """Calculate cost in USD from token usage."""
-    input_cost = (total_usage["input_tokens"] / 1_000_000) * PRICE_PER_M_INPUT
-    output_cost = (total_usage["output_tokens"] / 1_000_000) * PRICE_PER_M_OUTPUT
-    return input_cost + output_cost
+    from infra.pricing import cost_usd
+    return cost_usd(MODEL, total_usage["input_tokens"], total_usage["output_tokens"])
 
 
 def load_role_description(role: str | None) -> str | None:
@@ -460,6 +459,28 @@ def generate_input_files(competency_name, proficiency, role, domain, folder_name
                 "scope": c["scope"],
                 "long_scope": c["long_scope"]
             })
+
+    # Dedupe by (name, proficiency). The competencies table can hold MULTIPLE
+    # rows for the same competency+proficiency (e.g. two 'RabbitMQ (INTERMEDIATE)'
+    # rows). Keeping them all produces a duplicated downstream registry key
+    # ('… RabbitMQ (INTERMEDIATE), RabbitMQ (INTERMEDIATE)') that never matches the
+    # generated prompt's deduped key, so task-gen dies with 'No prompt registered
+    # for tech stack'. Dedupe here (the source) so the written file — and thus the
+    # scenario key and the task creator — all stay consistent. Keep the newest row.
+    _seen: dict = {}
+    _order: list = []
+    for _c in competency_data:
+        _k = (_c["name"], (_c.get("proficiency") or "").upper())
+        if _k not in _seen:
+            _order.append(_k)
+        if _k not in _seen or (_c.get("created_at") or "") > (_seen[_k].get("created_at") or ""):
+            _seen[_k] = _c
+    if len(_seen) != len(competency_data):
+        click.echo(
+            f"  Deduped {len(competency_data)} → {len(_seen)} competency row(s) "
+            f"(dropped duplicate name+proficiency rows; kept newest)."
+        )
+    competency_data = [_seen[_k] for _k in _order]
 
     click.echo(f"Total: {len(competency_data)} competency row(s) combined.")
 

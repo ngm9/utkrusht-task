@@ -13,16 +13,11 @@ import json
 from pathlib import Path
 from typing import Iterator, Optional
 
-# USD per 1M tokens, (input, output).
-PRICING = {
-    "claude-opus-4-6": (5.0, 25.0),
-    "claude-sonnet-4-6": (3.0, 15.0),
-    "claude-haiku-4-5-20251001": (1.0, 5.0),
-    "gpt-5.1-2025-11-13": (2.0, 8.0),
-    "gpt-5.4": (0.50, 2.00),
-    "gpt-5-nano-2025-08-07": (0.05, 0.40),
-}
-PRICING_DEFAULT = (1.25, 10.0)
+# Single source of truth for token pricing (see infra/pricing.py). Re-exported
+# so any external importer of ``cost.PRICING`` keeps working, but the actual
+# lookup goes through ``price_per_million`` which warns on an unknown model
+# instead of silently undercounting it.
+from infra.pricing import PRICING, PRICING_DEFAULT, price_per_million  # noqa: F401
 
 # Canonical pipeline-stage order for the cost/time table (matches the timeline).
 STAGE_ORDER = [
@@ -69,7 +64,7 @@ def compute_cost(traces_dir) -> Optional[dict]:
         usage = rec.get("usage") or {}
         i = int(usage.get("input_tokens") or 0)
         o = int(usage.get("output_tokens") or 0)
-        pin, pout = PRICING.get(rec.get("model") or "", PRICING_DEFAULT)
+        pin, pout = price_per_million(rec.get("model"))
         usd = i / 1_000_000 * pin + o / 1_000_000 * pout
         a = agg.setdefault(rec.get("stage") or "?", [0, 0, 0.0])
         a[0] += i

@@ -170,6 +170,111 @@ def _expected_registry_key(competencies: list[dict], proficiency: str) -> str:
     return ", ".join(parts)
 
 
+# ── Agent-realness checks ───────────────────────────────────────────────────
+# Agent-engineering tasks MUST integrate a REAL LLM/agent loop. The 2026-06 batch
+# shipped fake LLMs (FakeLLM / regex intent parsers / time.sleep "agents") because
+# the prompt template encoded "LLM-free / deterministic / stub" framing meant only
+# for the readiness GATE. The DSPy verifier is intentionally OFF, so this
+# deterministic validator is the guard.
+# See docs/plans/2026-06-19-agent-task-fake-llm-rootcause.md
+_AGENT_COMPETENCY_NAMES = {
+    "multi-agent systems",
+    "production agent engineering",
+    "tool use for agents",
+    "context engineering",
+}
+
+# Phrases in the generated PROMPT that signal it will produce a FAKE agent.
+_AGENT_FAKE_PATTERNS = (
+    "fakellm",
+    "fake llm",
+    "mock llm",
+    "mocked llm",
+    "stand-in for the llm",
+    "stand in for the llm",
+    "stand-in for the model",
+    "deterministic stand-in",
+    "no real llm",
+    "without a real llm",
+    "llm-free task",
+    "simulate the agent",
+    "simulate agent work",
+    "sleep to simulate",
+)
+
+# At least one of these must appear — the prompt must AFFIRMATIVELY require a real
+# model / agent loop in the generated task.
+_AGENT_REAL_PATTERNS = (
+    "real llm",
+    "live llm",
+    "actual llm",
+    "real model",
+    "live model",
+    "call a real",
+    "calls a real",
+    "real agent loop",
+    "genuine agent loop",
+    "litellm",
+)
+
+
+def _is_agent_combo(competencies: list[dict]) -> bool:
+    return any(
+        (c.get("name") or "").strip().lower() in _AGENT_COMPETENCY_NAMES
+        for c in competencies
+    )
+
+
+# Negation cues — when one appears just before a fake-pattern, the prompt is
+# PROHIBITING the fake (good), not mandating it. Lets a fixed template say
+# "NEVER use a FakeLLM" without tripping the check.
+_NEGATIONS = (
+    "never", "not ", "n't", "no ", "do not", "don't", "forbid", "avoid",
+    "without", "must not", "instead of", "rather than", "no fake",
+)
+
+
+def _unnegated_fake_hits(low: str) -> list[str]:
+    """Fake-pattern phrases that appear WITHOUT a nearby negation cue (within the
+    preceding 60 chars). A prohibition ("never ship a FakeLLM") is not flagged."""
+    flagged: set[str] = set()
+    for p in _AGENT_FAKE_PATTERNS:
+        start = 0
+        while True:
+            i = low.find(p, start)
+            if i == -1:
+                break
+            window = low[max(0, i - 60):i]
+            if not any(neg in window for neg in _NEGATIONS):
+                flagged.add(p)
+            start = i + len(p)
+    return sorted(flagged)
+
+
+def _agent_realness_issues(source: str) -> list[str]:
+    """Issues when an agent-competency prompt would yield a FAKE LLM/agent."""
+    low = source.lower()
+    issues: list[str] = []
+    hits = _unnegated_fake_hits(low)
+    if hits:
+        issues.append(
+            "Agent prompt encodes a FAKE LLM/agent (found: "
+            + ", ".join(hits)
+            + "). Agent-competency tasks MUST integrate a REAL LLM/agent loop — the "
+            "candidate-filled stubs are the agent logic (context build, tool dispatch, "
+            "retry, parsing), NOT a stand-in model. Remove FakeLLM / regex intent / "
+            "time.sleep simulation; require a real model call (provider SDK / litellm)."
+        )
+    if not any(p in low for p in _AGENT_REAL_PATTERNS):
+        issues.append(
+            "Agent prompt does not MANDATE a real LLM/agent loop. The generated prompt "
+            "must require the task to call a real model and build a genuine agent loop "
+            "(not a deterministic stand-in). 'LLM-free / no API key' applies ONLY to the "
+            "readiness gate, never to the task's agent logic."
+        )
+    return issues
+
+
 def validate_prompt_file(
     source: str,
     expected_competencies: list[dict],
@@ -256,5 +361,11 @@ def validate_prompt_file(
     # mistake we observed in the smoke test.
     for issue in _simulate_format_call(source):
         result.add_issue(issue)
+
+    # 8. Agent competencies MUST yield a REAL LLM/agent loop (not a fake/stub/sleep
+    # stand-in). The DSPy verifier is OFF — this deterministic check is the guard.
+    if _is_agent_combo(expected_competencies):
+        for issue in _agent_realness_issues(source):
+            result.add_issue(issue)
 
     return result
