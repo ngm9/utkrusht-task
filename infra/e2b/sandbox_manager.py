@@ -187,8 +187,11 @@ def _symlink_root_task(sb: Sandbox) -> None:
     we don't have to rewrite task content.
     """
     try:
+        # rm -rf first: a bare `ln -sfn` no-ops into /root/task/task (returning 0)
+        # if /root/task already exists as a real directory, so cd /root/task lands
+        # in the wrong place. Force a clean alias to /home/user/task.
         sb.commands.run(
-            "sudo ln -sfn /home/user/task /root/task",
+            "sudo rm -rf /root/task 2>/dev/null; sudo ln -sfn /home/user/task /root/task",
             timeout=10,
         )
     except Exception as exc:
