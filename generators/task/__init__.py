@@ -37,17 +37,21 @@ from generators.task.persistence import (
     upload_files_to_github,
 )
 from generators.task.runtime_resolver import (
+    InfraTemplateMissingError,
     ResolvedPlan,
     TemplateSpec,
     make_combo_key,
+    require_infra_template,
     resolve_plan,
 )
 
 __all__ = [
     # runtime_resolver
+    "InfraTemplateMissingError",
     "ResolvedPlan",
     "TemplateSpec",
     "make_combo_key",
+    "require_infra_template",
     "resolve_plan",
     # evaluator
     "blockers_are_deterministic_only",

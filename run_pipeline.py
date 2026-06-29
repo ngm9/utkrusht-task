@@ -308,6 +308,8 @@ def _summarise_task_stage(stdout_path: Path) -> str:
     text = stdout_path.read_text(encoding="utf-8", errors="replace") if stdout_path.exists() else ""
     if "EVAL GATE REJECTED TASK" in text:
         return "EVAL GATE REJECTED — no task created (3 attempts failed)"
+    if "INFRA TEMPLATE MISSING" in text:
+        return "INFRA TEMPLATE MISSING — aborted (no runtime template for the infra task)"
     if "TASK CREATION COMPLETED SUCCESSFULLY" in text or "Task Creation Successful" in text:
         return "TASK CREATED"
     if "ERROR CREATING TASK" in text:
@@ -352,6 +354,30 @@ def _split_stage4_logs(combo_dir: Path) -> list[str]:
     return written
 
 
+# The four independently-runnable pipeline stages, in order. The trace_ui shows
+# more rows (template-match/eval/gate/quality/solution), but those are all one
+# subprocess (stage 4 = ``tasks``), so they can't be resumed independently.
+_STAGE_ORDER = ("input_files", "scenarios", "prompt", "tasks")
+
+# Run config captured for summary.json so the trace_ui can reconstruct the exact
+# command to RESUME a run (env / provider / instructions / count aren't otherwise
+# recoverable from disk). Populated once in main().
+_RUN_META: dict = {}
+
+
+def _stage_runs(stage: str, resume_from: "str | None") -> bool:
+    """Whether ``stage`` should execute this run.
+
+    With ``--resume-from`` set, every stage BEFORE the resume point is skipped and
+    its artifacts are reused instead — input files live on disk, scenarios in the
+    DB, and the prompt module on disk (all keyed by competency+proficiency, not by
+    run), so a later run can pick them up. Stage 4 (``tasks``) always runs.
+    """
+    if not resume_from:
+        return True
+    return _STAGE_ORDER.index(stage) >= _STAGE_ORDER.index(resume_from)
+
+
 # ----------------------------------------------------------------------
 # Main
 # ----------------------------------------------------------------------
@@ -370,15 +396,23 @@ def main() -> int:
                     help="Focus area(s) for scenarios. Comma-separated or repeated.")
     ap.add_argument("--domain", default=None,
                     help="Pin all scenarios to one business domain.")
-    ap.add_argument("--task-shape", default="auto",
-                    choices=["auto", "infra", "non_infra"],
-                    help="Force the task shape. 'auto' (default) lets the classifier "
-                         "decide; 'infra' forces an infra task AND steers the scenarios "
-                         "toward the --infra-kind service.")
-    ap.add_argument("--infra-kind", default="auto",
-                    help="When --task-shape=infra, the self-hosted service to ground the "
-                         "task in: auto/vector-db/redis/kafka/postgres/mcp-server "
-                         "(see generators/prompts/infra_kinds.py).")
+    ap.add_argument("--instructions", "-i", default=None,
+                    help="AUTHORITATIVE free-text directive for this run (e.g. 'include "
+                         "deployment: Dockerfile + docker-compose + run.sh'). Shapes the "
+                         "generated task and can force an infra-shaped task without a "
+                         "separate flag. Replaces the old --task-shape/--infra-kind.")
+    ap.add_argument("--llm-provider", default=os.getenv("LLM_PROVIDER", "anthropic"),
+                    choices=["anthropic", "glm"],
+                    help="LLM backend for the Claude-role calls (task-gen, classifier): "
+                         "'anthropic' (Claude via Portkey, default) or 'glm' (GLM via "
+                         "OpenRouter — needs OPENROUTER_API_KEY). The OpenAI answer-code + "
+                         "eval-judge steps are unaffected.")
+    ap.add_argument("--resume-from", default=None,
+                    choices=["scenarios", "prompt", "tasks"],
+                    help="Skip earlier stages and REUSE their existing artifacts (input "
+                         "files on disk, scenarios in the DB, prompt module on disk); run "
+                         "from this stage onward. Lets you retry a failed late stage (e.g. "
+                         "'tasks') without re-paying for the early ones.")
     ap.add_argument("--skip-preflight", action="store_true",
                     help="Skip the preflight stage (not recommended).")
     ap.add_argument("--python", default=None,
@@ -389,6 +423,15 @@ def main() -> int:
     py = args.python or _pick_python()
     names = _parse_names(args.name)
     level = args.proficiency.upper()
+    resume_from = args.resume_from
+    # Captured into summary.json so the trace_ui "↻ run from here" can rebuild the
+    # exact command (env/provider/instructions/count aren't recoverable otherwise).
+    _RUN_META.update(
+        env=args.env,
+        llm_provider=args.llm_provider,
+        instructions=(args.instructions or ""),
+        count=args.count,
+    )
     focus_areas: list[str] = []
     for item in args.focus_areas:
         focus_areas.extend(p.strip() for p in item.split(",") if p.strip())
@@ -402,6 +445,9 @@ def main() -> int:
     # captured LLM-call traces land under .task_agent_runs/run-<ts>/traces/
     # (the sink prepends "run-" itself, so pass the bare timestamp).
     os.environ["TRACE_RUN_ID"] = ts
+    # Provider switch: every stage subprocess copies {**os.environ}, so setting it
+    # here routes all Claude-role calls (anthropic vs glm) for the whole run.
+    os.environ["LLM_PROVIDER"] = args.llm_provider
     combo_label = _combo_slug(names) + "_" + level.lower()
     # Share the combo slug with the task-gen subprocess too, so its trace upload
     # lands under the same `combo=<slug>/` S3 partition as the stage-log upload.
@@ -411,7 +457,9 @@ def main() -> int:
 
     print(f"\n{'=' * 68}")
     print(f" TASK PIPELINE  ·  {' + '.join(names)}  ({level})")
-    print(f" env={args.env}  scenarios={args.count}  python={py}")
+    print(f" env={args.env}  scenarios={args.count}  llm={args.llm_provider}  python={py}")
+    if resume_from:
+        print(f" RESUME from '{resume_from}' — reusing earlier stages' artifacts")
     print(f" logs: {combo_dir}")
     print(f"{'=' * 68}\n")
 
@@ -431,28 +479,36 @@ def main() -> int:
 
     # --- Stage 1: input files ---------------------------------------------
     t0 = time.time()
-    input_cmd = [
-        py, "-m", "generators.input_files",
-        "--competency-name", ", ".join(names),
-        "--proficiency", level, "--env", args.env,
-    ]
-    if args.domain:
-        input_cmd += ["--domain", args.domain]
-    rec = _run_stage(combo_dir, "01_input_files", input_cmd)
-    stages.append(rec)
-    if rec["exit_code"] != 0:
-        print("\n  generate_input_files FAILED — aborting.")
-        _write_summary(combo_dir, names, level, stages, "ABORTED_AT_INPUT_FILES")
-        return 1
+    resolved = None
+    if _stage_runs("input_files", resume_from):
+        input_cmd = [
+            py, "-m", "generators.input_files",
+            "--competency-name", ", ".join(names),
+            "--proficiency", level, "--env", args.env,
+        ]
+        if args.domain:
+            input_cmd += ["--domain", args.domain]
+        rec = _run_stage(combo_dir, "01_input_files", input_cmd)
+        stages.append(rec)
+        if rec["exit_code"] != 0:
+            print("\n  generate_input_files FAILED — aborting.")
+            _write_summary(combo_dir, names, level, stages, "ABORTED_AT_INPUT_FILES")
+            return 1
+        # Prefer the EXACT paths stage 1 reported (robust handoff); only fall back
+        # to the legacy locate-by-glob when the marker is absent (older builds).
+        resolved = _parse_resolved_inputs(combo_dir / "01_input_files.stdout")
+    else:
+        print("  ⤼ resume: reusing existing input files (skipped input_files)")
 
-    # Prefer the EXACT paths stage 1 reported (robust handoff); only fall back
-    # to the legacy locate-by-glob when the marker is absent (older builds).
-    resolved = _parse_resolved_inputs(combo_dir / "01_input_files.stdout")
     if resolved is not None:
         comp_json, bg_json = resolved
     else:
         try:
-            comp_json, bg_json = _locate_input_files(names, level, t0)
+            # Resume → accept the existing on-disk files regardless of age (since=0);
+            # fresh run with no marker → prefer files written after the stage began.
+            comp_json, bg_json = _locate_input_files(
+                names, level, 0.0 if resume_from else t0,
+            )
         except FileNotFoundError as e:
             print(f"\n  {e}")
             _write_summary(combo_dir, names, level, stages, "ABORTED_LOCATING_INPUTS")
@@ -470,44 +526,44 @@ def main() -> int:
     # `--env` MUST be threaded here too: generators.scenarios defaults to dev,
     # so a `--env prod` run would otherwise write scenarios to the dev DB while
     # stage 4 reads from prod — leaving stage 4 with an empty scenario pool.
-    scenario_cmd = [
-        py, "-m", "generators.scenarios",
-        "--competency-file", str(comp_json),
-        "--background-file", str(bg_json),
-        "--count", str(args.count), "--env", args.env, "--append",
-    ]
-    for area in focus_areas:
-        scenario_cmd += ["--focus-areas", area]
-    if args.domain:
-        scenario_cmd += ["--domain", args.domain]
-    # Force-infra: steer every scenario toward the chosen self-hosted service so
-    # the generated task genuinely needs infra (not docker-compose bolted onto a
-    # mockable one). The matching shape force happens in stage 3 below.
-    if args.task_shape == "infra":
-        from generators.prompts.infra_kinds import resolve as _resolve_infra_kind
-        scenario_cmd += ["--focus-areas", _resolve_infra_kind(args.infra_kind)["directive"]]
-    rec = _run_stage(combo_dir, "02_scenarios", scenario_cmd)
-    stages.append(rec)
-    if rec["exit_code"] != 0:
-        print("\n  scenario_generator FAILED — aborting.")
-        _write_summary(combo_dir, names, level, stages, "ABORTED_AT_SCENARIOS")
-        return 1
+    if _stage_runs("scenarios", resume_from):
+        scenario_cmd = [
+            py, "-m", "generators.scenarios",
+            "--competency-file", str(comp_json),
+            "--background-file", str(bg_json),
+            "--count", str(args.count), "--env", args.env, "--append",
+        ]
+        for area in focus_areas:
+            scenario_cmd += ["--focus-areas", area]
+        if args.domain:
+            scenario_cmd += ["--domain", args.domain]
+        rec = _run_stage(combo_dir, "02_scenarios", scenario_cmd)
+        stages.append(rec)
+        if rec["exit_code"] != 0:
+            print("\n  scenario_generator FAILED — aborting.")
+            _write_summary(combo_dir, names, level, stages, "ABORTED_AT_SCENARIOS")
+            return 1
+    else:
+        print("  ⤼ resume: reusing existing scenarios from the DB (skipped scenarios)")
 
     # --- Stage 3: prompt generator ----------------------------------------
-    prompt_cmd = [
-        py, "-m", "generators.prompts",
-        "--name", ", ".join(names),
-        "--proficiency", level, "--env", args.env, "--force", "--verbose",
-        "--task-shape", args.task_shape,
-    ]
-    if args.task_shape == "infra":
-        prompt_cmd += ["--infra-kind", args.infra_kind]
-    rec = _run_stage(combo_dir, "03_prompt", prompt_cmd)
-    stages.append(rec)
-    if rec["exit_code"] != 0:
-        print("\n  prompt_generator FAILED — aborting.")
-        _write_summary(combo_dir, names, level, stages, "ABORTED_AT_PROMPT")
-        return 1
+    if _stage_runs("prompt", resume_from):
+        prompt_cmd = [
+            py, "-m", "generators.prompts",
+            "--name", ", ".join(names),
+            "--proficiency", level, "--env", args.env, "--force", "--verbose",
+        ]
+        # The authoritative free-text directive (replaces the infra/non_infra force).
+        if args.instructions and args.instructions.strip():
+            prompt_cmd += ["--instructions", args.instructions.strip()]
+        rec = _run_stage(combo_dir, "03_prompt", prompt_cmd)
+        stages.append(rec)
+        if rec["exit_code"] != 0:
+            print("\n  prompt_generator FAILED — aborting.")
+            _write_summary(combo_dir, names, level, stages, "ABORTED_AT_PROMPT")
+            return 1
+    else:
+        print("  ⤼ resume: reusing existing prompt module on disk (skipped prompt)")
 
     # --- Stage 4: task creation -------------------------------------------
     # `--env` MUST be threaded here — multiagent.py stores the task in the
@@ -582,6 +638,10 @@ def _write_summary(combo_dir: Path, names: list[str], level: str,
     summary = {
         "competencies": names,
         "proficiency": level,
+        "llm_provider": _RUN_META.get("llm_provider") or os.environ.get("LLM_PROVIDER", "anthropic"),
+        "env": _RUN_META.get("env"),
+        "instructions": _RUN_META.get("instructions", ""),
+        "count": _RUN_META.get("count"),
         "status": status,
         "task_outcome": task_outcome,
         "stages": [

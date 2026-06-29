@@ -576,9 +576,14 @@
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
     padding: 12px 16px; border-top: 1px solid var(--border);
   }
-  .modal-shape { display: flex; align-items: center; gap: 10px; padding: 8px 16px 2px; font-size: 12px; color: var(--fg-dim); flex-wrap: wrap; }
-  .modal-shape select { background: var(--bg-elev); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 12px; }
-  .modal-shape select[hidden] { display: none; }
+  .modal-instructions { padding: 8px 16px 2px; font-size: 12px; color: var(--fg-dim); }
+  .mi-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+  .mi-opt { color: var(--fg-dim); font-size: 11px; }
+  .mi-status { color: var(--fg-dim); font-size: 11px; white-space: nowrap; }
+  .suggest-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+  .suggest-chip { background: var(--bg-elev); color: var(--fg); border: 1px solid var(--border); border-radius: 12px; padding: 3px 10px; font-size: 11px; cursor: pointer; max-width: 100%; text-align: left; line-height: 1.3; }
+  .suggest-chip:hover { border-color: var(--accent); }
+  .run-instructions { width: 100%; box-sizing: border-box; background: var(--bg-elev); color: var(--fg); border: 1px solid var(--border); border-radius: 6px; padding: 6px 8px; font: 12px var(--mono, monospace); resize: vertical; }
   .run-config { display: flex; align-items: center; gap: 14px; font-size: 12px; min-width: 0; }
   .run-selected { color: var(--fg); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .run-selected.muted { color: var(--fg-dim); }
@@ -597,13 +602,21 @@
   .modal-msg { padding: 0 16px 12px; font-size: 12px; color: var(--fg-dim); min-height: 0; }
 
   /* ---- per-stage "view output" button + stage-output modal ---- */
-  .stage .view {
+  .stage .view, .stage .retry {
     flex: 0 0 auto; background: none; border: none; color: var(--fg-dim);
     cursor: pointer; font-size: 13px; line-height: 1; padding: 2px 5px;
     border-radius: 5px; opacity: 0; transition: opacity .1s;
   }
-  .stage:hover .view, .stage.selected .view { opacity: .7; }
-  .stage .view:hover { color: var(--accent); opacity: 1; background: var(--hover); }
+  .stage:hover .view, .stage.selected .view,
+  .stage:hover .retry, .stage.selected .retry { opacity: .7; }
+  .stage .view:hover, .stage .retry:hover { color: var(--accent); opacity: 1; background: var(--hover); }
+  .toast {
+    position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    background: var(--bg-elev); color: var(--fg); border: 1px solid var(--accent);
+    border-radius: 8px; padding: 8px 14px; font-size: 12px; z-index: 9999;
+    box-shadow: 0 4px 16px rgba(0,0,0,.4); max-width: 80vw;
+  }
+  .toast.bad { border-color: #e55; }
   .stage-modal { width: min(1080px, 95vw); max-height: 90vh; }
   .stage-modal-search {
     flex: 1 1 auto; background: var(--bg-elev); color: var(--fg);
@@ -743,17 +756,20 @@
     <div class="modal-controls">
       <input id="comp-search" class="comp-search" type="search" placeholder="Search competency…" autocomplete="off" spellcheck="false" />
       <select id="run-env" title="Environment"><option value="dev">dev</option><option value="prod">prod</option></select>
+      <select id="run-llm-provider" title="LLM provider for the Claude-role calls (task-gen, classifier)">
+        <option value="anthropic">Anthropic · Claude</option>
+        <option value="glm">GLM · OpenRouter</option>
+      </select>
     </div>
     <div class="modal-hint">Pick one or more competencies — all must share the same proficiency (like <code>-n A -n B -p PROF</code>).</div>
     <div id="comp-list" class="comp-list"></div>
-    <div class="modal-shape">
-      <span>Task shape</span>
-      <select id="run-task-shape" title="Force the task shape">
-        <option value="auto">Auto (classifier decides)</option>
-        <option value="infra">Infra — force</option>
-        <option value="non_infra">Non-infra — force</option>
-      </select>
-      <select id="run-infra-kind" title="Self-hosted service to ground the infra task in" hidden></select>
+    <div class="modal-instructions">
+      <div class="mi-head">
+        <span>Instructions <span class="mi-opt">optional directive — shapes the task (e.g. "include deployment: Dockerfile + docker-compose + run.sh")</span></span>
+        <span id="run-suggest-status" class="mi-status"></span>
+      </div>
+      <div id="run-suggest-chips" class="suggest-chips"></div>
+      <textarea id="run-instructions" class="run-instructions" rows="3" placeholder="Pick a competency to see suggestions, or type your own directive…"></textarea>
     </div>
     <div class="modal-foot">
       <div class="run-config">
@@ -1037,6 +1053,7 @@ function renderStages(map) {
       <span class="ico"></span>
       <span class="name">${esc(STAGE_LABEL[s] || s)}</span>
       <span class="dur">${esc(dur)}</span>
+      <button class="retry" type="button" data-retry="${esc(s)}" title="Re-run from ${esc(STAGE_LABEL[s] || s)} (reuses earlier stages)" aria-label="Re-run from here">↻</button>
       <button class="view" type="button" data-view="${esc(s)}" title="View ${esc(STAGE_LABEL[s] || s)} output" aria-label="View output">⤢</button>
     </div>`;
   }).join("");
@@ -1045,6 +1062,48 @@ function fmtDur(ms) {
   if (ms == null) return "";
   if (ms < 1000) return ms + "ms";
   return (ms / 1000).toFixed(1) + "s";
+}
+
+// Map a (sub)stage row → the run_pipeline stage we resume from. The last six UI
+// rows (template-match … solution) are all one subprocess, so they resume "tasks".
+const CANON_TO_RESUME = {
+  input_files: "input_files", scenarios: "scenarios", prompt: "prompt",
+  classifier: "tasks", task_gen: "tasks", eval: "tasks",
+  gate: "tasks", quality: "tasks", solution: "tasks",
+};
+
+function toast(msg, bad) {
+  const t = document.createElement("div");
+  t.className = "toast" + (bad ? " bad" : "");
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 4500);
+}
+
+// ↻ on a stage row → re-run the viewed run from that stage, reusing earlier
+// stages' artifacts. Starts a NEW run (the original stays as the failed record).
+async function resumeRun(canon) {
+  if (!runId) return;
+  const stage = CANON_TO_RESUME[canon] || "tasks";
+  const label = STAGE_LABEL[canon] || canon;
+  if (!confirm(
+    `Re-run from "${label}"?\n\nEarlier stages are skipped and their artifacts ` +
+    `reused (input files, scenarios, prompt). This starts a NEW run and spends ` +
+    `tokens from this stage onward.`)) return;
+  try {
+    const res = await fetch("/api/runs/" + encodeURIComponent(runId) + "/resume", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from_stage: stage }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { toast("resume failed: " + (data.detail || res.status), true); return; }
+    toast("✓ resuming from " + stage + " — the new run will appear at the top shortly");
+    runsSig = "";   // force the picker to rebuild so the new run shows
+    loadRuns();
+  } catch (e) {
+    toast("resume failed: " + e, true);
+  }
 }
 function applyStageEvent(rec) {
   const s = rec.stage;
@@ -1191,6 +1250,7 @@ $("stages").addEventListener("click", (e) => {
   if (!row) return;
   const canon = row.dataset.canon;
   if (!canon) return;
+  if (e.target.closest(".retry")) { resumeRun(canon); return; }      // ↻ → resume run
   if (e.target.closest(".view")) { openStageModal(canon); return; }  // ⤢ → modal
   setLogStageFilter(logFilter === canon ? "" : canon);  // toggle that (sub)stage
 });
@@ -1451,6 +1511,7 @@ function renderResult(res) {
     row("stack", esc(stack));
   }
   if (res.env) row("env", esc(res.env));
+  if (res.llm_provider) row("llm", esc(res.llm_provider === "glm" ? "GLM · OpenRouter" : "Anthropic · Claude"));
   if (res.duration_s != null) row("took", esc(fmtSecs(res.duration_s)));
   const links = (res.links || [])
     .filter((l) => l && l.url && /^https:\/\//.test(l.url))
@@ -1513,29 +1574,74 @@ function openModal() {
   $("comp-search").value = "";
   $("modal-msg").textContent = "";
   selectedItems = [];
-  $("run-task-shape").value = "auto";
-  $("run-infra-kind").hidden = true;
-  loadInfraKinds();
+  $("run-instructions").value = "";
+  renderSuggestChips([]);
+  $("run-suggest-status").textContent = "";
   updateRunConfig();
   loadCompetencies();
   setTimeout(() => $("comp-search").focus(), 30);
 }
 function closeModal() { $("modal-overlay").hidden = true; }
 
-// Populate the force-infra "service" dropdown from the registry (once).
-let infraKindsLoaded = false;
-async function loadInfraKinds() {
-  if (infraKindsLoaded) return;
+// -------------------------------------------------------------- instruction suggestions
+// LLM-written, competency-tailored directives shown as clickable chips that
+// append into the instructions textarea. Debounced (rapid multi-select) and
+// cached per competency-combo+proficiency; out-of-order responses are dropped.
+let suggestSeq = 0;
+let suggestTimer = null;
+const suggestCache = {};
+
+function suggestKey() {
+  return selectedItems.map((s) => s.name).sort().join("|") + "::" + (selectedProf() || "");
+}
+
+function renderSuggestChips(list) {
+  const box = $("run-suggest-chips");
+  box.innerHTML = "";
+  for (const s of (list || [])) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "suggest-chip";
+    b.textContent = s;
+    b.title = "Click to add to instructions";
+    box.appendChild(b);
+  }
+}
+
+function scheduleSuggest() {
+  clearTimeout(suggestTimer);
+  if (!selectedItems.length) { renderSuggestChips([]); $("run-suggest-status").textContent = ""; return; }
+  suggestTimer = setTimeout(fetchSuggestions, 350);
+}
+
+async function fetchSuggestions() {
+  const key = suggestKey();
+  if (suggestCache[key]) {
+    renderSuggestChips(suggestCache[key]);
+    $("run-suggest-status").textContent = "click a chip to add";
+    return;
+  }
+  const seq = ++suggestSeq;
+  const names = selectedItems.map((s) => s.name).join(",");
+  const prof = selectedProf() || "BASIC";
+  $("run-suggest-status").textContent = "loading suggestions…";
+  renderSuggestChips([]);
   try {
-    const data = await (await fetch("/api/infra-kinds")).json();
-    const sel = $("run-infra-kind");
-    sel.innerHTML = "";
-    for (const k of (data.kinds || [])) {
-      const o = document.createElement("option");
-      o.value = k.slug; o.textContent = k.label; sel.appendChild(o);
+    const res = await fetch("/api/suggest-instructions?names=" + encodeURIComponent(names) +
+                            "&proficiency=" + encodeURIComponent(prof));
+    const data = await res.json().catch(() => ({}));
+    if (seq !== suggestSeq) return;   // a newer selection superseded this request
+    const list = data.suggestions || [];
+    if (list.length) {
+      suggestCache[key] = list;
+      renderSuggestChips(list);
+      $("run-suggest-status").textContent = "click a chip to add";
+    } else {
+      $("run-suggest-status").textContent = data.error ? "suggestions unavailable" : "no suggestions";
     }
-    infraKindsLoaded = true;
-  } catch (e) { /* leave empty → server falls back to auto */ }
+  } catch (e) {
+    if (seq === suggestSeq) $("run-suggest-status").textContent = "suggestions unavailable";
+  }
 }
 
 // -------------------------------------------------------------- per-stage output modal
@@ -1866,6 +1972,7 @@ function updateRunConfig() {
     clear.hidden = true;
     $("run-go").disabled = true;
   }
+  scheduleSuggest();   // refresh suggestion chips for the current selection
 }
 
 async function launchRun() {
@@ -1881,8 +1988,8 @@ async function launchRun() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         names: selectedItems.map((s) => s.name), proficiency: selectedProf(), count, env,
-        task_shape: $("run-task-shape").value,
-        infra_kind: $("run-infra-kind").value || "auto",
+        instructions: $("run-instructions").value,
+        llm_provider: $("run-llm-provider").value,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -1906,8 +2013,13 @@ $("modal-close").addEventListener("click", closeModal);
 $("modal-overlay").addEventListener("click", (e) => { if (e.target === $("modal-overlay")) closeModal(); });
 $("comp-search").addEventListener("input", renderCompList);
 $("run-env").addEventListener("change", () => { selectedItems = []; updateRunConfig(); loadCompetencies(); });
-$("run-task-shape").addEventListener("change", () => {
-  $("run-infra-kind").hidden = $("run-task-shape").value !== "infra";
+$("run-suggest-chips").addEventListener("click", (e) => {
+  const chip = e.target.closest(".suggest-chip");
+  if (!chip) return;
+  const ta = $("run-instructions");
+  const cur = ta.value.replace(/\n+$/, "");
+  ta.value = cur ? (cur + "\n" + chip.textContent) : chip.textContent;   // append; user can edit/combine
+  ta.focus();
 });
 $("comp-list").addEventListener("click", (e) => {
   const item = e.target.closest(".comp-item");

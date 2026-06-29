@@ -7,6 +7,8 @@ import base64
 from urllib.parse import urlparse
 from pathlib import Path
 from infra.logger_config import logger
+from infra.llm_provider import resolve_model, provider_request_kwargs
+from infra.prompt_cache import cache_messages
 from typing import Dict, List, Optional, Tuple, Any
 from datetime import datetime
 
@@ -576,7 +578,7 @@ def get_task_prompt_by_technology_stack(competency_stack, input_data):
 
 def generate_task_with_code(
     openai_client, input_data: Dict, feedback: str = "",
-    model: str = "claude-opus-4-8",
+    model: Optional[str] = None,
 ) -> Dict:
     """Generate task and code files using language_prompts with Responses API and reasoning.
 
@@ -592,12 +594,15 @@ def generate_task_with_code(
             back hollow, the caller passes the failure reason here. It is appended
             as a follow-up turn so the LLM CORRECTS its own prior output (it keeps
             full conversation context) instead of regenerating from scratch.
-        model: LLM to generate with. Defaults to ``claude-opus-4-8`` (the
-            production task-gen model); overridable for A/B model comparisons.
+        model: LLM to generate with. ``None`` (default) resolves to the active
+            provider's primary model — ``claude-opus-4-8`` for anthropic, the
+            GLM slug for glm. Pass an explicit id for A/B model comparisons.
     Returns:
         Dict: Generated task data with code files
     """
     try:
+        # None -> the active provider's primary model (anthropic vs glm).
+        model = model or resolve_model("primary")
         competencies = _dedupe_competencies(input_data["competencies"])
 
         # Get competency names and create a single technology stack string
@@ -636,6 +641,10 @@ def generate_task_with_code(
             {"max_completion_tokens": 32000} if model.startswith("gpt-")
             else {"max_tokens": 32000}
         )
+        # Provider-specific extras. For GLM (OpenRouter reasoning model) this
+        # disables the reasoning channel so it doesn't burn the whole token
+        # budget before emitting the repo JSON. Empty for anthropic/OpenAI.
+        _gen_extra = provider_request_kwargs()
         response = None
         response_text = None
 
@@ -654,14 +663,17 @@ def generate_task_with_code(
             messages.append({"role": "user", "content": "\n\n".join(task_generation_prompts)})
             messages.append({"role": "user", "content": feedback})
             response = openai_client.chat.completions.create(
-                model=model, messages=messages, **_token_kwargs,
+                model=model, messages=cache_messages(messages), **_token_kwargs, **_gen_extra,
             )
             response_text = response.choices[0].message.content if response.choices else None
+            from infra.evals import LLMOutputTruncated
+            # Truncation (incl. an empty body when a reasoning model spends the whole
+            # budget) is RETRYABLE — feed it back instead of fatally aborting. Checked
+            # before the empty-content guard.
+            if (response.choices[0].finish_reason if response.choices else None) == "length":
+                raise LLMOutputTruncated(response_text or "", attempt=-1)
             if not response_text:
                 raise RuntimeError("Empty response from LLM on lean correction turn")
-            if (response.choices[0].finish_reason if response.choices else None) == "length":
-                from infra.evals import LLMOutputTruncated
-                raise LLMOutputTruncated(response_text, attempt=-1)
             usage = response.usage
             _li = usage.prompt_tokens if usage else 0
             _lo = usage.completion_tokens if usage else 0
@@ -679,26 +691,30 @@ def generate_task_with_code(
             messages.append({"role": "user", "content": prompt})
             response = openai_client.chat.completions.create(
                 model=model,
-                messages=messages,
+                messages=cache_messages(messages),
                 **_token_kwargs,
+                **_gen_extra,
             )
             response_text = response.choices[0].message.content if response.choices else None
-            if not response_text:
-                logger.error(f"No response content from prompt {i}/{len(task_generation_prompts)}")
-                raise RuntimeError(f"Empty response from LLM on prompt {i}")
-            # F11: detect token-budget truncation explicitly. A finish_reason of
+            # F11: detect token-budget truncation explicitly. finish_reason
             # "length" means the model hit max_tokens mid-output — the JSON is
-            # partial and any downstream parse will fail. Surface this as a
-            # typed exception so the retry loop in multiagent.create_task can
-            # feed back "you got cut off; keep the next response shorter".
+            # partial, OR empty when a reasoning model (GLM) spends the whole
+            # budget on its reasoning channel before emitting an answer. Surface it
+            # as a typed, RETRYABLE exception so create_task feeds back "you got cut
+            # off; output the answer directly and shorter". Checked BEFORE the
+            # empty-content guard so an empty truncation retries instead of fatally
+            # aborting the whole run (the observed GLM failure).
             finish_reason = response.choices[0].finish_reason if response.choices else None
             if finish_reason == "length":
                 from infra.evals import LLMOutputTruncated
                 logger.error(
                     f"LLM response truncated by max_tokens on prompt {i}/{len(task_generation_prompts)} "
-                    f"(finish_reason='length', length={len(response_text)})"
+                    f"(finish_reason='length', length={len(response_text or '')})"
                 )
-                raise LLMOutputTruncated(response_text, attempt=i)
+                raise LLMOutputTruncated(response_text or "", attempt=i)
+            if not response_text:
+                logger.error(f"No response content from prompt {i}/{len(task_generation_prompts)}")
+                raise RuntimeError(f"Empty response from LLM on prompt {i}")
             messages.append({"role": "assistant", "content": response_text})
 
             # Track token usage
@@ -727,21 +743,24 @@ def generate_task_with_code(
             messages.append({"role": "user", "content": feedback})
             response = openai_client.chat.completions.create(
                 model=model,
-                messages=messages,
+                messages=cache_messages(messages),
                 **_token_kwargs,
+                **_gen_extra,
             )
             response_text = response.choices[0].message.content if response.choices else None
-            if not response_text:
-                logger.error("No response content on feedback-correction turn")
-                raise RuntimeError("Empty response from LLM on feedback turn")
+            # Truncation (incl. an empty reasoning-model body) is RETRYABLE — check
+            # before the empty-content guard so it feeds back instead of aborting.
             finish_reason = response.choices[0].finish_reason if response.choices else None
             if finish_reason == "length":
                 from infra.evals import LLMOutputTruncated
                 logger.error(
                     f"LLM response truncated by max_tokens on feedback-correction turn "
-                    f"(finish_reason='length', length={len(response_text)})"
+                    f"(finish_reason='length', length={len(response_text or '')})"
                 )
-                raise LLMOutputTruncated(response_text, attempt=-1)  # -1 = feedback turn
+                raise LLMOutputTruncated(response_text or "", attempt=-1)  # -1 = feedback turn
+            if not response_text:
+                logger.error("No response content on feedback-correction turn")
+                raise RuntimeError("Empty response from LLM on feedback turn")
             messages.append({"role": "assistant", "content": response_text})
             usage = response.usage
             total_input_tokens += usage.prompt_tokens if usage else 0

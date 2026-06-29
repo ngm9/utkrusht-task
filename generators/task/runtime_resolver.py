@@ -21,12 +21,15 @@ from datetime import datetime, timezone
 from typing import Iterable
 
 from infra.logger_config import logger
+from infra.llm_provider import resolve_model
 from infra.classifier.runtime import Competency, TaskTemplateMatch
 
 
-# Cache-invalidation knob: bump when the classifier prompt OR the model
-# changes so old rows re-classify.
-_CLASSIFIER_MODEL = "claude-sonnet-4-6"
+# Cache-invalidation knob: bump when the classifier prompt OR the model changes
+# so old rows re-classify. Must match infra/classifier/llm_classifier._MODEL —
+# both resolve through the active provider, so switching anthropic<->glm
+# automatically re-classifies cached rows on the new model.
+_CLASSIFIER_MODEL = resolve_model("classifier")
 
 # Supabase table names — kept here so resolve_plan() is the only module
 # coupled to the schema.
@@ -100,6 +103,42 @@ class ResolvedPlan:
             self.match is not None
             and self.match.needs_external_service is False
         )
+
+
+class InfraTemplateMissingError(RuntimeError):
+    """An infra-shaped task has no runtime template.
+
+    Such a task can't be built, tested, or deployed — the E2B gate would silently
+    SKIP and a non-deployable task would still be created (observed for RabbitMQ:
+    classified infra, no template, gate skipped, task shipped). Generation MUST
+    abort instead.
+    """
+
+
+def require_infra_template(plan: "ResolvedPlan | None", task_shape: str | None) -> None:
+    """Abort (raise :class:`InfraTemplateMissingError`) when an INFRA task has no
+    resolved runtime template.
+
+    No-op for pure-local / non-infra tasks (which legitimately have no template)
+    and for infra tasks that DID resolve a template. The check is provider- and
+    service-agnostic — it fires for any infra combo (RabbitMQ, Kafka without a
+    template, etc.), not a hard-coded list.
+    """
+    if (task_shape or "").strip().lower() != "infra":
+        return
+    if plan is not None and plan.template is not None:
+        return
+    m = plan.match if plan is not None else None
+    reason = (m.no_match_reason if (m and m.no_match_reason)
+              else "no built runtime template matched this infra competency combo")
+    suggested = f" Suggested template: {m.suggested_template}." if (m and m.suggested_template) else ""
+    combo = plan.combo_key if plan is not None else "(unknown combo)"
+    raise InfraTemplateMissingError(
+        f"Infra task {combo!r} has no runtime template "
+        f"(template_id={getattr(m, 'template_id', None)!r}) — {reason}. Add an E2B/"
+        f"runtime template + capability sheet for this service before generating "
+        f"this task.{suggested}"
+    )
 
 
 def make_combo_key(competencies: Iterable[Competency]) -> str:
