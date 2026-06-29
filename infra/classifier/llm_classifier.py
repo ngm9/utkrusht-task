@@ -10,17 +10,17 @@ This module does not know about caching or persistence — that's
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass
 
 import openai
-from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
 from pydantic import ValidationError
 
 from infra.classifier.runtime import Competency, TaskTemplateMatch
-from infra.tracing.client import trace_client
+from infra.llm_provider import make_llm_client, resolve_model
+from infra.prompt_cache import cache_messages
 
-_MODEL = "claude-sonnet-4-6"
+# Provider-aware: claude-sonnet-4-6 for anthropic, the GLM slug for glm.
+_MODEL = resolve_model("classifier")
 
 _RETRY_NUDGE_PREFIX = (
     "Your previous reply did not match the schema. "
@@ -39,18 +39,9 @@ def _format_parse_error(exc: Exception) -> str:
 
 
 def build_client() -> openai.OpenAI:
-    """Portkey gateway → Anthropic, mirroring task_builder/conversation.py."""
-    return trace_client(
-        openai.OpenAI(
-            api_key=os.getenv("ANTHROPIC_API_KEY"),
-            base_url=PORTKEY_GATEWAY_URL,
-            default_headers=createHeaders(
-                provider="anthropic",
-                api_key=os.getenv("PORTKEY_API_KEY"),
-            ),
-        ),
-        provider="anthropic",
-    )
+    """The active Claude-role client — Anthropic via Portkey, or GLM via
+    OpenRouter when LLM_PROVIDER=glm. See infra/llm_provider."""
+    return make_llm_client()
 
 
 def _extract_json(text: str) -> dict:
@@ -227,7 +218,7 @@ def classify_match(
     ]
 
     def _try_one(msgs: list[dict]) -> TaskTemplateMatch:
-        resp = client.chat.completions.create(model=_MODEL, messages=msgs)
+        resp = client.chat.completions.create(model=_MODEL, messages=cache_messages(msgs))
         raw = resp.choices[0].message.content or ""
         match = _parse_match(raw)
         _validate_match_against_templates(match, active_templates)

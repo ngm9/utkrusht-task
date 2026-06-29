@@ -15,8 +15,8 @@ from pathlib import Path
 
 from generators.prompts.validator import (
     _agent_realness_issues,
+    _fake_mandate_hits,
     _is_agent_combo,
-    _unnegated_fake_hits,
     validate_prompt_file,
 )
 
@@ -45,23 +45,48 @@ def test_is_agent_combo_false_for_backend() -> None:
     assert not _is_agent_combo([{"name": "PostgreSQL", "proficiency": "BASIC"}])
 
 
-# ── _unnegated_fake_hits (negation-aware proximity) ─────────────────────────
+# ── _fake_mandate_hits (affirmative fake-mandate detection) ──────────────────
 
-def test_unnegated_fake_hit_flagged_when_mandated() -> None:
-    assert "fakellm" in _unnegated_fake_hits("we implement a fakellm here")
+def test_fake_mandate_flagged_when_commanded() -> None:
+    # Direct mandate ("use a FakeLLM", "implement a regex intent parser as...")
+    assert "FakeLLM as the agent's model" in _fake_mandate_hits(
+        "the candidate must use a FakeLLM that returns canned responses."
+    )
+    assert "regex/keyword intent parser as the agent's reasoning" in _fake_mandate_hits(
+        "use a regex intent parser as the agent's reasoning."
+    )
+    assert "task framed as LLM-free / no API key" in _fake_mandate_hits(
+        "this task is LLM-free and runs entirely on canned responses."
+    )
 
 
-def test_fake_hit_not_flagged_when_prohibited() -> None:
-    # A prohibition ("never a FakeLLM") must NOT be flagged.
-    assert _unnegated_fake_hits("never a fakellm; call a real model") == []
-    assert _unnegated_fake_hits("do not use a deterministic stand-in") == []
+def test_fake_mandate_NOT_flagged_when_prohibited() -> None:
+    # Plain mentions of the same terms inside a prohibition must NOT match.
+    assert _fake_mandate_hits(
+        "NEVER use a FakeLLM. NEVER a regex intent parser. "
+        "NEVER any deterministic stand-in for the model. "
+        "NEVER use time.sleep to simulate the agent."
+    ) == []
+
+
+def test_long_comma_list_prohibition_does_NOT_flag() -> None:
+    # The exact phrasing from the 2026-06-28 regression — single NEVER followed
+    # by a long comma-separated list of banned terms. Must NOT match.
+    src = (
+        "CRITICAL: NEVER use a `FakeLLM`, `StubLLM`, regex or keyword intent parser, "
+        "deterministic stand-in for the model, or `time.sleep()` / `asyncio.sleep()` "
+        "to simulate an agent or tool thinking."
+    )
+    assert _fake_mandate_hits(src) == []
 
 
 # ── _agent_realness_issues ──────────────────────────────────────────────────
 
 def test_fake_mandate_is_flagged() -> None:
-    issues = _agent_realness_issues("Implement a FakeLLM stand-in for the model.")
-    assert any("FAKE LLM/agent" in i for i in issues)
+    issues = _agent_realness_issues(
+        "Use a FakeLLM to simulate the model. The task is LLM-free."
+    )
+    assert any("COMMANDS a FAKE LLM/agent" in i for i in issues)
 
 
 def test_missing_real_mandate_is_flagged() -> None:
@@ -70,9 +95,20 @@ def test_missing_real_mandate_is_flagged() -> None:
     assert any("does not MANDATE a real LLM" in i for i in issues)
 
 
-def test_real_mandate_with_negated_prohibition_passes() -> None:
+def test_real_mandate_with_prohibition_passes() -> None:
     src = ("The agent calls a REAL model via litellm on the candidate's key. "
            "NEVER a FakeLLM. NEVER any deterministic stand-in for the model.")
+    assert _agent_realness_issues(src) == []
+
+
+def test_real_mandate_with_long_prohibition_list_passes() -> None:
+    # The regression case from the field — must pass.
+    src = (
+        "The agent calls a REAL model via litellm on the candidate's key. "
+        "**CRITICAL**: NEVER use a `FakeLLM`, `StubLLM`, regex or keyword intent "
+        "parser, deterministic stand-in for the model, or `time.sleep()` to "
+        "simulate an agent or tool thinking."
+    )
     assert _agent_realness_issues(src) == []
 
 
@@ -80,7 +116,7 @@ def test_real_mandate_with_negated_prohibition_passes() -> None:
 
 _FAKE_SRC = (
     'PROMPT_REGISTRY = {"Production Agent Engineering (INTERMEDIATE)": ["c", "i", "x"]}\n'
-    'INSTRUCTIONS = "Implement a FakeLLM that returns canned responses."\n'
+    'INSTRUCTIONS = "Use a FakeLLM that returns canned responses. The task is LLM-free."\n'
 )
 
 
