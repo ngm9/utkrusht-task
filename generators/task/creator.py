@@ -32,6 +32,7 @@ from typing import Dict, List, Optional
 from infra.evals import MAX_EVAL_RETRIES, EvalGateError, LLMOutputTruncated
 from infra.github_utils import create_github_template_repo, slugify
 from infra.logger_config import logger
+from infra.llm_provider import resolve_model
 from infra.classifier.runtime import Competency
 from infra.schemas import ANSWER_CODE_SCHEMA
 from infra.tracing import set_attempt, set_task_id, trace_stage
@@ -82,7 +83,11 @@ from generators.task.persistence import (
     upload_answer_files_to_repo,
     upload_files_to_github,
 )
-from generators.task.runtime_resolver import resolve_plan
+from generators.task.runtime_resolver import (
+    InfraTemplateMissingError,
+    require_infra_template,
+    resolve_plan,
+)
 from task_quality import run_quality_for_attempt
 
 
@@ -371,6 +376,75 @@ _RUNTIME_BOOTSTRAP = [
 ]
 
 
+# Packages each template's E2B image PRE-INSTALLS at known-good versions. A
+# generated manifest must NOT re-pin these — re-pinning fights the image and
+# triggers pip ResolutionImpossible in the readiness gate (observed: GLM pinned
+# `httpx>=0.28` + `litellm>=1.55`, which don't co-resolve, and also clash with the
+# image's litellm==1.51 / anthropic==0.39 / openai==1.58). Keyed by template_id so
+# it generalises per-runtime — only the AI-agent image pre-installs an LLM stack
+# today; other templates add entries (or leave none) as needed.
+_TEMPLATE_PREINSTALLED_PINS: Dict[str, tuple] = {
+    "utkrusht-python-ai": (
+        "requirements.txt",
+        {"httpx", "openai", "anthropic", "litellm", "langgraph",
+         "langchain", "langchain-core", "crewai", "mem0", "pydantic-ai", "langfuse"},
+    ),
+}
+
+_REQ_PKG_NAME_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
+
+
+def _strip_preinstalled_pins(code_files: Optional[Dict], template_id: Optional[str]) -> None:
+    """Drop candidate-pinned packages the resolved template's image already
+    pre-installs, so the readiness gate's ``pip install`` can't hit a version
+    conflict with the image.
+
+    Deterministic + per-template (mirrors ``_RUNTIME_BOOTSTRAP``) so it works for
+    any runtime that declares a pre-installed set, not just Python. Comments and
+    ``-r`` / ``-e`` lines are preserved; package name matching is case- and
+    underscore/hyphen-insensitive (``LangChain_Core`` == ``langchain-core``).
+    Mutates ``code_files`` in place; no-op when the template declares no set or
+    the manifest is absent.
+    """
+    spec = _TEMPLATE_PREINSTALLED_PINS.get(template_id or "")
+    if not spec or not code_files:
+        return
+    manifest_name, preinstalled = spec
+    key = next(
+        (k for k in code_files if k == manifest_name or k.endswith("/" + manifest_name)),
+        None,
+    )
+    if key is None:
+        return
+    content = code_files.get(key)
+    if not isinstance(content, str) or not content.strip():
+        return
+    kept: List[str] = []
+    stripped: List[str] = []
+    for line in content.splitlines():
+        s = line.strip()
+        if not s or s.startswith("#") or s.startswith("-"):
+            kept.append(line)
+            continue
+        m = _REQ_PKG_NAME_RE.match(s)
+        name = m.group(1).lower().replace("_", "-") if m else ""
+        if name in preinstalled:
+            stripped.append(name)
+        else:
+            kept.append(line)
+    if not stripped:
+        return
+    new_content = "\n".join(kept)
+    if content.endswith("\n"):
+        new_content += "\n"
+    code_files[key] = new_content
+    logger.info(
+        "Stripped %d pre-installed pin(s) from %s (template=%s provides them — "
+        "avoids pip resolution conflicts): %s",
+        len(stripped), manifest_name, template_id, ", ".join(sorted(set(stripped))),
+    )
+
+
 def _ensure_runsh_installs_deps(code_files: Optional[Dict]) -> None:
     """Inject a dependency-install step into run.sh when the scaffold forgot one.
 
@@ -526,8 +600,10 @@ def _imperative_prereq_items(pre_requisites: object) -> List[str]:
 # error-driven patch — a cheaper model fixes it as well as Opus at a fraction of
 # the output cost. Substantive failures (scope, fake-LLM, design) stay on Opus.
 # Generic across every stack: the signal is the failure TEXT, not the language.
-_TASK_GEN_MODEL = os.getenv("TASK_GEN_MODEL", "claude-opus-4-8")
-_TASK_GEN_REPAIR_MODEL = os.getenv("TASK_GEN_REPAIR_MODEL", "claude-sonnet-4-6")
+# Provider-aware: an explicit env override wins; otherwise the model is chosen
+# by the active LLM_PROVIDER (claude-* for anthropic, the GLM slug for glm).
+_TASK_GEN_MODEL = os.getenv("TASK_GEN_MODEL") or resolve_model("primary")
+_TASK_GEN_REPAIR_MODEL = os.getenv("TASK_GEN_REPAIR_MODEL") or resolve_model("repair")
 _CHEAP_REPAIR = os.getenv("TASK_GEN_CHEAP_REPAIR", "1") != "0"
 
 # Stack-agnostic markers that a failure is mechanical (fixable by a small patch
@@ -711,6 +787,12 @@ def create_task(
                     f"missing={match.missing_capabilities} "
                     f"suggested={match.suggested_template}"
                 )
+        # HARD STOP: an infra-shaped task with no runtime template can't be built,
+        # tested, or deployed — the E2B gate would silently SKIP and a
+        # non-deployable task would still ship (the RabbitMQ case). Abort BEFORE
+        # the generate/eval/gate retry loop — no LLM spend, no repo, no DB row.
+        require_infra_template(plan, task_shape)
+
         eval_persona = match.persona if match else None
 
         # Agent competencies are FREE-FORM by design: the candidate-facing
@@ -836,6 +918,17 @@ def create_task(
             # ignores it). This is what stops the recurring ModuleNotFoundError →
             # gate-fail → expensive-retry loop, so tasks pass on attempt 1.
             _ensure_runsh_installs_deps(candidate.get("code_files"))
+
+            # Strip any candidate-pinned packages the resolved template's image
+            # already pre-installs (httpx/openai/litellm/anthropic/…). Re-pinning
+            # them fights the image's known-good versions and makes the gate's
+            # `pip install` fail with ResolutionImpossible (the GLM requirements.txt
+            # failure). Deterministic + per-template so it can't recur.
+            _strip_preinstalled_pins(
+                candidate.get("code_files"),
+                (template.template_id if template else None)
+                or (match.template_id if match else None),
+            )
 
             # Deterministically surface the env-setup step for provider-key (real
             # LLM) tasks so candidates don't miss copying .env.example → .env (the
@@ -1252,6 +1345,14 @@ def create_task(
         # can decide whether to skip the combo or schedule manual review.
         logger.error(
             "Eval gate rejected the task — no GitHub repo or Supabase row was created."
+        )
+        raise
+    except InfraTemplateMissingError:
+        # Pre-condition failure — infra task with no runtime template. Nothing was
+        # created. Re-raise unwrapped so the CLI surfaces a distinct marker.
+        logger.error(
+            "Infra task has no runtime template — task generation aborted "
+            "(no GitHub repo or Supabase row was created)."
         )
         raise
     except Exception as e:

@@ -8,7 +8,7 @@ from pathlib import Path
 import click
 
 from infra.evals import EvalGateError
-from generators.task import create_task
+from generators.task import create_task, InfraTemplateMissingError
 from infra.tracing import (
     new_trace_id,
     trace_run,
@@ -146,6 +146,16 @@ def generate_tasks(competency_file: Path, background_file: Path, scenarios_file:
         print(f" Reason: {e}")
         print(" No GitHub repo or Supabase row was created. Inspect the eval")
         print(" feedback in the log, fix the prompt or scope, then retry.")
+        print("=" * 70)
+    except InfraTemplateMissingError as e:
+        _trace_result["outcome"] = "infra_template_missing"
+        print(" INFRA TEMPLATE MISSING — TASK GENERATION ABORTED")
+        print("=" * 70)
+        print(f" Reason: {e}")
+        print(" The task was classified as infra but no runtime template exists,")
+        print(" so it can't be built/tested/deployed. No GitHub repo or Supabase")
+        print(" row was created. Add an E2B template + capability sheet for this")
+        print(" service, then retry.")
         print("=" * 70)
     except Exception as e:
         _trace_result["outcome"] = "error"

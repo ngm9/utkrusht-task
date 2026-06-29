@@ -184,23 +184,61 @@ _AGENT_COMPETENCY_NAMES = {
     "context engineering",
 }
 
-# Phrases in the generated PROMPT that signal it will produce a FAKE agent.
-_AGENT_FAKE_PATTERNS = (
-    "fakellm",
-    "fake llm",
-    "mock llm",
-    "mocked llm",
-    "stand-in for the llm",
-    "stand in for the llm",
-    "stand-in for the model",
-    "deterministic stand-in",
-    "no real llm",
-    "without a real llm",
-    "llm-free task",
-    "simulate the agent",
-    "simulate agent work",
-    "sleep to simulate",
+# Affirmative FAKE-mandate patterns. Each entry is a tuple of (pattern_label,
+# compiled_regex). A match means the prompt is COMMANDING the candidate to build
+# a fake agent (e.g. "use a FakeLLM", "implement a regex intent parser as the
+# reasoning engine", "use time.sleep to act as the agent loop"). Plain mentions
+# of these terms inside a prohibition ("NEVER use a FakeLLM") are filtered out
+# by the sentence-level prohibition check in _fake_mandate_hits — that check
+# looks at the full sentence containing the match for a cue like NEVER / MUST
+# NOT / FORBIDDEN / DO NOT, regardless of how far before the directive verb it
+# sits. This makes the detector robust to prose style (comma-separated lists,
+# long bullets, sentence-per-ban, etc.) — see the 2026-06-28 regression where
+# the previous 60-char window heuristic failed on "NEVER use a `FakeLLM`,
+# `StubLLM`, regex or keyword intent parser, deterministic stand-in for the
+# model".
+_FAKE_MANDATE_PATTERNS: tuple[tuple[str, "re.Pattern[str]"], ...] = (
+    (
+        "FakeLLM as the agent's model",
+        re.compile(
+            r"\b(?:use|implement|build|write|create|ship|replace|substitute|plug)"
+            r"\b[^.\n]{0,80}\b(?:fakellm|fake\s*llm|mock\s*llm|mocked\s*llm)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "regex/keyword intent parser as the agent's reasoning",
+        re.compile(
+            r"\b(?:use|implement|build|write|create|replace|substitute)"
+            r"\b[^.\n]{0,80}\b(?:regex|keyword)\s+(?:intent\s+)?(?:parser|matcher|router|classifier)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "time.sleep / asyncio.sleep as the agent loop",
+        re.compile(
+            r"\b(?:use|implement|build|write|replace|substitute)"
+            r"\b[^.\n]{0,80}\b(?:time\.sleep|asyncio\.sleep)\b[^.\n]{0,40}\b(?:as|for|to\s+act\s+as|to\s+simulate|simulating)\b[^.\n]{0,40}\b(?:agent|model|llm|loop|reasoning|thinking)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "deterministic stand-in mandated AS the agent",
+        re.compile(
+            r"\b(?:use|implement|build|write|create|ship|replace|substitute|plug)"
+            r"\b[^.\n]{0,80}\b(?:deterministic|fixed)\s+(?:stand[- ]?in|stand[- ]?in\s+for|replacement|substitute)\b[^.\n]{0,40}\b(?:for\s+the\s+)?(?:agent|model|llm|reasoning|loop)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "task framed as LLM-free / no API key",
+        re.compile(
+            r"\b(?:task|exercise|assessment|assignment)\s+(?:is|must\s+be|should\s+be)\s+(?:llm[- ]?free|api[- ]?key[- ]?free|no[-\s]?api[-\s]?key)\b",
+            re.IGNORECASE,
+        ),
+    ),
 )
+
 
 # At least one of these must appear — the prompt must AFFIRMATIVELY require a real
 # model / agent loop in the generated task.
@@ -218,6 +256,22 @@ _AGENT_REAL_PATTERNS = (
 )
 
 
+# Sentence-level cues that flip a directive verb (use / implement / build / ...)
+# from "mandate" to "prohibition". We restrict the check to the sentence
+# containing the match (sentence = text between two sentence terminators or
+# between a paragraph start/end) so an unrelated "NEVER" 500 chars away in the
+# next paragraph can't accidentally exempt a real mandate, and a "NEVER" at the
+# very start of a 300-char sentence can still exempt the directive verb later
+# in that same sentence.
+_PROHIBITION_CUES = re.compile(
+    r"\b(?:never|must\s+not|forbid(?:den)?|do\s+not|don't|prohibit(?:ed)?|avoid|"
+    r"instead\s+of|rather\s+than|no\s+fake|ban(?:ned)?|without)\b",
+    re.IGNORECASE,
+)
+
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?\n])\s+|(?:\s*\n\s*)")
+
+
 def _is_agent_combo(competencies: list[dict]) -> bool:
     return any(
         (c.get("name") or "").strip().lower() in _AGENT_COMPETENCY_NAMES
@@ -225,46 +279,62 @@ def _is_agent_combo(competencies: list[dict]) -> bool:
     )
 
 
-# Negation cues — when one appears just before a fake-pattern, the prompt is
-# PROHIBITING the fake (good), not mandating it. Lets a fixed template say
-# "NEVER use a FakeLLM" without tripping the check.
-_NEGATIONS = (
-    "never", "not ", "n't", "no ", "do not", "don't", "forbid", "avoid",
-    "without", "must not", "instead of", "rather than", "no fake",
-)
+def _sentence_containing(source: str, span_end: int) -> str:
+    """Return the sentence (or paragraph) of ``source`` that contains the
+    character index ``span_end``. Falls back to the whole source if no
+    terminator is found nearby.
+
+    Splits only on newlines, ``!`` and ``?``. ``.`` is NOT a terminator because
+    it appears inside identifier-shaped tokens like ``time.sleep`` /
+    ``asyncio.sleep`` / `Markdown` / filenames — treating those as sentence
+    ends would chop a phrase like "NEVER use time.sleep to simulate the
+    agent." into the false-positive fragment "sleep to simulate the agent"
+    and miss the leading ``NEVER``.
+    """
+    terminators = "\n!?"
+    left = max(
+        (source.rfind(c, 0, span_end) for c in terminators),
+        default=-1,
+    )
+    right_candidates = [source.find(c, span_end) for c in terminators] + [len(source)]
+    right = min((r for r in right_candidates if r != -1), default=len(source))
+    return source[left + 1 : right]
 
 
-def _unnegated_fake_hits(low: str) -> list[str]:
-    """Fake-pattern phrases that appear WITHOUT a nearby negation cue (within the
-    preceding 60 chars). A prohibition ("never ship a FakeLLM") is not flagged."""
-    flagged: set[str] = set()
-    for p in _AGENT_FAKE_PATTERNS:
-        start = 0
-        while True:
-            i = low.find(p, start)
-            if i == -1:
-                break
-            window = low[max(0, i - 60):i]
-            if not any(neg in window for neg in _NEGATIONS):
-                flagged.add(p)
-            start = i + len(p)
-    return sorted(flagged)
+def _fake_mandate_hits(source: str) -> list[str]:
+    """Return labels of FAKE-mandate patterns the prompt is commanding the
+    candidate to build. Plain mentions inside prohibitions (the matched span's
+    sentence contains a prohibition cue like NEVER / MUST NOT / FORBIDDEN) are
+    not counted.
+    """
+    hits: list[str] = []
+    for label, pattern in _FAKE_MANDATE_PATTERNS:
+        for m in pattern.finditer(source):
+            sentence = _sentence_containing(source, m.end())
+            if _PROHIBITION_CUES.search(sentence):
+                # Prohibition context — skip this match.
+                continue
+            hits.append(label)
+            break  # one hit per label is enough
+    return hits
 
 
 def _agent_realness_issues(source: str) -> list[str]:
     """Issues when an agent-competency prompt would yield a FAKE LLM/agent."""
-    low = source.lower()
     issues: list[str] = []
-    hits = _unnegated_fake_hits(low)
+    hits = _fake_mandate_hits(source)
     if hits:
         issues.append(
-            "Agent prompt encodes a FAKE LLM/agent (found: "
-            + ", ".join(hits)
-            + "). Agent-competency tasks MUST integrate a REAL LLM/agent loop — the "
-            "candidate-filled stubs are the agent logic (context build, tool dispatch, "
-            "retry, parsing), NOT a stand-in model. Remove FakeLLM / regex intent / "
-            "time.sleep simulation; require a real model call (provider SDK / litellm)."
+            "Agent prompt COMMANDS a FAKE LLM/agent to be built (found: "
+            + "; ".join(hits)
+            + "). Agent-competency tasks MUST require the candidate to integrate a "
+            "REAL LLM/agent loop (provider SDK / litellm), with the candidate-filled "
+            "stubs being the agent logic (context build, tool dispatch, retry, "
+            "parsing) — NOT a stand-in model. Do NOT instruct the candidate to use a "
+            "FakeLLM / regex intent parser / time.sleep simulator / deterministic "
+            "stand-in AS the agent's reasoning."
         )
+    low = source.lower()
     if not any(p in low for p in _AGENT_REAL_PATTERNS):
         issues.append(
             "Agent prompt does not MANDATE a real LLM/agent loop. The generated prompt "

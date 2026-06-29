@@ -5,10 +5,13 @@ import the same client instances instead of each spinning up their own.
 
 Two clients today:
 
-* ``openai_client`` — Anthropic (Claude) routed via the Portkey gateway. The
-  default LLM for the eval critics and the main task-generation call.
+* ``openai_client`` — the default Claude-role client. Anthropic (Claude) via the
+  Portkey gateway, OR GLM via OpenRouter when ``LLM_PROVIDER=glm``. The provider
+  switch lives in ``infra/llm_provider`` so every Claude call site flips together.
+  Used for the main task-generation call.
 * ``openai_via_portkey`` — OpenAI (GPT) routed via Portkey. Used for the
-  answer-code step where structured-output support is stronger.
+  answer-code step where structured-output support is stronger. Always OpenAI —
+  NOT affected by the GLM switch.
 
 Lifted from the module-level globals of ``multiagent.py`` unchanged.
 """
@@ -20,6 +23,7 @@ import httpx
 import openai
 from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
 
+from infra.llm_provider import make_llm_client
 from infra.tracing.client import trace_client
 
 
@@ -38,21 +42,10 @@ _LLM_TIMEOUT = httpx.Timeout(
 )
 
 
-# Anthropic (Claude) via Portkey — the default LLM client.
-_ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
-
-openai_client = trace_client(
-    openai.OpenAI(
-        api_key=_ANTHROPIC_API_KEY,
-        base_url=PORTKEY_GATEWAY_URL,
-        default_headers=createHeaders(
-            provider="anthropic",
-            api_key=os.environ.get("PORTKEY_API_KEY"),
-        ),
-        timeout=_LLM_TIMEOUT,
-    ),
-    provider="anthropic",
-)
+# Default Claude-role client — Anthropic (Claude) via Portkey, OR GLM via
+# OpenRouter when LLM_PROVIDER=glm. The provider switch + traced-client
+# construction both live in infra/llm_provider.
+openai_client = make_llm_client()
 
 # Portkey → OpenAI client for the answer-code step. Uses GPT-5.4 (cheaper +
 # stronger structured-output support than Claude for this specific call) but

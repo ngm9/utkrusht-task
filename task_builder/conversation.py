@@ -2,17 +2,18 @@
 from __future__ import annotations
 
 import json
-import os
 from dataclasses import dataclass, field
 
 import openai
-from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
 
+from infra.llm_provider import make_llm_client, resolve_model
+from infra.prompt_cache import cache_messages
 from task_builder.prompts import SYSTEM_PROMPT
 from task_builder.slots import Message, SessionState, TaskBrief, merge_brief
 from task_builder.validation import validate_competency, validate_proficiency
 
-BOT_MODEL = "claude-sonnet-4-6"
+# Provider-aware: claude-sonnet-4-6 for anthropic, the GLM slug for glm.
+BOT_MODEL = resolve_model("bot")
 
 _FALLBACK_REPLY = "Sorry — I got a bit confused there. Could you say that again?"
 
@@ -27,15 +28,9 @@ class ConversationTurn:
 
 
 def build_bot_client() -> openai.OpenAI:
-    """Portkey gateway -> Anthropic, mirroring multiagent.py's client setup."""
-    return openai.OpenAI(
-        api_key=os.getenv("ANTHROPIC_API_KEY"),
-        base_url=PORTKEY_GATEWAY_URL,
-        default_headers=createHeaders(
-            provider="anthropic",
-            api_key=os.getenv("PORTKEY_API_KEY"),
-        ),
-    )
+    """The active Claude-role client — Anthropic via Portkey, or GLM via
+    OpenRouter when LLM_PROVIDER=glm. See infra/llm_provider."""
+    return make_llm_client()
 
 
 def _extract_json(text: str) -> dict:
@@ -68,7 +63,7 @@ def _to_turn(parsed: dict) -> ConversationTurn:
 
 def _call(client: openai.OpenAI, messages: list[dict]) -> str:
     """Make one chat-completion call and return the raw response text."""
-    resp = client.chat.completions.create(model=BOT_MODEL, messages=messages)
+    resp = client.chat.completions.create(model=BOT_MODEL, messages=cache_messages(messages))
     return resp.choices[0].message.content or ""
 
 

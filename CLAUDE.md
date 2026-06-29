@@ -135,6 +135,8 @@ the `generate_tasks` Click command; deploy + reset live in `e2b_flow/`.
 ### External Services
 
 - **OpenAI API** (via Portkey gateway) — task + code generation, evaluations
+- **Anthropic / Claude** (via Portkey gateway) — default for the "Claude-role" calls (task generation, classifier, task-builder bot)
+- **OpenRouter** — alternative backend for the Claude-role calls when `LLM_PROVIDER=glm` (GLM / Z.ai). OpenAI-compatible; see `infra/llm_provider.py`
 - **Supabase** — task metadata storage (dev and prod environments)
 - **GitHub** — template repos, answer repos, gists (via PyGithub)
 - **DigitalOcean** — droplet deployment via SSH/paramiko
@@ -142,7 +144,8 @@ the `generate_tasks` Click command; deploy + reset live in `e2b_flow/`.
 ### Environment Variables
 
 Required in `.env` — see `TASK_MANAGEMENT_GUIDE.md` for full list. Key ones:
-- `OPENAI_API_KEY`, `PORTKEY_API_KEY` — LLM access
+- `OPENAI_API_KEY`, `PORTKEY_API_KEY`, `ANTHROPIC_API_KEY` — LLM access
+- `LLM_PROVIDER` (`anthropic`|`glm`), `OPENROUTER_API_KEY`, `OPENROUTER_GLM_MODEL` — optional GLM-via-OpenRouter switch for the Claude-role calls (the trace_ui "New run" modal sets it per-run; the env var is the default for CLI runs)
 - `GITHUB_UTKRUSHTAPPS_TOKEN`, `GITHUB_GIST_TOKEN`, `REPO_OWNER` — GitHub
 - `SUPABASE_URL_APTITUDETESTSDEV`, `SUPABASE_API_KEY_APTITUDETESTSDEV` — Supabase dev
 - `SUPABASE_URL_APTITUDETESTS`, `SUPABASE_API_KEY_APTITUDETESTS` — Supabase prod
@@ -152,15 +155,8 @@ Required in `.env` — see `TASK_MANAGEMENT_GUIDE.md` for full list. Key ones:
 
 - All CLI interfaces use **Click**. `multiagent.py` has top-level commands; sub-packages use `__main__.py` entry points.
 - OpenAI calls go through **Portkey gateway** (`PORTKEY_GATEWAY_URL`) with provider headers — never call OpenAI directly.
+- **Prompt caching**: Claude calls (task-gen, classifier, task-builder bot) cache their stable prefix via `infra/prompt_cache.cache_messages` — it adds Anthropic `cache_control` breakpoints (system + last message) in the OpenAI chat shape Portkey forwards. Anthropic-only (OpenAI models auto-cache; GLM path is a no-op). Verify with `usage.cache_read_input_tokens` / `prompt_tokens_details.cached_tokens`.
+- **LLM provider switch** lives in `infra/llm_provider.py` — one place picks the client + model for the Claude-role calls (Anthropic default, GLM via OpenRouter when `LLM_PROVIDER=glm`). Every Claude call site (`generators/task/_clients.py`, `creator.py`, `infra/utils.py`, `infra/classifier/llm_classifier.py`, `runtime_resolver.py`, `task_builder/conversation.py`) resolves through it, so they flip together. The OpenAI answer-code + eval-judge steps are NOT routed through it.
 - Task generation prompts are Python files exporting prompt strings, organized by `{level}/{tech_stack}_prompt.py`.
 - Two Supabase environments (dev/prod) controlled by `--env` flags throughout.
 - LLM evaluations have a retry loop (`MAX_EVAL_RETRIES` in `evals.py`) — tasks that fail eval are regenerated.
-
-## illuminate: required pre-write step
-
-Before writing or modifying any source file in this repository, invoke the
-`illuminate_audit` MCP tool with your plan, the files you intend to modify,
-and your rationale. Surface the response to the user before proceeding.
-
-If `status` is `block`, do not proceed without explicit user approval.
-If `status` is `warn`, surface the warnings to the user before writing.

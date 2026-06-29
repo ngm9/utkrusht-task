@@ -26,6 +26,7 @@ from dotenv import load_dotenv
 logger = logging.getLogger("prompt_generator")
 
 from infra.classifier.runtime import Competency
+from infra.llm_provider import resolve_dspy_model
 from generators.prompts.db_queries import (
     TaskExample,
     fetch_competency_scope,
@@ -50,8 +51,11 @@ load_dotenv()
 # - COMPILATION (BootstrapFewShot/MIPROv2 search loop): use a cheaper model.
 #   Compilation runs many calls in a tight loop, so Haiku 4.5 saves ~5-10x cost
 #   while still being competent enough to score candidate prompts.
+# Runtime model is OpenAI (gpt-5.5) and stays OpenAI — out of scope for the GLM
+# switch. The COMPILE model is the only Claude call here, so it's provider-aware:
+# anthropic/claude-haiku-4-5 by default, openrouter/<glm> when LLM_PROVIDER=glm.
 DEFAULT_RUNTIME_MODEL = os.getenv("PROMPT_GENERATOR_MODEL", "openai/gpt-5.5")
-DEFAULT_COMPILE_MODEL = os.getenv("PROMPT_GENERATOR_COMPILE_MODEL", "anthropic/claude-haiku-4-5")
+DEFAULT_COMPILE_MODEL = os.getenv("PROMPT_GENERATOR_COMPILE_MODEL") or resolve_dspy_model("prompt_compile")
 
 
 def configure_dspy(model: Optional[str] = None, mode: str = "runtime") -> None:
@@ -888,19 +892,10 @@ class PromptGeneratorAgent(dspy.Module):
         #               resolver entirely; references + generate is all we need
         #   infra     → fetch similar_tasks, future template resolver, etc.
         logger.info("STEP 3 / shape_classifier.py — classifying task shape")
-        shape_decision: ShapeDecision = classify_task_shape(
-            competencies_str=comp_str,
-            competency_scopes=scopes_str,
-            detailed_skill_signal=skill_signal,
-            user_directive=directive,
-        )
-        logger.info("  → task_shape = %s", shape_decision.task_shape)
-        logger.info("  → reason     = %s", shape_decision.reason)
         # `task_shape_override` ("infra"/"non_infra") forces the shape and SKIPS the
-        # classifier — the "force infra" path (run_pipeline --task-shape). The
-        # matching scenario steering happens in stage 02; when forcing infra, the
-        # chosen infra_kind's service is threaded into `datastores` below so the
-        # generated prompt boots the right self-hosted service.
+        # classifier. The trace_ui / run_pipeline knobs for this were removed — shape
+        # is AUTO-classified and the free-text `directive` (instructions) steers it —
+        # but the override path is kept so a direct caller can still force a shape.
         _forced = task_shape_override if task_shape_override in ("infra", "non_infra") else None
         _infra_service = None
         if _forced:
@@ -914,10 +909,13 @@ class PromptGeneratorAgent(dspy.Module):
             logger.info("  → task_shape = %s (FORCED — classifier skipped)", _forced)
             logger.info("  → reason     = %s", reason)
         else:
+            # Single classify call — the directive (instructions) is passed so it can
+            # steer the infra/non-infra verdict (replacing the old force toggle).
             shape_decision = classify_task_shape(
                 competencies_str=comp_str,
                 competency_scopes=scopes_str,
                 detailed_skill_signal=skill_signal,
+                user_directive=directive,
             )
             logger.info("  → task_shape = %s", shape_decision.task_shape)
             logger.info("  → reason     = %s", shape_decision.reason)
@@ -1078,6 +1076,29 @@ class PromptGeneratorAgent(dspy.Module):
                     "Deterministic validator issues (MUST fix):\n- "
                     + "\n- ".join(validation.issues)
                 )
+                # Concrete rewrite shape for the most common false-positive trap:
+                # the agent-realness guard now flags AFFIRMATIVE fake-mandates
+                # (e.g. "use a FakeLLM"), not bare prohibitions. If the validator
+                # tripped on that, give the LLM a working rewrite template so the
+                # next attempt converges instead of looping on the same prose.
+                if any("COMMANDS a FAKE LLM/agent" in i for i in validation.issues):
+                    parts.append(
+                        "Rewrite shape that will pass:\n"
+                        "- State the affirmative requirement first: 'The agent "
+                        "calls a REAL model via litellm (or the anthropic/openai "
+                        "SDK) on the candidate's key.'\n"
+                        "- Then list prohibitions, ONE banned term per short "
+                        "sentence, each starting with 'NEVER':\n"
+                        "    NEVER use a FakeLLM.\n"
+                        "    NEVER use a regex / keyword intent parser as the "
+                        "agent's reasoning.\n"
+                        "    NEVER use a deterministic stand-in for the model.\n"
+                        "    NEVER use time.sleep / asyncio.sleep to simulate the "
+                        "agent.\n"
+                        "- Make clear: fixtures may make local tool INPUTS "
+                        "deterministic; they must NOT replace the model's "
+                        "reasoning."
+                    )
             feedback = "\n\n".join(parts)
             logger.info("  next iteration will receive feedback (%d chars)",
                         len(feedback))
