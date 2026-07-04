@@ -157,12 +157,17 @@ def mark_task_ready(
     eval_info: Dict | None = None,
     readme_content: Dict | None = None,
     is_shared_infra_required: bool | None = None,
+    tour: Dict | None = None,
 ) -> Dict:
     """B5 — flip a draft row to ``ready`` once all artifacts exist.
 
     Only patches the fields supplied; anything ``None`` is left untouched.
     The status flip happens atomically with the artifact fields so a reader
     never sees a ``ready`` row missing its ``task_blob.resources``.
+
+    ``tour`` is the verified candidate walkthrough (``generators/task/tour``);
+    ``None`` means tour generation was skipped or failed — the column stays
+    NULL and the task ships regardless.
     """
     update: Dict = {"status": "ready"}
     if task_blob is not None:
@@ -175,6 +180,8 @@ def mark_task_ready(
         update["readme_content"] = readme_content
     if is_shared_infra_required is not None:
         update["is_shared_infra_required"] = is_shared_infra_required
+    if tour is not None:
+        update["tour"] = tour
 
     sb = init_supabase(env)
     result = sb.table("tasks").update(update).eq("task_id", task_id).execute()
