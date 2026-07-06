@@ -1,6 +1,6 @@
 ---
 name: task-solvability
-description: Check whether ONE Utkrushta task is actually solvable — deploy it to an E2B sandbox, then YOU (the coding agent) solve it with your own tools in the code-server web IDE, RECORD the solve as a WebM by default (RED→fix→GREEN + think-aloud notes + a task-quality assessment), grade against the task's tests, and write a report to solvability_runs/<slug>/. The coding agent is the solver — no headless agent, no metered LLM API. Optional --frontend mode drives the full candidate frontend journey with the JWT. Use when verifying a generated task can be completed (not just that it deploys — that's the deployment-test skill).
+description: Check whether ONE Utkrushta task is actually solvable — deploy it to an E2B sandbox, then YOU (the coding agent) solve it with your own tools in the code-server web IDE, RECORD the solve as a WebM by default (RED→fix→GREEN + think-aloud notes + a task-quality assessment), grade against the task's tests, and write a report to solvability_runs/<slug>/. The coding agent is the solver — no headless agent, no metered LLM API. Non-infra tasks (is_shared_infra_required = false) can run in --local mode — clone + install deps + solve + grade entirely on this machine, no E2B sandbox. Use when verifying a generated task can be completed (not just that it deploys — that's the deployment-test skill).
 ---
 
 # Task Solvability
@@ -24,49 +24,17 @@ code-server web IDE. Use `--quick` only when you explicitly want to skip the vid
 |---|---|---|
 | **default** | deploy → I solve in the **code-server web IDE, RECORDED** (RED→fix→GREEN + notes) → grade → write report | ✅ |
 | **`--quick`** | same, but **no video** (faster) — verdict + `solution.diff` + notes only | ✅ |
-| **`--frontend`** | also drive the full candidate FE journey with the JWT — every gate through to the **task screen** | ✅ end-to-end (camera flags + provisioning pacing + backend secrets, all below) |
+| **`--local`** | **non-infra tasks only** — clone + install deps + solve + grade entirely on THIS machine; no E2B sandbox, no video | ✅ (see "Local mode" below) |
 
-**`--frontend` device/camera/screen-share gate — solved.** Launch agent-browser with
-Chrome's fake-media flags so the camera + screen-share gates pass (the JS media mocks
-were NOT enough — the device check calls the real `getUserMedia`, which headless Chrome
-denies → "Device Access Denied"). Proven: camera → `tracks=1`, screen-share → `displaySurface=monitor`:
-
-```bash
-agent-browser open "<candidate_url>" \
-  --args "--use-fake-ui-for-media-stream,--use-fake-device-for-media-stream,--auto-select-desktop-capture-source=Entire screen"
-```
-
-(also works via `AGENT_BROWSER_ARGS`). Set this on the launch/`record start` that drives the
-candidate frontend; no `getUserMedia`/`getDisplayMedia` JS mock needed when the flags are on.
-
-For `--frontend`, the deterministic infra is one command via the driver:
-`.venv/bin/python .claude/skills/task-solvability/scripts/stack.py up`  (FE in Docker + verify flask)
-then `… stack.py session --task-id T --class-id C` (creates the session + clears the gates + prints the candidate URL).
-The backend itself is your compose stack: `docker compose -f /home/rsx/Desktop/utkrusht-ai/Utkrushta/docker-compose.local.yml up -d`.
-
-**`--frontend` — two more requirements (learned live; with these the journey reaches the task screen):**
-
-1. **Backend provisioning secrets (REQUIRED).** Provisioning calls fastapi `POST /v2/sessions/start`,
-   which **creates an E2B sandbox and encrypts its SSH key** — so the `fastapi` container's env
-   (`Utkrushta/.env.local`, its `env_file`) MUST contain both `E2B_API_KEY` and `E2B_SECRETS_MASTER_KEY`
-   (both live in `utkrusht-task/.env` — copy them over), then recreate it:
-   `docker compose -f .../Utkrushta/docker-compose.local.yml up -d --force-recreate fastapi`.
-   Without them `/v2/sessions/start` 500s ("API key is required" / "E2B_SECRETS_MASTER_KEY env var not
-   set") and the FE shows **"Failed to provision sandbox."**
-
-2. **Provisioning pacing (don't hang the browser).** On the **"Setting Up Your Environment"** screen, do
-   NOT call `snapshot`/`eval` — its live-log DOM is heavy and those CDP calls time out (this was the
-   earlier "hang"). Just `sleep` + an occasional `screenshot` (the recording keeps rolling); watch
-   `docker logs <fastapi> | grep "sessions/start"` for the `200`; resume `snapshot`/clicks once it settles.
-   Then a **"Screen Sharing Required"** gate appears → click "Start Screen Sharing" (passes via the same
-   media flags) → the **task screen** loads (problem statement + repo + Terminal/Editor/Database + 45-min
-   timer + Submit). The FE provisions its OWN E2B sandbox — `list_active()` and kill everything at teardown
-   (note: `cp` may be aliased to `cp -i`; use `/bin/cp -f`).
+**Auto-suggest local:** `load` prints `is_shared_infra_required`. If it's `false` and the
+user didn't ask for a recording, prefer `--local` — it's faster and free
+(no sandbox billing). If it's `true`, `--local` is INVALID (the task needs the template's
+services) — hard-fail with that explanation and fall back to the sandbox flow.
 
 ## Outputs — `solvability_runs/<task-slug>/` (NOT `.task_agent_runs`)
 
 Each run writes a clean, human-named report folder at the repo root (gitignored):
-`solvability_runs/<task-slug>/` → `summary.md`, `notes.md` (think-aloud + task-quality), `result.json`, `solution.diff`, `solve.webm`, `frontend.webm` (frontend mode), `frames/*.png`.
+`solvability_runs/<task-slug>/` → `summary.md`, `notes.md` (think-aloud + task-quality), `result.json`, `solution.diff`, `solve.webm`, `frames/*.png`.
 
 ## Variables
 
@@ -74,7 +42,6 @@ Each run writes a clean, human-named report folder at the repo root (gitignored)
 - `ENV` = `dev` default; `prod` only if the user says so.
 - `PY` = `.venv/bin/python` — deps live in the venv, not system python.
 - `H` = `.claude/skills/task-solvability/scripts/sandbox.py` — the sandbox helper.
-- `STACK` = `.claude/skills/task-solvability/scripts/stack.py` — FE+session driver (`--frontend`).
 - `SLUG` = the repo name (e.g. `cargolink-pickup-context-repair`); outputs go to `solvability_runs/$SLUG/`.
 
 `.env` is auto-loaded by `infra/e2b/__main__.py`; the helper loads it too.
@@ -205,6 +172,50 @@ NOTES: <what the task required / where it was tricky / or why it's unsolvable / 
 
 On `unverified` / `unsolvable`, say plainly what's wrong (no tests → not gradeable;
 or the spec is underspecified / contradictory / needs resources that aren't there).
+
+## Local mode (`--local`) — non-infra tasks, no sandbox
+
+For tasks with `is_shared_infra_required: false` the starter is self-contained
+(no shared Postgres/Kafka/etc. from the E2B template), so the whole flow runs on
+this machine. Same verdict rules, same report — only the environment differs.
+
+**STEP 1 (preflight)** — same `load` as above, but E2B keys are NOT required;
+only the Supabase + GitHub keys. Hard-fail `--local` if `is_shared_infra_required: true`.
+
+**STEP 2 (clone + install)** — no `deploy`, just:
+
+```bash
+.venv/bin/python $H clone --task-id "$TASK_ID" --env "$ENV" --dest "$WORK"
+```
+
+Then install dependencies **inside `$WORK`, isolated from this repo's venv**, by stack
+(look at the files actually present — the template_id heuristic is a fallback):
+
+| Present in `$WORK` | Install | Test (default) |
+|---|---|---|
+| `package.json` | `npm ci \|\| npm install` | `npm test` |
+| `requirements.txt` / `pyproject.toml` | `python3 -m venv .taskvenv && .taskvenv/bin/pip install -r requirements.txt` (or `.taskvenv/bin/pip install -e .`) | `.taskvenv/bin/python -m pytest -q` |
+| `go.mod` | `go mod download` | `go test ./...` |
+| `Cargo.toml` | (cargo fetches on build) | `cargo test -- --test-threads=1` |
+
+If the toolchain itself is missing on this machine (no `go`, wrong node major, etc.),
+STOP and report `unverified` / `env_unavailable` — do NOT globally install toolchains;
+suggest the sandbox flow instead. If install itself fails on the clean starter, that's
+a task-quality defect — record it.
+
+**STEP 3 (solve)** — identical to the sandbox STEP 3, except tests run locally with
+plain Bash in `$WORK` — no `put`/sync loop, no `$H run`. Same ~8-cycle cap, same
+"never edit the tests" rule. If the tests unexpectedly need a live service (connection
+refused to a DB/broker), the task is mis-flagged as non-infra — record that as a
+task-quality defect and rerun via the sandbox flow.
+
+**STEP 4 (grade + record)** — same verdict table. Capture the diff with
+`git -C "$WORK" add -A && git -C "$WORK" diff --cached > solvability_runs/$SLUG/solution.diff`.
+Add `"mode":"local"` to the `results.jsonl` row.
+
+**STEP 5 (teardown)** — just `rm -rf "$WORK"` (nothing to kill). No WebM in local
+mode (there's no code-server IDE to record) — local mode implies `--quick`; if the
+user wants video proof, use the sandbox flow.
 
 ## Recorded mode (`--record`) — headless video proof
 

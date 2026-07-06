@@ -47,7 +47,7 @@ env/
 Thumbs.db
 
 # ----- Claude Code -----
-.claude/
+.claude/settings.local.json
 .claude.json
 
 # ----- Local agent / tooling caches -----
