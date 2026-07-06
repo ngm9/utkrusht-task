@@ -1,4 +1,4 @@
-PROMPT_CONTEXT = """
+﻿PROMPT_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -215,7 +215,7 @@ Based on the provided `real_world_task_scenarios`, create a task that:
    }},
    "outcomes": "A 2–3 sentence description of what a good submission looks like: a specific launch recommendation with a rationale grounded in the data, prompts, and traces; two or more named missing scenario types tied to real risk and to specific evidence in the package; and a concrete next step — without revealing the answer.",
    "short_overview": "Bullet-point list in plain language: (1) the business situation and AI tool, (2) what is in the FOUR-file eval package (combined system overview document, production system prompt, evals/judge prompt, traces csv), (3) what the headline shows vs what the package may hide, (4) what the candidate must deliver.",
-   "pre_requisites": "Bullet-point list:\\n- Ability to read and summarise tabular data (spreadsheet or Python/pandas)\\n- Ability to read a system prompt and a judge/rubric prompt critically\\n- Basic understanding of accuracy as a metric and its limitations\\n- Familiarity with offline evaluation concepts and LLM-as-judge scoring for AI systems\\n- Understanding of what a test set is and why its composition matters\\n- Ability to write a concise, evidence-backed product recommendation",
+   "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
    "answer": "High-level solution: (1) Compute per-group quality from traces.csv — the minority case types from the chosen scenario's domain show 75–85% accuracy/quality but represent <20% of the test set, so they barely affect the headline. (2) Read system_prompt.md — point out the specific weakness (e.g., assumes single intent per input, no handling for ambiguous cases, output schema doesn't cover missing-source-data case). (3) Read judge_prompt.md — point out the judge weakness (e.g., scores only label/format match, not reasoning/factuality), so the headline 'pass rate' overstates real quality. (4) Pull 1–2 specific failing traces whose judge_notes confirm the failure mode. (5) Recommend limited launch or hold. (6) Propose one next step: targeted data collection for the minority types, a tightened judge rubric that scores reasoning/factuality, a system-prompt revision, or a shadow-mode rollout.",
    "hints": "Start by grouping traces.csv by case_type and computing accuracy per group — the headline number tells a different story than the per-group breakdown. Then read system_prompt.md and judge_prompt.md asking 'what is this NOT instructing the model or judge to do?' Cross-check against judge_notes on the failing traces.",
    "definitions": {{

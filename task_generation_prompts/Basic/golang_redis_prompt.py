@@ -383,19 +383,7 @@ Write practical, beginner-friendly tips in clear language so basic-level candida
    }},
    "outcomes": "Expected results after completion in 2-3 lines focusing on measurable basic caching improvements. Use simple english.",
    "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific Redis caching fix or implementation goal, and (3) the expected outcome emphasizing measurable performance improvements.",
-   "pre_requisites": [
-     "Go 1.21 or higher installed",
-     "Docker and Docker Compose installed and running",
-     "Basic understanding of REST APIs and HTTP methods",
-     "Familiarity with caching concepts and when to use caching",
-     "Basic knowledge of key-value data stores",
-     "Understanding of data expiration and Time-To-Live (TTL) concepts",
-     "Basic command line proficiency",
-     "Git installed for version control",
-     "Redis inspection tools (redis-cli or RedisInsight) - optional but helpful",
-     "Basic understanding of performance optimization principles",
-     "Familiarity with Golang syntax and basic error handling"
-   ],
+   "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
    "answer": "give the high level solution focusing on what optimizations are needed to improve the performance of the application",
    "hints": "A single line hint that gently guides toward the approach without giving away the solution.",
    "definitions": {{

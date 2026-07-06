@@ -1,4 +1,4 @@
-PROMPT_NODEJS_MONGODB_INPUT_AND_ASK = """
+﻿PROMPT_NODEJS_MONGODB_INPUT_AND_ASK = """
 Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Node.js and MongoDB assessment task.
 
 INPUT COMPETENCIES:
@@ -343,7 +343,7 @@ Define goals focusing on outcomes for the optimization task:
    }},
    "outcomes": "Bullet-point list in simple language. Must include: 'Optimize Node.js + MongoDB application performance by implementing efficient query patterns, basic indexing, and improving API endpoint data fetching and response handling' and 'Write production-level clean code with best practices including proper error handling, naming conventions, basic schema design, and performance optimization techniques'",
    "short_overview": "Bullet-point list in simple language describing: (1) the high-level performance problem in a business context (database and/or API), (2) the specific optimization goal at basic level, and (3) the expected outcome emphasizing maintainability and scalability.",
-   "pre_requisites": "Bullet-point list of tools, libraries, and environment setup required to complete the basic-level optimization task. Include: Node.js 16+, npm/yarn, Docker, Docker Compose, MongoDB tools (MongoDB Compass, mongosh), Git, basic query tools, Mongoose ODM knowledge, Express/Fastify basics, basic MongoDB concepts, Node.js basics, basic API concepts, postman or similar for API testing, text editor/IDE, etc.",
+   "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
    "answer": "High-level solution approach focusing on basic database optimization strategies AND Node.js API endpoint optimization strategies for the given straightforward performance issues. Address both fronts equally - MongoDB query optimization with simple indexing and basic query improvements alongside Node.js endpoint refactoring with basic data fetching improvements, simple caching, and straightforward code optimization.",
    "hints": "A single line hint on what a good basic-level approach to analyze and optimize the database AND API performance could include. These hints must NOT give away the specific optimizations needed, but gently nudge the candidate toward basic database analysis AND simple Node.js profiling practices suitable for basic-level skills. Example hint format: 'Look for places where the API fetches all data when only some is needed, and places where the same database query runs multiple times.'",
    "definitions": {{

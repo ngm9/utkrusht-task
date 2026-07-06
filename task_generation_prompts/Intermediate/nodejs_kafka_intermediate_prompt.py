@@ -1,4 +1,4 @@
-PROMPT_NODEJS_KAFKA_CONTEXT_INTERMEDIATE = """
+﻿PROMPT_NODEJS_KAFKA_CONTEXT_INTERMEDIATE = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -157,7 +157,7 @@ Based on the real-world scenarios provided, create a Node.js + Kafka task that:
   }},
   "outcomes": "Bullet-point list. Must include: 'Write production-level clean code with best practices including proper design patterns, naming conventions, exception handling, logging and observability.'",
   "short_overview": "Bullet-point list describing: (1) the high-level business problem requiring event-driven communication, (2) the specific Kafka architecture/implementation goal, and (3) the expected outcome.",
-  "pre_requisites": "Bullet-point list examples: Node.js, Express.js, kafkajs, Docker, Docker Compose, intermediate Kafka concepts (partitioning, consumer groups, offset management, dead-letter topics, idempotency), REST API design, async/await patterns.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach describing the Kafka architecture, message flow design, and key implementation decisions.",
   "hints": "Single line suggesting focus area for Kafka event flow design, idempotency, and error handling strategy.",
   "definitions": {{

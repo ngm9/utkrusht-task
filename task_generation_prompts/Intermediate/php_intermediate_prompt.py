@@ -1,4 +1,4 @@
-PROMPT_PHP_INTERMEDIATE_CONTEXT = """
+﻿PROMPT_PHP_INTERMEDIATE_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -130,7 +130,7 @@ Based on the chosen real-world scenario, create a PHP task that:
   }},
   "outcomes": "Bullet-point list. Must include observable post-fix outcomes (specific latency target, specific HTTP status / JSON shape on error paths, specific DB query count or memory ceiling, specific tests that must pass) and architectural quality outcomes (single seam introduced, single interface used by both endpoints, exception mapping in one place).",
   "short_overview": "Bullet-point list describing: (1) the high-level business or technical problem, (2) the specific architectural / performance / correctness change required, (3) the expected outcome emphasising correctness, performance, and maintainability — without revealing the answer.",
-  "pre_requisites": "Bullet-point list of tools, libraries, and environment setup required. Include PHP 8.1+, Composer 2.x, an IDE, Git, intermediate-level PHP knowledge (PSR-4, DI, PDO/Eloquent/Doctrine basics, PHPUnit), and the specific framework if named in the scenario.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach with emphasis on the architectural decision: which seam to introduce, which query to rewrite, where to place the cache and how to key it, which exception to add and where to map it. Do NOT paste full code.",
   "hints": "A single line guiding toward the architectural approach without naming the pattern. Example: 'Look at where the supplier call lives today and ask which classes today have to know about Guzzle to do their job — and where a domain exception could be mapped once instead of in every controller'.",
   "definitions": {{

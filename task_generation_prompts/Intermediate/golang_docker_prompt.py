@@ -1,4 +1,4 @@
-PROMPT_GOLANG_DOCKER_CONTEXT = """
+﻿PROMPT_GOLANG_DOCKER_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -319,7 +319,7 @@ Provide verification approaches that help candidates validate their optimization
       "Additional Go files as needed following standard project structure. NO COMMENTS."
   }},
   "outcomes": "Expected results after completion in 2-3 lines focusing on measurable Docker optimization improvements: dramatically reduced image size (800MB to <20MB), faster build times (3min to <30sec cached), quicker startup (<3sec), better resource efficiency, enhanced security. Use simple English with specific improvements.",
-  "pre_requisites": "Bullet-point list of tools and environment setup required. Mention Docker, Docker Compose, basic understanding of Golang REST APIs, understanding of Go compilation process, Docker performance analysis tools (docker stats, docker history, docker inspect), time measurement tools.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach focusing on Docker optimization strategies for Golang: implementing multi-stage builds, leveraging Go's static compilation, using build optimization flags, optimizing Go module caching, selecting minimal runtime base images, implementing proper layer ordering, configuring proper resource limits, adding security hardening, optimizing build context, implementing proper health checks. Include expected performance improvements with specific numbers.",
   "task_overview": [
     "3-4 concise bullet points matching the Task Overview from README.md",

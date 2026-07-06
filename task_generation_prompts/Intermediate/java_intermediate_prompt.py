@@ -1,4 +1,4 @@
-PROMPT_JAVA_CONTEXT = """
+﻿PROMPT_JAVA_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -127,7 +127,7 @@ The output should be a valid json schema:
       ...
   }},
   "outcomes": "Expected results after completion focusing on architectural quality, performance, and code organization. 3-4 lines describing both functional and architectural outcomes.",
-  "pre_requisites": "Bullet-point list of tools, libraries, and environment setup required. Include intermediate-level expectations like modern Java knowledge, design patterns understanding, testing familiarity, etc.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach with emphasis on architectural decisions and design patterns",
   "hints": "a single line hint focusing on architectural approach or design pattern that could be useful. These hints must NOT give away the answer, but guide towards good architectural thinking.",
   "definitions": {{

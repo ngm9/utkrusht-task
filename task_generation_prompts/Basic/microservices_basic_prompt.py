@@ -1,4 +1,4 @@
-PROMPT_MICROSERVICES_CONTEXT_BASIC = """
+﻿PROMPT_MICROSERVICES_CONTEXT_BASIC = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -173,7 +173,7 @@ Generate this script with the following EXACT structure — this is the required
   }},
   "outcomes": "Bullet-point list in simple language. Must include expected results after completion and one bullet explicitly stating: 'Write production-level clean code with best practices including proper design patterns, naming conventions, exception handling, logging and observability.'",
   "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem requiring a microservices solution, (2) the specific implementation or fix goal involving inter-service communication, service boundaries, or containerized deployment, and (3) the expected outcome emphasizing correctness, service isolation, and maintainability.",
-  "pre_requisites": "Bullet-point list of tools, libraries, environment setup, and knowledge required. Include Docker, Docker Compose, the chosen framework(s), REST API fundamentals, basic microservices concepts (service boundaries, inter-service communication, containerization).",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach describing main components and flow.",
   "hints": "Single line suggesting focus area. Example: 'Focus on clear service boundaries, proper error handling across HTTP calls, and health check endpoints for each service'",
   "definitions": {{

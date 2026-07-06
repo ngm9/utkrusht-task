@@ -1,4 +1,4 @@
-PROMPT_SYSTEM_DESIGN_SQL_CONTEXT_INTERMEDIATE = """
+﻿PROMPT_SYSTEM_DESIGN_SQL_CONTEXT_INTERMEDIATE = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -107,7 +107,7 @@ For INTERMEDIATE level SQL System Design, the questions should test:
    }},
    "outcomes": "Expected design document components in 2-3 lines using simple language. Should mention SQL-specific design artifacts (e.g., schema architecture, partitioning strategy, indexing design, data pipeline architecture).",
    "short_overview": "Bullet-point list in simple language describing: (1) the high-level SQL/data engineering design challenge, (2) what the candidate must produce (fill in DESIGN.md), (3) key evaluation criteria (database architecture knowledge, trade-off reasoning, completeness, clarity)",
-   "pre_requisites": "Bullet-point list of knowledge areas needed. Must include SQL-specific items: understanding of relational database architecture (PostgreSQL preferred), experience with schema design and normalization (3NF, star schema, dimensional modeling), familiarity with indexing strategies (B-tree, GIN, partial, covering indexes), knowledge of partitioning and sharding concepts, understanding of transaction isolation levels and consistency patterns, experience with ETL/data pipeline design, awareness of query optimization and EXPLAIN plan interpretation, ability to create architecture diagrams in text or mermaid format.",
+   "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
    "answer": "Thorough reference design approach — the evaluator's answer key. Must include: recommended schema design with rationale (e.g., 'star schema with date-based range partitioning on the fact table because analytical queries always filter by date range'), specific indexing strategy, partitioning approach, data pipeline design, consistency and transaction strategy, performance optimization approach with SQL-specific patterns (materialized views, connection pooling), and operational considerations (monitoring, migration strategy). This should be 4-6 paragraphs covering each DESIGN.md section.",
    "hints": "A single line nudge toward the right design direction using SQL/data engineering context. Example: 'Consider how range partitioning on the time dimension combined with materialized views could address both the ingestion throughput and analytical query latency requirements.'",
    "definitions": {{

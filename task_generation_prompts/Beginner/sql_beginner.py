@@ -1,4 +1,4 @@
-PROMPT_SQL_BEGINNER_CONTEXT = """
+﻿PROMPT_SQL_BEGINNER_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -109,7 +109,7 @@ Based on real-world scenarios, create an SQL beginner task that:
   }},
   "outcomes": "Bullet-point list in simple language. Expected results after completion (e.g. faster queries, correct results, indexes in place).",
   "short_overview": "Bullet-point list: (1) business context and problem, (2) what the candidate must do in SQL, (3) expected outcome.",
-  "pre_requisites": "Bullet-point list of tools, knowledge, and environment required to complete the beginner-level task. Mention things like Docker, Docker Compose, PostgreSQL client tools (pgAdmin/DBeaver/psql), basic SQL knowledge, etc.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach focusing on beginner database/query strategies for the given simple issues. No full code.",
   "hints": "Single line suggesting focus area. Must NOT give away the answer, but gently nudge the candidate toward simple SQL/database analysis.",
   "definitions": {{

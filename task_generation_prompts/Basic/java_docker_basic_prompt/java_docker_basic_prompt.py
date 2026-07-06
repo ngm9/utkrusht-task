@@ -1,4 +1,4 @@
-PROMPT_DOCKER_JAVA_BASIC_CONTEXT = """
+﻿PROMPT_DOCKER_JAVA_BASIC_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -204,7 +204,7 @@ The README must be concise and candidate-facing with these sections:
   },
   "outcomes": "Bullet-point list in simple language. Include expected behavior after completion. One bullet MUST explicitly state: 'Write production-level clean code with best practices including proper design patterns, naming conventions, exception handling, logging and observability.'",
   "short_overview": "Bullet-point list in simple language describing the business problem, the Java implementation goal, and the expected outcome.",
-  "pre_requisites": "Bullet-point list including Java 11+ or 17+, Maven or Gradle, IDE, Git, and basic command-line familiarity.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach focused on Java structure, collections, exception handling, tests, and portable run behavior.",
   "hints": "A single-line hint that nudges toward clean Java structure and consistent execution behavior without revealing the solution.",
   "definitions": {

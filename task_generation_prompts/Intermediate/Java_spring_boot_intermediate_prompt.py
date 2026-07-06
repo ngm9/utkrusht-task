@@ -1,4 +1,4 @@
-PROMPT_JAVA_SPRING_BOOT_CONTEXT_INTERMEDIATE = """
+﻿PROMPT_JAVA_SPRING_BOOT_CONTEXT_INTERMEDIATE = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -133,7 +133,7 @@ The output should be a valid json schema:
       ...
   }},
   "outcomes": "Bullet-point list of expected results after completion, using simple, non-technical language. Each bullet must describe ONE clear deliverable or requirement and be understandable to non-engineers (e.g. HR or recruiters). One bullet MUST explicitly state: 'Write production level clean code with best practices including proper design patterns, naming conventions, exception handling, logging and observability.'",
-  "pre_requisites": "Bullet-point list of tools, libraries, and environment setup required. Include intermediate-level expectations like Spring Boot knowledge, REST API design, JPA/Hibernate understanding, testing familiarity, database basics, etc.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach for solving task",
   "hints": "a single line hint focusing on Spring Boot architectural approach or design pattern that could be useful. These hints must NOT give away the answer, but guide towards good Spring Boot architectural thinking.",
   "definitions": {{

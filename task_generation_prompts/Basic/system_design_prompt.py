@@ -1,4 +1,4 @@
-PROMPT_SYSTEM_DESIGN_CONTEXT = """
+﻿PROMPT_SYSTEM_DESIGN_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -96,7 +96,7 @@ For BASIC level System Design, the questions should test:
    }},
    "outcomes": "Expected design document components in 2-3 lines using simple language. Example: 'The candidate produces a complete design document covering component architecture, API contracts, data model, and trade-off analysis for the notification service.'",
    "short_overview": "Bullet-point list in simple language describing: (1) the high-level design challenge, (2) what the candidate must produce (fill in DESIGN_TEMPLATE.md), (3) key evaluation criteria (clarity, trade-off reasoning, completeness)",
-   "pre_requisites": "Bullet-point list of knowledge areas needed. Example: Understanding of REST API design, basic database concepts (SQL/NoSQL), ability to create architecture diagrams in text or mermaid format, familiarity with common web architecture patterns (client-server, request-response, message queues).",
+   "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
    "answer": "High-level reference design approach — what a good design would include. This is the evaluator's answer key, NOT shown to candidates. Cover: recommended component breakdown, suggested data model, key trade-off decisions and their rationale, expected API contracts.",
    "hints": "A single line nudge toward the right design direction without giving away the answer. Example: 'Consider how decoupling the notification dispatch from the main request flow could improve response times.'",
    "definitions": {{

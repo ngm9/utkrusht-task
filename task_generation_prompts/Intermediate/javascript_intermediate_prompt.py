@@ -1,4 +1,4 @@
-PROMPT_JAVASCRIPT_CONTEXT_INTERMEDIATE = """
+﻿PROMPT_JAVASCRIPT_CONTEXT_INTERMEDIATE = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -116,7 +116,7 @@ Based on the real-world scenarios provided in following conversations, create a 
   }}}},
   "outcomes": "Bullet-point list of expected results after completion, using simple, non-technical language. Each bullet must describe ONE clear deliverable or requirement and be understandable to non-engineers (e.g. HR or recruiters). One bullet MUST explicitly state: 'Write production level clean code with best practices including proper design patterns, naming conventions, exception handling, logging and observability.'",
   "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific JavaScript implementation or fix goal, and (3) the expected outcome emphasizing correctness, structure, and maintainability.",
-  "pre_requisites": "Bullet-point list of tools, libraries, environment setup, and knowledge required. Include intermediate-level expectations like modern browser or Node.js 18+, ES6+ modules, async/await patterns, DOM APIs, design patterns, performance optimization concepts, error handling strategies, security awareness (XSS, CSRF).",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach describing main components and flow.",
   "hints": "A single line hint focusing on JavaScript architectural approach or design pattern that could be useful. These hints must NOT give away the answer, but guide towards good architectural thinking.",
   "definitions": {{{{

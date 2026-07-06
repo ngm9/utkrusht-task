@@ -1,4 +1,4 @@
-PROMPT_MYSQL_BASIC_CONTEXT = """
+﻿PROMPT_MYSQL_BASIC_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -121,7 +121,7 @@ Generate a MySQL Basic task that:
   }},
   "outcomes": "Bullet-point list in simple language. Each bullet is one of the listed queries restated as an outcome (e.g. 'Correctly returns Y/N for the orgmember check on history_id = 12345', 'Correctly lists every event_id = 59 participant with the requested columns', etc.). One bullet per query.",
   "short_overview": "Bullet-point list: (1) business context (Nerdium fundraising platform per the embedded spec), (2) what the candidate must do (write all listed MySQL queries in solutions.sql against the provided schema), (3) expected outcome (all queries return correct results when run against the seeded database).",
-  "pre_requisites": "Bullet-point list of tools and knowledge: Docker, Docker Compose, MySQL 8 client (mysql CLI, MySQL Workbench, DBeaver, DataGrip), basic SQL (SELECT, JOIN, GROUP BY/HAVING, CASE WHEN, aggregates, arithmetic).",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach for each listed query (one short sentence per query covering join paths, filters, and aggregation — no full SQL).",
   "hints": "Single line suggesting focus areas (e.g. 'Read the schema carefully, mind the d_status enum and the is_complete flag, and use (d_amount - d_refund_amount) for net donation totals.'). Must NOT give away the answer.",
   "definitions": {{

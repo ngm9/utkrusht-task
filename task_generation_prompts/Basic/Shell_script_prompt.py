@@ -1,4 +1,4 @@
-PROMPT_SHELL_SCRIPT_BASIC_CONTEXT = """
+﻿PROMPT_SHELL_SCRIPT_BASIC_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -112,7 +112,7 @@ Based on the real-world scenarios provided in following conversations, create a 
   }},
   "outcomes": "Bullet-point list of expected results after completion, using simple, non-technical language. Each bullet must describe ONE clear deliverable or requirement and be understandable to non-engineers (e.g. HR or recruiters). One bullet MUST explicitly state: 'Write production-level clean code with best practices including proper design patterns, naming conventions, exception handling, logging and observability.'",
   "short_overview": "Bullet-point list in simple language describing: (1) the high-level operational or business problem, (2) the specific shell scripting implementation or fix goal, and (3) the expected outcome emphasizing correctness, reliability, and maintainability.",
-  "pre_requisites": "Bullet-point list of tools, environment, and knowledge required to complete the task. Mention things like Bash 4.0+, Unix/Linux system, basic command-line tools (grep, sed, awk, find), text editor, Git, understanding of file permissions, etc.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach describing main components and flow.",
   "hints": "Single line suggesting focus area. Example: 'Focus on chaining Unix text processing tools efficiently and handling edge cases like empty files or missing directories'",
   "definitions": {{

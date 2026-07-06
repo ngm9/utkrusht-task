@@ -1,4 +1,4 @@
-PROMPT_SYSTEM_DESIGN_JAVA_CONTEXT_INTERMEDIATE = """
+﻿PROMPT_SYSTEM_DESIGN_JAVA_CONTEXT_INTERMEDIATE = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -108,7 +108,7 @@ For INTERMEDIATE level System Design, the questions should test the candidate's 
    }},
    "outcomes": "Expected design document components in 2-3 lines using simple language. Should mention design artifacts (e.g., service architecture, scaling strategy, technology choices with justification).",
    "short_overview": "Bullet-point list in simple language describing: (1) the high-level design challenge, (2) what the candidate must produce (fill in DESIGN.md), (3) key evaluation criteria (trade-off reasoning, technology choices with justification, completeness, clarity)",
-   "pre_requisites": "Bullet-point list of knowledge areas needed: understanding of web frameworks and service architecture, experience with databases and data access patterns, familiarity with message brokers and event-driven systems, knowledge of concurrency and async processing, understanding of system scaling and resource management, ability to create architecture diagrams in text or mermaid format.",
+   "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
    "answer": "Thorough reference design approach — the evaluator's answer key. Must include: recommended technology/framework choices with rationale, specific data access strategy, concurrency approach, inter-service communication design, event schema examples, failure handling patterns, and deployment considerations. This should be 4-6 paragraphs covering each DESIGN.md section. Note: this is for the EVALUATOR only — candidates never see this.",
    "hints": "A single line nudge toward the right design direction. Example: 'Consider how event-driven processing and async execution could decouple the write path from downstream processing.'",
    "definitions": {{

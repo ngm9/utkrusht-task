@@ -1,4 +1,4 @@
-PROMPT_REACT_NATIVE_BASIC_CONTEXT = """
+﻿PROMPT_REACT_NATIVE_BASIC_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -126,7 +126,7 @@ Based on real-world scenarios, create a React Native task that:
   }},
   "outcomes": "Bullet-point list in simple language. Must include expected results after completion and one bullet explicitly stating: 'Write production-level clean code with best practices including proper naming conventions, error handling, and code organization.'",
   "short_overview": "Bullet-point list in simple language describing: (1) the business context and problem, (2) the specific implementation goal, and (3) the expected outcome.",
-  "pre_requisites": "Bullet-point list of tools, libraries, environment setup, and knowledge required. example: Node.js 18+, npm/yarn, Expo CLI, Expo Go app (on phone or emulator), Git, JavaScript/React Native knowledge, etc.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach",
   "hints": "Single line suggesting focus area. Must NOT give away the answer, but gently nudge the candidate in the right direction.",
   "definitions": {{

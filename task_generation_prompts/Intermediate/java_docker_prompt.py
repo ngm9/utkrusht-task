@@ -1,4 +1,4 @@
-PROMPT_JAVA_DOCKER_INTERMEDIATE_CONTEXT = """
+﻿PROMPT_JAVA_DOCKER_INTERMEDIATE_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -332,7 +332,7 @@ Provide verification approaches that help candidates validate their solutions wi
       "Additional Java files as needed following Spring Boot structure (all optimized)"
   }},
   "outcomes": "Expected results after completion in 2-3 lines focusing on successful Docker containerization, image optimization, and deployment efficiency. Use simple english.",
-  "pre_requisites": "Bullet-point list of tools and environment setup required. Mention Docker, Docker Compose, basic understanding of Java Spring Boot (no Java expertise needed), Git, Docker monitoring tools, etc. Focus on Docker requirements.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach focusing primarily on Docker containerization strategies: multi-stage builds, image optimization, layer caching, resource configuration, networking, volumes, health checks, security practices. Minimal Java configuration changes mentioned.",
   "hints": "A single line hint suggesting that candidates should focus on creating an optimized, production-ready Docker setup. Must NOT give away specific Docker implementations but gently nudge toward Docker best practices.",
   "definitions": {{

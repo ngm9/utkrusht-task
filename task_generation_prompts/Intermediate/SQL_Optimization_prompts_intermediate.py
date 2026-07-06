@@ -1,4 +1,4 @@
-PROMPT_FASTAPI_POSTGRESQL_INPUT_AND_ASK = """
+﻿PROMPT_FASTAPI_POSTGRESQL_INPUT_AND_ASK = """
 Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Python FastAPI and PostgreSQL assessment task.
 
 INPUT COMPETENCIES:
@@ -333,7 +333,7 @@ NEVER generate empty content - always provide substantial business context that 
       "data/sample_data.sql": "EMPTY FILE - Candidate will write comprehensive sample data insertion scripts with realistic business data"
   }},
   "outcomes": "Expected results after completion in 2-3 lines focusing on functional complex database schema design, successful API integration with sophisticated business logic, and complete endpoint implementations with proper error handling. Use simple english.",
-  "pre_requisites": "Bullet-point list of tools, libraries, and environment setup required to complete the task. Mention things like Python 3.10+, Docker, Docker Compose, PostgreSQL client tools (pgAdmin/DBeaver), API testing tools (Postman/curl), Git, pip, virtual environment support, intermediate knowledge of SQL joins and subqueries, FastAPI routing and middleware concepts, etc.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach focusing on both complex database schema design principles AND comprehensive API endpoint implementation strategy for the given business requirements, including advanced SQL techniques and FastAPI best practices",
   "hints": "A single line hint on what a good approach to solve both the database schema design AND API implementation task could include. These hints must NOT give away the answer, but gently nudge the candidate toward good database design principles AND proper API development practices for intermediate-level complexity.",
   "definitions": {{
@@ -605,7 +605,7 @@ Write in clear and comprehensive language so intermediate-level candidates clear
       
   }},
   "outcomes": "Expected results after completion in 2-3 lines focusing on measurable complex performance improvements and optimized advanced database operations requiring intermediate-level skills. Use simple english.",
-  "pre_requisites": "Bullet-point list of tools, libraries, and environment setup required to complete the intermediate-level optimization task. Mention things like Python 3.10+, Docker, Docker Compose, PostgreSQL client tools (pgAdmin/DBeaver), Git, pip, virtual environment support, advanced query analysis tools (EXPLAIN ANALYZE), SQLAlchemy ORM knowledge, intermediate PostgreSQL concepts, etc.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach focusing on advanced database optimization strategies and intermediate-level performance tuning techniques for the given complex performance issues",
   "hints": "A single line hint on what a good intermediate-level approach to analyze and optimize the complex database performance could include. These hints must NOT give away the specific optimizations needed, but gently nudge the candidate toward advanced database performance analysis practices suitable for intermediate-level skills.",
   "definitions": {{

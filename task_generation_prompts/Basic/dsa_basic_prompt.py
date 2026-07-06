@@ -1,4 +1,4 @@
-PROMPT_DSA_BASIC_CONTEXT = """
+﻿PROMPT_DSA_BASIC_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -133,7 +133,7 @@ Based on real-world scenarios, create a DSA task that:
   }},
   "outcomes": "Bullet-point list in simple language describing the expected results after completion (e.g., the cache evicts truly old entries, the duplicate finder runs in O(n) on a 50K-row test under 2s, the bracket validator correctly fails `([)]`, the tier lookup uses binary search and validates sorted input).",
   "short_overview": "Bullet-point list of exactly 3 short bullets (one sentence each, ~15-25 words). Bullet 1: the business context and the existing data-structure / algorithmic problem. Bullet 2: the specific structural / algorithmic change the candidate must apply. Bullet 3: the expected outcome including the complexity / latency target. Do NOT prefix bullets with bold mini-titles like '**Business context:**' — start each bullet directly with the content.",
-  "pre_requisites": "Bullet-point list of tools, libraries, environment setup, and knowledge required for the language the scenario implies (e.g. Python 3.10+ + pip + pytest; or Node 18+ + npm + jest/vitest; or JDK 17+ + Maven/Gradle + JUnit; or Go 1.21+ with the built-in test runner). Always include Git and basic DSA knowledge (hash maps, stacks, queues, sorting, binary search, big-O reasoning).",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach — the chosen data structure and target complexity, expressed in language-neutral terms (ordered map / FIFO queue / stack / sorted-search helper) rather than language-specific stdlib symbols. Do not give the exact code.",
   "hints": "Single line guiding the candidate toward the right structural insight (e.g. 'Think about which built-in primitive can keep both insertion order and O(1) lookup at once' or 'Look for a way to reduce the linear scan to logarithmic on already-sorted data'). Must NOT name the exact data structure or any language-specific stdlib symbol.",
   "definitions": {{
