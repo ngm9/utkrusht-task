@@ -21,7 +21,7 @@ load_dotenv()
 TASK_SELECT_FIELDS = (
     "task_id, criterias, task_blob, is_deployed, created_at, deployment_info, "
     "pre_requisites, answer, readme_content, eval_info, solutions, "
-    "is_shared_infra_required"
+    "is_shared_infra_required, template_id"
 )
 
 
@@ -55,6 +55,13 @@ def get_repo_url(task_id: str, env: str = "dev") -> Optional[str]:
     if not task:
         return None
     return task.get("task_blob", {}).get("resources", {}).get("github_repo")
+
+
+def get_template_id(task_id: str, env: str = "dev") -> Optional[str]:
+    task = get_task(task_id, env)
+    if not task:
+        return None
+    return task.get("template_id")
 
 
 def get_e2b_sandbox_id(task_id: str, env: str = "dev") -> Optional[str]:

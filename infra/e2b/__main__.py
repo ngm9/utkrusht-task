@@ -38,8 +38,8 @@ def cli():
 @click.option("--task-id", "-t", required=True, help="Task UUID in Supabase")
 @click.option(
     "--template",
-    default="utkrusht-python-sql-dev",
-    help="E2B template name (default: utkrusht-python-sql-dev)",
+    default=None,
+    help="E2B template name. If omitted, reads template_id from the task row in Supabase.",
 )
 @click.option(
     "--env",
@@ -63,6 +63,17 @@ def deploy_task(task_id, template, env, timeout_hours):
     if not repo_url:
         click.echo(f"No repo_url found for task {task_id} in {env}", err=True)
         raise SystemExit(1)
+
+    if not template:
+        template = supabase_helpers.get_template_id(task_id, env)
+    if not template:
+        click.echo(
+            f"No template_id found for task {task_id} in {env}. "
+            "Pass --template explicitly.",
+            err=True,
+        )
+        raise SystemExit(1)
+    click.echo(f"Using template: {template}")
 
     try:
         handle = sandbox_manager.create_and_setup(

@@ -54,8 +54,10 @@ def _iter_filesystem_prompts():
     """
     candidates = []
     for level in ("Basic", "Intermediate", "Beginner", "Advanced", "Expert"):
-        candidates.append(_PROMPT_ROOT / level)
+        # Agent-generated first (lower priority); curated nested second (higher priority).
+        # _build_prompt_registry loads this before flat-curated so flat-curated wins overall.
         candidates.append(_AGENT_PROMPTS_ROOT / level)
+        candidates.append(_PROMPT_ROOT / level)
     for level_dir in candidates:
         if not level_dir.exists():
             continue
@@ -95,18 +97,20 @@ def _build_prompt_registry() -> tuple[dict, dict]:
             for key in module.PROMPT_REGISTRY:
                 shape_registry[key] = shape
 
-    # 1) Flat-style modules under <Level>/<file>.py via the existing package walk.
-    for pkg in [_basic_pkg, _inter_pkg, _beginner_pkg]:
-        for _, module_name, _ in pkgutil.iter_modules(pkg.__path__):
-            module = importlib.import_module(f"{pkg.__name__}.{module_name}")
-            _absorb(module)
-    # 2) Per-slug nested modules (curated + agent_generated_prompts) via filesystem walk.
+    # 1) Per-slug nested modules via filesystem walk: agent-generated first (lowest priority),
+    #    then curated nested (medium priority). See _iter_filesystem_prompts for order.
     for path in _iter_filesystem_prompts():
         try:
             module = _load_module_from_path(f"_pg_{path.parent.name}", path)
         except Exception:
             continue
         if module is not None:
+            _absorb(module)
+    # 2) Flat-style curated modules under <Level>/<file>.py — loaded LAST so hand-written
+    #    curated prompts always win over agent-generated ones.
+    for pkg in [_basic_pkg, _inter_pkg, _beginner_pkg]:
+        for _, module_name, _ in pkgutil.iter_modules(pkg.__path__):
+            module = importlib.import_module(f"{pkg.__name__}.{module_name}")
             _absorb(module)
     return registry, shape_registry
 
