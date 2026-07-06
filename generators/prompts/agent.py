@@ -36,6 +36,7 @@ from generators.prompts.input_files import build_detailed_skill_signal
 from generators.prompts.retriever import retrieve_references, RetrievalResult
 from generators.prompts.shape_classifier import ShapeDecision, classify_task_shape
 from generators.prompts.validator import ValidationResult, validate_prompt_file
+from generators.task.runtime_resolver import resolve_plan
 
 load_dotenv()
 
@@ -176,8 +177,7 @@ class GeneratePromptSignature(dspy.Signature):
           ### Docker-compose Instructions
           ### <init_database.sql / Redis Configuration / etc.> Instructions
           ### Run.sh Instructions
-      ## kill.sh file instructions
-      ### Dockerfile Instructions          (omit if no app container)
+          ### Dockerfile Instructions          (omit if no app container)
       <"The output should be a valid json schema:" bullet list of files>
       ## Code file requirements
       ## .gitignore INSTRUCTIONS
@@ -224,11 +224,6 @@ class GeneratePromptSignature(dspy.Signature):
         same user/database.
       - "**SECURITY-CRITICAL**: ports MUST be bound to localhost only using
         `127.0.0.1:<port>:<port>`" — for every datastore exposed to the host
-      - The 9-numbered-step `## kill.sh file instructions` block — copy its
-        shape (stop containers, remove volumes, remove networks, force-remove
-        images, `docker system prune -a --volumes -f`, `rm -rf /root/task`,
-        "|| true" for idempotency, print logs at every step, final
-        "Cleanup completed successfully!" message)
       - "Candidates are permitted and encouraged to use any external resources
         they find helpful, including but not limited to Google, Stack Overflow,
         <stack> documentation, and AI-powered tools, agentic IDEs, or Large
@@ -259,6 +254,13 @@ class GeneratePromptSignature(dspy.Signature):
     Access`, or `Performance Issues` as separate sections. The README must
     NOT contain `<DROPLET_IP>` placeholders or any database-connection
     details (host, port, username, password, client-tool suggestions).
+    Anywhere connection details DO legitimately appear (docker-compose
+    healthchecks, run.sh readiness probes, How to Verify commands), the host
+    must use `localhost` — the task runs inside an E2B sandbox where
+    datastore ports are bound to `127.0.0.1` and the candidate connects from
+    the sandbox terminal (e.g. `redis-cli -h localhost -p 6379`,
+    `psql -h localhost -p 5432`). Never use a droplet IP or any remote-host
+    placeholder — there is no droplet.
 
     Section size + framing rules — the generated prompt's README.md
     INSTRUCTIONS section MUST embed ALL of the following so the downstream
@@ -284,10 +286,18 @@ class GeneratePromptSignature(dspy.Signature):
           – How to Verify: 4-6 bullets max.
 
       • Per-section framing rules the generated prompt MUST include:
-          – Objectives: "Frame objectives around outcomes rather than
-            specific technical implementations. Objectives describe the
-            'what' and 'why', never the 'how'." Each bullet states an
-            observable end-state, not a step or an API/library to use.
+          – Objectives: "Each objective must give the candidate enough context
+            to understand the problem and start investigating — without
+            revealing the specific fix. A good objective names: (1) what is
+            broken or missing, (2) what observable impact that has on the
+            system or user, and (3) what a resolved state looks like. It does
+            NOT name the API, library, pattern, or algorithm that solves it.
+            Objectives describe the 'what' and 'why', never the 'how'."
+            Each bullet should be a full, context-rich sentence — not a
+            two-word label. BAD: 'Improve query performance.' GOOD: 'The
+            product search endpoint returns results in 4-6 seconds under
+            normal load; after your changes it should respond in under 500ms
+            for typical query patterns.'
           – Helpful Tips: "Provide practical guidance without revealing
             specific implementations." Each bullet starts with an action
             word: "Consider", "Think about", "Explore", "Review",
@@ -426,22 +436,24 @@ class GeneratePromptSignature(dspy.Signature):
       (a) `task_shape == "infra"` → the scenario needs an external service
           (DB / cache / queue / broker / search). The generated prompt MUST
           include `docker-compose.yml` for the datastore(s) the scenario
-          actually exercises, `run.sh` using `docker compose up -d`, and
-          `kill.sh` using `docker compose down`. Decide the specific
-          datastores by READING the scenario text in `detailed_skill_signal`
-          — do not invent extras. The `datastores` input list (if provided)
-          is informational only. `run.sh` is a READINESS/self-check, NOT the
-          grader: it brings the datastore(s) up, waits for health, verifies the
-          starter compiles/loads with the runtime's BUILD command (e.g.
-          `cargo build`, `go build`, `npm ci && npm run build`, an import
-          smoke), then exits 0 — on the UNSOLVED starter. It MUST NOT run the
-          grader test suite (designed to fail until the candidate solves the
-          task); the candidate/grader runs the tests separately.
+          actually exercises and `run.sh` using `docker compose up -d`.
+          No `kill.sh` is needed — E2B sandboxes are destroyed as a whole
+          when the session ends, so container cleanup is automatic.
+          Decide the specific datastores by READING the scenario text in
+          `detailed_skill_signal` — do not invent extras. The `datastores`
+          input list (if provided) is informational only. `run.sh` is a
+          READINESS/self-check, NOT the grader: it brings the datastore(s)
+          up, waits for health, verifies the starter compiles/loads with the
+          runtime's BUILD command (e.g. `cargo build`, `go build`,
+          `npm ci && npm run build`, an import smoke), then exits 0 — on the
+          UNSOLVED starter. It MUST NOT run the grader test suite (designed
+          to fail until the candidate solves the task); the candidate/grader
+          runs the tests separately.
 
       (b) `task_shape == "non_infra"` → pure-runtime / language-level /
           algorithmic / async-concurrency / in-process / UI / frontend
           work. The generated prompt MUST NOT include `docker-compose.yml`,
-          `init_database.sql`, `kill.sh`, or any datastore configuration.
+          `init_database.sql`, or any datastore configuration.
           Ship the task as a local project using the runtime's native
           package manifest (e.g. `package.json`, `pyproject.toml`,
           `pom.xml`, `Cargo.toml`, `build.gradle`) plus source + tests,
@@ -486,9 +498,9 @@ class GeneratePromptSignature(dspy.Signature):
       • `persona="frontend"` → runtime-native manifest, no Docker,
         browser-side only.
       • `persona="backend"` + scenario does NOT need an external service
-        (per the rule above) → no Docker, no compose, no `kill.sh`. `run.sh`
-        is optional — the candidate runs the task locally with the runtime's
-        native test command against the runtime's native manifest.
+        (per the rule above) → no Docker, no compose. `run.sh` is optional —
+        the candidate runs the task locally with the runtime's native test
+        command against the runtime's native manifest.
       • `persona="sdet"` → test suite shape; template ships the runner.
 
     ─────────────────────────────────────────────────────────────────────────
@@ -565,10 +577,10 @@ class GeneratePromptSignature(dspy.Signature):
     proficiency: str = dspy.InputField(desc="Target proficiency level (BASIC/BEGINNER/INTERMEDIATE)")
     task_shape: str = dspy.InputField(
         desc='Authoritative infra decision: exactly "infra" or "non_infra". '
-             '"infra" → MUST include docker-compose / kill.sh / run.sh for the '
-             "scenario's datastores. \"non_infra\" → MUST NOT include any "
-             "docker-compose / init_database.sql / kill.sh — ship a pure local "
-             "project using the runtime's native manifest + test command. "
+             '"infra" → MUST include docker-compose + run.sh for the scenario\'s '
+             'datastores (no kill.sh — E2B sandboxes are destroyed as a whole). '
+             '"non_infra" → MUST NOT include docker-compose or init_database.sql — '
+             "ship a pure local project using the runtime's native manifest + test command. "
              "See HARD CONSTRAINT #7 for the full rules."
     )
     runtime: str = dspy.InputField(
@@ -637,9 +649,9 @@ class VerifyPromptSignature(dspy.Signature):
 
          When `task_shape == "non_infra"`:
            - REJECT if the prompt ships a `docker-compose.yml`,
-             `init_database.sql`, `kill.sh`, or any datastore service
-             definition. Non-infra tasks MUST be pure local projects using
-             the runtime's native manifest + test command.
+             `init_database.sql`, or any datastore service definition.
+             Non-infra tasks MUST be pure local projects using the
+             runtime's native manifest + test command.
 
          When `task_shape == "infra"`:
            - REJECT if the prompt is missing a `docker-compose.yml` for the
@@ -671,13 +683,12 @@ class VerifyPromptSignature(dspy.Signature):
                 `## README.md INSTRUCTIONS`,
                 `## REQUIRED OUTPUT JSON STRUCTURE`,
                 `## CRITICAL REMINDERS` (or `## CRITICAL NOTES`).
-              The INFRA-ONLY sections `## Infrastructure Requirements` and
-              `## kill.sh file instructions` are REQUIRED only when
-              `task_shape == "infra"`. For `task_shape == "non_infra"` these
-              two sections MUST be ABSENT — a non-infra prompt that includes
-              them is a violation of HARD CONSTRAINT #7 (no docker-compose,
-              no kill.sh for pure-local projects). Do not flag their absence
-              on the non_infra path.
+              The INFRA-ONLY section `## Infrastructure Requirements` is
+              REQUIRED only when `task_shape == "infra"`. For
+              `task_shape == "non_infra"` this section MUST be ABSENT — a
+              non-infra prompt that includes it is a violation of HARD
+              CONSTRAINT #7 (no docker-compose for pure-local projects).
+              Do not flag its absence on the non_infra path.
            c. The README uses a drift name like "Guidance", "Tips" (without
               "Helpful"), "Hints", or "Recommendations" instead of the
               canonical `Helpful Tips`.
@@ -724,8 +735,8 @@ class VerifyPromptSignature(dspy.Signature):
     task_shape: str = dspy.InputField(
         desc='Authoritative infra decision: "infra" or "non_infra". Gate the '
              "STRUCTURE MISMATCH check on this value — non_infra must NOT ship "
-             "docker-compose/kill.sh, infra MUST include docker-compose for the "
-             "scenario's datastores."
+             "docker-compose/init_database.sql, infra MUST include docker-compose "
+             "for the scenario's datastores (no kill.sh required in either case)."
     )
     runtime: str = dspy.InputField(
         desc="Primary language runtime of the matched template (e.g. python, node)"
@@ -888,14 +899,6 @@ class PromptGeneratorAgent(dspy.Module):
         #               resolver entirely; references + generate is all we need
         #   infra     → fetch similar_tasks, future template resolver, etc.
         logger.info("STEP 3 / shape_classifier.py — classifying task shape")
-        shape_decision: ShapeDecision = classify_task_shape(
-            competencies_str=comp_str,
-            competency_scopes=scopes_str,
-            detailed_skill_signal=skill_signal,
-            user_directive=directive,
-        )
-        logger.info("  → task_shape = %s", shape_decision.task_shape)
-        logger.info("  → reason     = %s", shape_decision.reason)
         # `task_shape_override` ("infra"/"non_infra") forces the shape and SKIPS the
         # classifier — the "force infra" path (run_pipeline --task-shape). The
         # matching scenario steering happens in stage 02; when forcing infra, the
@@ -918,15 +921,17 @@ class PromptGeneratorAgent(dspy.Module):
                 competencies_str=comp_str,
                 competency_scopes=scopes_str,
                 detailed_skill_signal=skill_signal,
+                user_directive=directive,
             )
             logger.info("  → task_shape = %s", shape_decision.task_shape)
             logger.info("  → reason     = %s", shape_decision.reason)
         task_shape = shape_decision.task_shape
 
-        # Resolver is still a no-op at prompt-gen time. The LLM honours
-        # `task_shape` directly (HARD CONSTRAINT #7), so runtime / persona /
-        # frameworks stay empty. For a FORCED infra task we DO seed `datastores`
-        # with the chosen service so the generated prompt boots it.
+        # Runtime / persona / frameworks stay empty for non-infra tasks — the
+        # LLM honours `task_shape` directly (HARD CONSTRAINT #7). For infra
+        # tasks STEP 3.5 resolves the template so the prompt LLM gets real
+        # values. For a FORCED infra task we seed `datastores` with the chosen
+        # service so the generated prompt boots it.
         template = None
         persona = ""
         runtime = ""
@@ -934,6 +939,35 @@ class PromptGeneratorAgent(dspy.Module):
         cap_datastores: list[str] = [_infra_service] if _infra_service else []
         if _infra_service:
             logger.info("  → forced-infra service hint: datastores=%s", cap_datastores)
+
+        if task_shape == "infra":
+            logger.info("STEP 3.5 — resolving template plan for infra task")
+            try:
+                _plan = resolve_plan(competencies)
+                if _plan.template is not None:
+                    runtime = _plan.template.primary_runtime
+                    persona = _plan.match.persona or ""
+                    cap_frameworks = _plan.template.capabilities.get("frameworks", [])
+                    # keep the forced-infra service hint if the template
+                    # declares no datastores of its own
+                    _tpl_datastores = _plan.template.capabilities.get("datastores", [])
+                    cap_datastores = _tpl_datastores or cap_datastores
+                    template = _plan.template
+                    logger.info(
+                        "  → template resolved: runtime=%s persona=%s "
+                        "frameworks=%s datastores=%s",
+                        runtime, persona, cap_frameworks, cap_datastores,
+                    )
+                else:
+                    logger.info(
+                        "  → no template resolved for infra task "
+                        "(no_match or build failed) — runtime/frameworks stay empty"
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "STEP 3.5: resolve_plan raised unexpectedly: %s "
+                    "— continuing with empty template info", exc
+                )
 
         # ─── STEP 4: retriever (reference prompts) ────────────────────
         logger.info("STEP 4 / retriever.py — running fallback ladder "

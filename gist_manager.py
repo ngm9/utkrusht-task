@@ -18,23 +18,32 @@ Commands:
                              Tasks enabled in prod → enabled in dev.
                              All other dev tasks → is_enabled=False.
 
+  sync-readme                For all tasks with is_shared_infra_required=True, fetch
+           --env dev|prod|both  the README.md from github_repo and update github_gist
+           [--dry-run]          to match (only the README file is changed; all other
+                             gist files are left untouched).
+
 Usage examples:
   python gist_manager.py sync-prod-to-dev
   python gist_manager.py create-prod-missing-gists
   python gist_manager.py create --task-ids abc123 def456 --env dev
   python gist_manager.py create --task-ids abc123 --env prod --force
   python gist_manager.py sync-is-enabled
+  python gist_manager.py sync-readme --env both
+  python gist_manager.py sync-readme --env prod --dry-run
 """
 
 import argparse
+import base64
 import os
 import sys
 
+import requests
 from dotenv import load_dotenv
 from supabase import Client, create_client
 
 from infra.logger_config import logger
-from infra.utils import create_gist_from_template
+from infra.utils import create_gist_from_template, get_gist_headers, get_repo_headers, parse_github_repo_url
 
 load_dotenv()
 
@@ -466,6 +475,139 @@ def sync_is_enabled_to_dev() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Command 5: sync README from github_repo → github_gist for infra tasks
+# ---------------------------------------------------------------------------
+
+def _fetch_readme_from_repo(owner: str, repo: str, token: str) -> str | None:
+    """Return the decoded content of README.md from a GitHub repo, or None."""
+    headers = get_repo_headers(token)
+    for filename in ("README.md", "readme.md", "Readme.md"):
+        url = f"https://api.github.com/repos/{owner}/{repo}/contents/{filename}"
+        try:
+            resp = requests.get(url, headers=headers, timeout=15)
+            if resp.status_code == 200:
+                data = resp.json()
+                return base64.b64decode(data["content"]).decode("utf-8")
+        except Exception as exc:
+            logger.debug("Could not fetch %s from %s/%s: %s", filename, owner, repo, exc)
+    return None
+
+
+def _patch_gist_readme(gist_url: str, readme_content: str, token: str) -> bool:
+    """Update only README.md in an existing Gist via PATCH; all other files unchanged."""
+    gist_id = gist_url.rstrip("/").split("/")[-1]
+    headers = get_gist_headers(token)
+    payload = {"files": {"README.md": {"content": readme_content}}}
+    try:
+        resp = requests.patch(
+            f"https://api.github.com/gists/{gist_id}",
+            headers=headers,
+            json=payload,
+            timeout=15,
+        )
+        if resp.status_code == 200:
+            return True
+        logger.error(
+            "Failed to PATCH gist %s: HTTP %s — %s",
+            gist_id, resp.status_code, resp.text[:300],
+        )
+        return False
+    except Exception as exc:
+        logger.error("Error patching gist %s: %s", gist_id, exc)
+        return False
+
+
+def sync_readme_to_gist(env: str = "both", dry_run: bool = False) -> None:
+    """
+    For every task with is_shared_infra_required=True in the target env(s),
+    fetch README.md from github_repo and update github_gist to match.
+    Only the README.md file in the gist is changed; everything else is untouched.
+    """
+    if not GITHUB_UTKRUSHTAPPS_TOKEN:
+        print("[ERROR] GITHUB_UTKRUSHTAPPS_TOKEN is not set — cannot read repos.")
+        sys.exit(1)
+    if not GITHUB_GIST_TOKEN:
+        print("[ERROR] GITHUB_GIST_TOKEN is not set — cannot update gists.")
+        sys.exit(1)
+
+    envs = ["dev", "prod"] if env == "both" else [env]
+
+    for current_env in envs:
+        print("=" * 70)
+        print(f"  SYNC README → GIST  (env={current_env}  dry_run={dry_run})")
+        print("  Scope: tasks with is_shared_infra_required=True")
+        print("=" * 70)
+
+        supabase = init_supabase(current_env)
+        pk_col = _task_id_column(supabase)
+
+        result = (
+            supabase.table("tasks")
+            .select(f"{pk_col},task_blob,is_shared_infra_required")
+            .eq("is_shared_infra_required", True)
+            .execute()
+        )
+        tasks = result.data or []
+        print(f"Found {len(tasks)} is_shared_infra_required task(s) in {current_env}.\n")
+
+        updated = skipped = failed = 0
+
+        for task in tasks:
+            task_id = task.get(pk_col)
+            task_blob = task.get("task_blob") or {}
+            resources = task_blob.get("resources") or {}
+            github_repo = resources.get("github_repo")
+            github_gist = resources.get("github_gist")
+
+            if not github_repo:
+                logger.warning("[sync-readme] Task %s: no github_repo — skipping", task_id)
+                skipped += 1
+                continue
+
+            if not github_gist:
+                logger.warning("[sync-readme] Task %s: no github_gist — skipping", task_id)
+                skipped += 1
+                continue
+
+            try:
+                owner, repo = parse_github_repo_url(github_repo)
+            except ValueError as exc:
+                logger.error("[sync-readme] Task %s: cannot parse repo URL '%s': %s", task_id, github_repo, exc)
+                failed += 1
+                continue
+
+            readme = _fetch_readme_from_repo(owner, repo, GITHUB_UTKRUSHTAPPS_TOKEN)
+            if not readme:
+                logger.error("[sync-readme] Task %s: README not found in %s/%s", task_id, owner, repo)
+                failed += 1
+                continue
+
+            print(f"  Task {task_id}: README fetched ({len(readme)} chars) from {owner}/{repo}")
+
+            if dry_run:
+                print(f"    [DRY-RUN] Would update gist: {github_gist}")
+                updated += 1
+                continue
+
+            ok = _patch_gist_readme(github_gist, readme, GITHUB_GIST_TOKEN)
+            if ok:
+                logger.info("[sync-readme] Task %s: gist README updated — %s", task_id, github_gist)
+                updated += 1
+            else:
+                logger.error("[sync-readme] Task %s: failed to update gist %s", task_id, github_gist)
+                failed += 1
+
+        print()
+        print("=" * 70)
+        print(f"  SYNC README COMPLETE  (env={current_env})")
+        print(f"  Updated : {updated}")
+        print(f"  Skipped : {skipped}  (no github_repo or github_gist)")
+        print(f"  Failed  : {failed}")
+        print("=" * 70)
+        print()
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -493,6 +635,23 @@ def build_parser() -> argparse.ArgumentParser:
     sub.add_parser(
         "sync-is-enabled",
         help="Mirror is_enabled=True from prod → dev; disable all other dev tasks.",
+    )
+
+    # sync-readme
+    readme_parser = sub.add_parser(
+        "sync-readme",
+        help="Update README.md in github_gist from github_repo for is_shared_infra_required tasks.",
+    )
+    readme_parser.add_argument(
+        "--env",
+        choices=["dev", "prod", "both"],
+        default="both",
+        help="Target environment (default: both).",
+    )
+    readme_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Print what would be changed without writing to GitHub.",
     )
 
     # create
@@ -532,6 +691,8 @@ def main() -> None:
         create_prod_gists_for_missing()
     elif args.command == "sync-is-enabled":
         sync_is_enabled_to_dev()
+    elif args.command == "sync-readme":
+        sync_readme_to_gist(args.env, args.dry_run)
     elif args.command == "create":
         create_gists_for_tasks(args.task_ids, args.env, args.force)
     else:

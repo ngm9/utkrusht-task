@@ -782,7 +782,6 @@ def create_task(
                     with trace_stage("task_gen"):
                         candidate = generate_task_with_code(
                             openai_client, input_data, feedback=feedback,
-                            model=_gen_model,
                         )
                 except LLMOutputTruncated as exc:
                     # F11: the model hit max_tokens mid-output. Feed back a tight

@@ -333,6 +333,31 @@ def resolve_plan(
                     f"resolve_plan: combo={combo_key!r} cache HIT "
                     f"template_id={cached.template_id} persona={cached.persona}"
                 )
+                # Even on a cache HIT, attempt a runtime build when the cached
+                # row is a no_match (template is None) — the template may have
+                # been defined locally since the cache was written. On success,
+                # build_if_missing also deletes the stale no_match row so the
+                # NEXT call re-classifies against the now-built template.
+                if template is None and client is not None and cached.template_id:
+                    logger.info(
+                        f"resolve_plan: cache HIT but template=None "
+                        f"— attempting runtime build for {cached.template_id!r}"
+                    )
+                    try:
+                        from infra.e2b.template_builder import build_if_missing
+                        built_spec = build_if_missing(cached.template_id, client)
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning(
+                            f"resolve_plan: build_if_missing (cache-hit path) "
+                            f"raised for {cached.template_id!r}: {exc}"
+                        )
+                        built_spec = None
+                    if built_spec is not None:
+                        template = built_spec
+                        logger.info(
+                            f"resolve_plan: runtime build succeeded for "
+                            f"{cached.template_id!r} (cache-hit path) — gate will now run"
+                        )
                 return ResolvedPlan(
                     combo_key=combo_key,
                     match=cached,
@@ -409,19 +434,43 @@ def resolve_plan(
                 f"resolve_plan: cache write failed for {combo_key!r}: {exc}"
             )
 
-    if template is None and match.template_id is not None:
+    # ── Step 4: runtime template build (if missing) ────────────────────
+    # When the classifier matched a template_id or suggested one but there is
+    # no built row in the DB, attempt to build it now so the gate can run on
+    # THIS invocation rather than the next one.
+    if template is None and client is not None and match.template_id:
         logger.info(
-            f"resolve_plan: combo={combo_key!r} matched "
-            f"template_id={match.template_id!r} but no built template row "
-            f"could be hydrated — gate will skip"
+            f"resolve_plan: no built template for combo={combo_key!r} "
+            f"— attempting runtime build for {match.template_id!r}"
         )
+        try:
+            from infra.e2b.template_builder import build_if_missing  # local import avoids circular dep
+            built_spec = build_if_missing(match.template_id, client)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                f"resolve_plan: build_if_missing raised unexpectedly "
+                f"for {match.template_id!r}: {exc} — treating as skip"
+            )
+            built_spec = None
+
+        if built_spec is not None:
+            template = built_spec
+            registry_version = built_spec.registry_version
+            logger.info(
+                f"resolve_plan: runtime build succeeded for {match.template_id!r} "
+                f"— gate will now run"
+            )
+        else:
+            logger.info(
+                f"resolve_plan: runtime build skipped/failed for {match.template_id!r} "
+                f"— gate will skip"
+            )
+
     if match.no_match_reason:
         logger.info(
             f"resolve_plan: combo={combo_key!r} NO_MATCH — "
-            f"{match.no_match_reason} (gate will skip)"
+            f"{match.no_match_reason}"
         )
-    # Final decision line: which template/persona was resolved and whether the
-    # E2B gate can run — wrong/absent template is a top cause of gate skips.
     logger.info(
         f"resolve_plan: RESOLVED combo={combo_key!r} "
         f"template_id={match.template_id} persona={match.persona} "

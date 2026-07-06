@@ -110,8 +110,8 @@ def run_gate_for_attempt(
         kill-switch — unchanged).
       * ``task_shape == "non_infra"`` — the prompt generator's shape
         classifier decided the task is a pure-runtime local project with
-        no docker-compose / run.sh / kill.sh. There is nothing for the E2B
-        gate to build and test, so running it would always fail (or run a
+        no docker-compose / run.sh. There is nothing for the E2B gate to
+        build and test, so running it would always fail (or run a
         misleading verdict). Skip cleanly; the LLM task + code evals
         already gated quality.
     """
@@ -140,7 +140,7 @@ def run_gate_for_attempt(
     sb_result = _eval_with_infra_retry(plan, candidate)
     candidate_eval["sandbox_eval"] = sb_result.as_dict()
 
-    runtime_label = (plan.match.template_id or plan.match.suggested_template or "unknown") if plan else "unknown"
+    runtime_label = (plan.match.template_id or plan.match.suggested_template or "unknown") if (plan and plan.match) else "unknown"
     if sb_result.skipped:
         logger.info(f"  sandbox gate skipped: {sb_result.detail}")
         metrics.inc(
