@@ -43,6 +43,14 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from flows._base.runner import (
+    E2B_GATE_MARKERS as _E2B_GATE_MARKERS,
+    EVAL_MARKERS as _EVAL_MARKERS,
+    pick_python as _pick_python,
+    run_stage as _run_stage,
+    write_summary as _write_summary,
+)
+
 # run_pipeline reads TRACE_S3_BUCKET / S3_REGION / AWS creds for the end-of-run
 # log upload; the stage subprocesses load .env themselves, but the parent does
 # not otherwise, so load it here.
@@ -70,23 +78,6 @@ def scenarios_file_for(level: str) -> Path:
 # Helpers
 # ----------------------------------------------------------------------
 
-def _pick_python() -> str:
-    """Prefer the project venv interpreter; fall back to whatever ran us.
-
-    Checks BOTH the POSIX (``.venv/bin/python``) and Windows
-    (``.venv/Scripts/python.exe``) venv layouts. On Windows the POSIX path
-    never exists, so without the Scripts check the runner silently falls back to
-    the system interpreter — which may lack pipeline-only deps like ``e2b``,
-    making stage 4 (``multiagent.py generate_tasks``) fail with
-    ``No module named 'e2b'`` while stages 0-3 still pass.
-    """
-    for parts in (("bin", "python"), ("Scripts", "python.exe")):
-        venv_py = REPO_ROOT.joinpath(".venv", *parts)
-        if venv_py.exists():
-            return str(venv_py)
-    return sys.executable
-
-
 def _parse_names(raw: list[str]) -> list[str]:
     """Accept --name "A, B" and repeated --name A --name B."""
     names: list[str] = []
@@ -99,110 +90,6 @@ def _combo_slug(names: list[str]) -> str:
     """Mirror the slug logic the other modules use, via prompt_generator.slugs."""
     from generators.prompts.slugs import slugify
     return "_".join(slugify(n) for n in names)
-
-
-def _run_stage_streaming(cmd, stdout_path, stderr_path, stage_env, combo_dir,
-                         live_split) -> int:
-    """Run ``cmd`` streaming its stderr line-by-line so focused sub-logs appear
-    DURING the stage, not after it.
-
-    Every stderr line is written to ``stderr_path`` (the full log, unchanged) and
-    ALSO fanned into each ``(filename, markers)`` sub-log whose markers it matches
-    — each sub-log is created lazily on its first matching line and flushed per
-    line, so e.g. ``04_tasks.evals.log`` shows up the moment the eval starts.
-    stdout goes straight to its file (only stderr is a pipe → no deadlock).
-    Returns the child's exit code.
-    """
-    sub_handles: dict = {}
-    try:
-        with stdout_path.open("w", encoding="utf-8") as out, \
-                stderr_path.open("w", encoding="utf-8") as err:
-            proc = subprocess.Popen(
-                cmd, stdout=out, stderr=subprocess.PIPE, cwd=REPO_ROOT,
-                env=stage_env, text=True, bufsize=1, encoding="utf-8",
-                errors="replace",
-            )
-            for line in proc.stderr:
-                err.write(line)
-                err.flush()
-                for fname, markers in live_split:
-                    if any(m in line for m in markers):
-                        fh = sub_handles.get(fname)
-                        if fh is None:
-                            fh = (combo_dir / fname).open("w", encoding="utf-8")
-                            sub_handles[fname] = fh
-                        fh.write(line)
-                        fh.flush()
-            proc.wait()
-            return proc.returncode
-    finally:
-        for fh in sub_handles.values():
-            try:
-                fh.close()
-            except Exception:  # noqa: BLE001
-                pass
-
-
-def _run_stage(combo_dir: Path, label: str, cmd: list[str],
-               live_split: "list | None" = None) -> dict:
-    """Run one stage as a subprocess; capture stdout/stderr/timing.
-
-    ``live_split`` (a list of ``(filename, markers)``) streams the stage's stderr
-    and fans matching lines into live sub-logs as they're produced (used by the
-    task stage so the eval / e2b-gate logs appear during the run).
-
-    Returns a dict: {label, cmd, duration_s, exit_code, stdout_path, ...}.
-    """
-    stdout_path = combo_dir / f"{label}.stdout"
-    stderr_path = combo_dir / f"{label}.stderr"
-    timing_path = combo_dir / f"{label}.timing.json"
-
-    print(f"  ▶ {label}: {' '.join(cmd)}", flush=True)
-    start = time.time()
-    # The E2B build/test gate is opt-out for pipeline runs: default it ON so
-    # the task-creation stage exercises it (the gate itself no-ops for the
-    # other stages). An explicit SANDBOX_EVAL_ENABLED in the environment wins.
-    stage_env = {**os.environ}
-    stage_env.setdefault("SANDBOX_EVAL_ENABLED", "true")
-    # Force unbuffered stdout/stderr in EVERY stage subprocess so each line is
-    # flushed to its log file as it is produced. Without this the non-04 stages
-    # block-buffer their output (it only lands when the stage exits), so the
-    # live trace_ui viewer couldn't stream them. Stage 04 already line-buffers
-    # via _run_stage_streaming; this makes the rest stream too.
-    stage_env["PYTHONUNBUFFERED"] = "1"
-    # Pipeline tracing is captured for the LLM-bearing stages (input_files /
-    # scenarios / prompt / tasks) — each opens trace_run(TRACE_RUN_ID) in its
-    # __main__ and writes into the shared run-<ts>/traces/ dir. Preflight has no
-    # LLM calls. Force the flag explicitly per stage (not setdefault) so an
-    # enabled value inherited from the parent shell can't turn on a non-wired
-    # stage. TRACE_RUN_ID is inherited via {**os.environ}. Stages run
-    # sequentially, so there are no concurrent writers to the shared JSONL.
-    _traced = ("input_files", "scenarios", "prompt", "tasks")
-    stage_env["PIPELINE_TRACING_ENABLED"] = "1" if any(s in label for s in _traced) else "0"
-    if live_split:
-        returncode = _run_stage_streaming(
-            cmd, stdout_path, stderr_path, stage_env, combo_dir, live_split,
-        )
-    else:
-        with stdout_path.open("w", encoding="utf-8") as out, \
-             stderr_path.open("w", encoding="utf-8") as err:
-            returncode = subprocess.run(
-                cmd, stdout=out, stderr=err, cwd=REPO_ROOT, env=stage_env,
-            ).returncode
-    duration = round(time.time() - start, 1)
-
-    record = {
-        "label": label,
-        "cmd": cmd,
-        "duration_s": duration,
-        "exit_code": returncode,
-        "stdout": str(stdout_path),
-        "stderr": str(stderr_path),
-    }
-    timing_path.write_text(json.dumps(record, indent=2), encoding="utf-8")
-    flag = "ok" if returncode == 0 else f"FAIL exit={returncode}"
-    print(f"  ◀ {label}: {flag}  ({duration}s)", flush=True)
-    return record
 
 
 def _locate_input_files(names: list[str], level: str, since: float) -> tuple[Path, Path]:
@@ -313,19 +200,6 @@ def _summarise_task_stage(stdout_path: Path) -> str:
     if "ERROR CREATING TASK" in text:
         return "ERROR — see stage 4 logs"
     return "UNKNOWN — inspect stage 4 logs"
-
-
-# Markers used to split the interleaved stage-4 stderr into focused sub-logs.
-# The infra_assessor logger writes the E2B gate and LLM-eval lines to stderr;
-# this is a best-effort substring filter (kept here so the orchestrator owns
-# the run-dir layout, with no change to the task-generation code).
-_E2B_GATE_MARKERS = ("[e2b-gate]", "sandbox gate", "Eval gate rejected", "readiness gate")
-_EVAL_MARKERS = (
-    "task eval", "code eval", "task evaluation", "code evaluation",
-    "Running task eval", "Running code eval", "Running task evaluations",
-    "blocking_issues", "validated_criteria", "Task generation attempt",
-    "Applying feedback from previous attempt", "is_task_hollow", "hollow",
-)
 
 
 def _split_stage4_logs(combo_dir: Path) -> list[str]:
@@ -575,22 +449,6 @@ def main() -> int:
     print(f"   Logs: {combo_dir}")
     print(f"{'─' * 68}\n")
     return 0
-
-
-def _write_summary(combo_dir: Path, names: list[str], level: str,
-                   stages: list[dict], status: str, task_outcome: str = "") -> None:
-    summary = {
-        "competencies": names,
-        "proficiency": level,
-        "status": status,
-        "task_outcome": task_outcome,
-        "stages": [
-            {"label": s["label"], "duration_s": s["duration_s"], "exit_code": s["exit_code"]}
-            for s in stages
-        ],
-        "total_duration_s": round(sum(s["duration_s"] for s in stages), 1),
-    }
-    (combo_dir / "summary.json").write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
 
 if __name__ == "__main__":
