@@ -234,9 +234,20 @@ The big move. `input_files`, `scenarios`, `prompts`, `task` → `flows/tech/stag
 
 ---
 
-### Task 4: Split prompt templates per flow
+### Task 4: Keep prompt templates as a shared package (REVISED — no move)
 
-**Files:**
+> **REVISED during execution:** the original plan was to split `task_generation_prompts/`
+> per-flow. Recon found `infra/utils.py` (the shared layer) imports the package
+> load-bearing (`import task_generation_prompts.Basic/Intermediate/Beginner`), so
+> moving it into `flows/tech/` would invert the infra→flow dependency. **Decision
+> reversed: keep `task_generation_prompts/` as a shared top-level reference-data
+> package.** No code move; the Task-3 depth fix already points the tech retriever at
+> `repo_root/task_generation_prompts`, non_tech imports two files from it, infra
+> imports the package. This task is now documentation-only. See spec §5 CORRECTION.
+> Deferred: untangling infra/utils's prompt logic into flows/tech (separate task)
+> would be a prerequisite for true per-flow ownership.
+
+**Original (superseded) plan below — Files:**
 - Move: `git mv task_generation_prompts flows/tech/prompt_templates`, then `git mv` the two non_tech files back out to `flows/non_tech/prompt_templates/Basic/`
 - Modify: `flows/tech/stages/prompts/{retriever,__main__}.py` `PROMPT_ROOT`; `flows/non_tech/non_tech_utils.py` imports
 - Test: `tests/test_general_reference.py`, `tests/test_generic_agent_reference.py`, `generators`-moved retriever tests, non_tech behavior

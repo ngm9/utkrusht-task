@@ -105,11 +105,11 @@ After lifting, `flows/tech/` contains only tech-specific stage code, and **no fl
 
 This is better than dumping everything into `flows/tech/` (which would make `non_tech` import a sibling flow — the exact anti-pattern we're removing). `PROMPT_ROOT` path constants in `flows/tech/stages/prompts/{retriever,__main__}.py` (currently `repo_root/task_generation_prompts`) update to the new tech location.
 
-**Partition verified (2026-07-07):** `non_tech` statically imports exactly two files — `Basic/Prompt_basic.py` and `Basic/ai_evals_for_product_managers_basic_prompt.py` (both non-tech-domain). The tech flow never references either by name (grep clean), and resolves templates by tech-stack slug, so it would never match them. **No single file is shared by both flows → per-flow ownership confirmed; a shared `assets/prompt_templates/` store is rejected as unnecessary.**
-- `flows/tech/prompt_templates/` ← everything (incl. `_general_reference/`, all `{tech}_prompt.py`) **except** those two files.
-- `flows/non_tech/prompt_templates/Basic/` ← `Prompt_basic.py` + `ai_evals_for_product_managers_basic_prompt.py`.
+**CORRECTION (2026-07-07, discovered during Task 4 execution):** the earlier "clean partition" claim was **wrong**. `infra/utils.py` — the **shared** layer — imports the template package directly and load-bearing at module top: `import task_generation_prompts.Basic/Intermediate/Beginner` (used by `_iter_filesystem_prompts` / `_load_module_from_path`). So the templates are consumed by **infra + tech + non_tech**, not just the two flows. Moving them into `flows/tech/prompt_templates/` would make `infra/` (the bottom layer) import from `flows/tech/` (a flow) — inverting the dependency, which is worse than the original problem.
 
-**Remaining check (Phase 4):** `non_tech`'s dynamic loader `get_task_prompt_by_technology_stack(...)` must be audited to confirm it only resolves non_tech's own templates. If it turns out to pull generic tech templates at runtime, revisit the shared-store option for just that shared subset.
+**Decision reversed → keep `task_generation_prompts/` as a shared top-level reference-data package** (a peer of `infra/`), consumed by infra + both flows. Templates are shared *data*, not flow *logic*, so a shared home is correct layering. No move happens: the tech retriever already resolves them by filesystem path (`repo_root/task_generation_prompts`, set in Task 3), `non_tech` imports two of them, and `infra/utils.py` imports the package.
+
+**Deferred follow-up (NOT this refactor):** true per-flow ownership would first require untangling `infra/utils.py`'s prompt-loading logic (`get_task_prompt_by_technology_stack`, `_iter_filesystem_prompts`) into `flows/tech/` to invert the infra→templates dependency; only then could templates move under `flows/tech/`. That is a separate, larger, behavior-changing task.
 
 ---
 
