@@ -16,8 +16,8 @@ whether to proceed, retry, or escalate to a human.
 
 CLI usage:
 
-    python task_agent_preflight.py                       # global only
-    python task_agent_preflight.py --combo "Rust:BASIC"  # global + one combo
+    python -m flows.tech.stages.preflight                       # global only
+    python -m flows.tech.stages.preflight --combo "Rust:BASIC"  # global + one combo
 """
 
 from __future__ import annotations

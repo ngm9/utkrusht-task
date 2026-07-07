@@ -119,7 +119,7 @@ def run_pipeline_for_brief(brief: TaskBrief, *, run_id: str, emit: EmitFn,
     try:
         combo_dir.mkdir(parents=True, exist_ok=True)
         rec = _stage("00_preflight", [
-            py, "task_agent_preflight.py",
+            py, "-m", "flows.tech.stages.preflight",
             "--combo", f"{','.join(names)}:{level}", "--env", env,
         ])
         if rec["exit_code"] != 0:

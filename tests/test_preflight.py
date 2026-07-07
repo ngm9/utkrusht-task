@@ -1,4 +1,4 @@
-"""Tests for ``task_agent_preflight.py``.
+"""Tests for ``flows/tech/stages/preflight.py``.
 
 The preflight module fails fast on environment problems before the expensive
 pipeline runs. After the trim (env + imports globally, Supabase + retriever
@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import pytest
 
-from task_agent_preflight import (
+from flows.tech.stages.preflight import (
     PreflightReport,
     _parse_combo_arg,
     run_global_checks,

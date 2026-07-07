@@ -295,7 +295,7 @@ def main() -> int:
     if not args.skip_preflight:
         combo_arg = f"{','.join(names)}:{level}"
         rec = _run_stage(combo_dir, "00_preflight", [
-            py, "task_agent_preflight.py", "--combo", combo_arg, "--env", args.env,
+            py, "-m", "flows.tech.stages.preflight", "--combo", combo_arg, "--env", args.env,
         ])
         stages.append(rec)
         if rec["exit_code"] != 0:
