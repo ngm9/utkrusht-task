@@ -388,7 +388,7 @@ def main() -> int:
     # Supabase environment it is told; without this flag it silently defaults
     # to `dev`, so a `--env prod` run would create the task but store it in dev.
     rec = _run_stage(combo_dir, "04_tasks", [
-        py, "multiagent.py", "generate_tasks",
+        py, "-m", "flows.tech.stages.generate",
         "-c", str(comp_json), "-b", str(bg_json),
         "-s", str(scenarios_file_for(level)),
         "--env", args.env,
