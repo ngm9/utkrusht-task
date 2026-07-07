@@ -1,14 +1,13 @@
-"""Part A — force-infra toggle: the infra-kind registry, the agent.forward
-override (skips the classifier + threads the service), and the trace_ui wiring
-(/api/infra-kinds + api_launch flag threading)."""
+"""Backend force-infra capability: the infra-kind registry and the agent.forward
+override (skips the classifier + threads the service).
+
+NOTE: the trace_ui infra wiring (/api/infra-kinds + task_shape/infra_kind launch
+flags) was REMOVED — the New-run modal now uses a free-text `instructions`
+directive instead (see tests/test_instructions_flow.py). The backend below is
+kept (dead-but-valid) so a future caller could still force a shape directly."""
 from types import SimpleNamespace
 
-import pytest
-from fastapi.testclient import TestClient
-
 from generators.prompts import infra_kinds
-from trace_ui import server
-from trace_ui.server import app
 
 
 # ── registry ─────────────────────────────────────────────────────────────
@@ -84,47 +83,3 @@ def test_forward_non_infra_override_no_service(monkeypatch):
     res = agent.forward([Competency(name="DSA", proficiency="BASIC")], "BASIC", task_shape_override="non_infra")
     assert res.task_shape == "non_infra"
     assert captured.get("datastores") in ("[]", "")  # no service for non_infra
-
-
-# ── trace_ui wiring ───────────────────────────────────────────────────────
-client = TestClient(app)
-
-
-def test_api_infra_kinds():
-    data = client.get("/api/infra-kinds").json()
-    slugs = {k["slug"] for k in data["kinds"]}
-    assert {"auto", "vector-db", "redis"} <= slugs
-
-
-def _capture_launch(monkeypatch):
-    captured = {}
-    monkeypatch.setattr(server, "_spawn_pipeline", lambda cmd: captured.setdefault("cmd", cmd))
-    return captured
-
-
-def test_api_launch_threads_infra_flags(monkeypatch):
-    cap = _capture_launch(monkeypatch)
-    r = client.post("/api/runs", json={"names": ["Tool Use for Agents"], "proficiency": "INTERMEDIATE",
-                                       "task_shape": "infra", "infra_kind": "redis"})
-    assert r.status_code == 200
-    cmd = cap["cmd"]
-    assert cmd[cmd.index("--task-shape") + 1] == "infra"
-    assert cmd[cmd.index("--infra-kind") + 1] == "redis"
-
-
-def test_api_launch_auto_omits_infra_kind(monkeypatch):
-    cap = _capture_launch(monkeypatch)
-    r = client.post("/api/runs", json={"names": ["Python"], "proficiency": "BASIC"})
-    assert r.status_code == 200
-    cmd = cap["cmd"]
-    assert cmd[cmd.index("--task-shape") + 1] == "auto"
-    assert "--infra-kind" not in cmd
-
-
-def test_api_launch_bad_kind_falls_back_to_auto(monkeypatch):
-    cap = _capture_launch(monkeypatch)
-    r = client.post("/api/runs", json={"names": ["X"], "proficiency": "BASIC",
-                                       "task_shape": "infra", "infra_kind": "bogus"})
-    assert r.status_code == 200
-    cmd = cap["cmd"]
-    assert cmd[cmd.index("--infra-kind") + 1] == "auto"

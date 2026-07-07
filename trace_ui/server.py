@@ -164,6 +164,7 @@ def _parse_result(run_dir: Path) -> dict:
         "outcome": manifest.get("outcome"),
         "competencies": manifest.get("competencies") or summary.get("competencies"),
         "proficiency": summary.get("proficiency"),
+        "llm_provider": summary.get("llm_provider") or manifest.get("llm_provider"),
         "env": manifest.get("env"),
         "status": summary.get("status"),
         "task_outcome": summary.get("task_outcome"),
@@ -507,8 +508,8 @@ class RunRequest(BaseModel):
     proficiency: str
     count: int = 2
     env: str = "dev"
-    task_shape: str = "auto"   # auto | infra | non_infra
-    infra_kind: str = "auto"   # only used when task_shape == "infra"
+    instructions: str = ""           # AUTHORITATIVE free-text directive (replaces infra/non_infra force)
+    llm_provider: str = "anthropic"  # anthropic (Claude) | glm (GLM via OpenRouter)
 
 
 def _spawn_pipeline(cmd: list[str]) -> None:
@@ -538,14 +539,15 @@ def api_launch(req: RunRequest) -> JSONResponse:
     if any(any(ord(ch) < 32 for ch in n) for n in names):
         raise HTTPException(status_code=400, detail="competency name contains invalid characters")
     count = req.count if isinstance(req.count, int) and 1 <= req.count <= 20 else 2
-    task_shape = req.task_shape if req.task_shape in ("auto", "infra", "non_infra") else "auto"
-    from generators.prompts import infra_kinds
-    infra_kind = req.infra_kind if infra_kinds.is_valid(req.infra_kind) else "auto"
+    llm_provider = req.llm_provider if req.llm_provider in ("anthropic", "glm") else "anthropic"
+    # Free-text directive (replaces the old infra/non_infra force). Capped so a
+    # pathological paste can't blow the argv limit; passed as argv (no shell).
+    instructions = (req.instructions or "").strip()[:4000]
 
     cmd = [sys.executable, "run_pipeline.py", "-p", prof, "--env", env, "--count", str(count),
-           "--task-shape", task_shape]
-    if task_shape == "infra":
-        cmd += ["--infra-kind", infra_kind]
+           "--llm-provider", llm_provider]
+    if instructions:
+        cmd += ["--instructions", instructions]
     for n in names:
         cmd += ["-n", n]
     try:
@@ -553,14 +555,157 @@ def api_launch(req: RunRequest) -> JSONResponse:
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(status_code=500, detail=f"failed to launch pipeline: {exc}") from exc
     return JSONResponse({"ok": True, "names": names, "proficiency": prof, "env": env,
-                         "count": count, "task_shape": task_shape, "infra_kind": infra_kind})
+                         "count": count, "instructions_set": bool(instructions),
+                         "llm_provider": llm_provider})
 
 
-@app.get("/api/infra-kinds")
-def api_infra_kinds() -> JSONResponse:
-    """Infra-service options for the New-run modal's force-infra dropdown."""
-    from generators.prompts import infra_kinds
-    return JSONResponse({"kinds": infra_kinds.list_kinds()})
+# Stages the UI can resume from (run_pipeline reuses earlier stages' artifacts).
+# "input_files" = a full re-run (no --resume-from); the rest skip ahead.
+_RESUME_STAGES = ("input_files", "scenarios", "prompt", "tasks")
+
+
+class ResumeRequest(BaseModel):
+    from_stage: str = "tasks"   # input_files | scenarios | prompt | tasks
+
+
+@app.post("/api/runs/{run_id}/resume")
+def api_resume(run_id: str, req: ResumeRequest) -> JSONResponse:
+    """Re-run a prior run starting at ``from_stage``, reusing the earlier stages'
+    artifacts (input files on disk, scenarios in the DB, prompt module on disk) so
+    a failed late stage can be retried without re-paying for the early ones. The
+    run's original args (competencies, proficiency, env, provider, instructions,
+    count) are read back from its summary.json / manifest.json."""
+    run_dir = _resolve_or_400(run_id)
+    from_stage = req.from_stage if req.from_stage in _RESUME_STAGES else "tasks"
+
+    combo = _combo_dir(run_dir)
+    summary = (_read_json(combo / "summary.json") if combo else None) or {}
+    manifest = _read_json(run_dir / "traces" / "manifest.json") or {}
+
+    raw_names = summary.get("competencies") or manifest.get("competencies") or []
+    names = [str(n).strip() for n in raw_names if n and str(n).strip()]
+    prof = (summary.get("proficiency") or manifest.get("proficiency") or "").upper()
+    env = (summary.get("env") or manifest.get("env") or "dev")
+    env = env if env in ("dev", "prod") else "dev"
+    provider = summary.get("llm_provider") if summary.get("llm_provider") in ("anthropic", "glm") else "anthropic"
+    instructions = (summary.get("instructions") or "").strip()[:4000]
+    count = summary.get("count")
+    count = count if isinstance(count, int) and 1 <= count <= 20 else 2
+
+    if not names:
+        raise HTTPException(status_code=400, detail="could not recover competencies for this run (no summary.json)")
+    if prof not in _PROFICIENCIES:
+        raise HTTPException(status_code=400, detail=f"could not recover a valid proficiency for this run (got {prof!r})")
+    if any(any(ord(ch) < 32 for ch in n) for n in names):
+        raise HTTPException(status_code=400, detail="competency name contains invalid characters")
+
+    cmd = [sys.executable, "run_pipeline.py", "-p", prof, "--env", env,
+           "--count", str(count), "--llm-provider", provider]
+    if from_stage != "input_files":   # input_files = full re-run (no skip)
+        cmd += ["--resume-from", from_stage]
+    if instructions:
+        cmd += ["--instructions", instructions]
+    for n in names:
+        cmd += ["-n", n]
+    try:
+        _spawn_pipeline(cmd)
+    except Exception as exc:  # noqa: BLE001
+        raise HTTPException(status_code=500, detail=f"failed to resume pipeline: {exc}") from exc
+    return JSONResponse({"ok": True, "resumed_from": from_stage, "source_run": run_dir.name,
+                         "names": names, "proficiency": prof, "env": env,
+                         "llm_provider": provider})
+
+
+# Small bounded in-process cache so re-opening the modal for the same combo
+# doesn't re-hit the LLM. Keyed by (sorted names, proficiency).
+_SUGGEST_CACHE: dict[tuple, list[str]] = {}
+_SUGGEST_CACHE_MAX = 128
+
+
+def _parse_suggestions(text: str) -> list[str]:
+    """Best-effort: pull a JSON array of strings from the LLM reply; fall back to
+    bullet/numbered lines. Never raises."""
+    if not text:
+        return []
+    t = text.strip()
+    if t.startswith("```"):  # strip a ```json … ``` fence
+        parts = t.split("```")
+        t = parts[1] if len(parts) >= 2 else t.strip("`")
+        if t.lstrip().lower().startswith("json"):
+            t = t.lstrip()[4:]
+    start, end = t.find("["), t.rfind("]")
+    if start != -1 and end > start:
+        try:
+            arr = json.loads(t[start:end + 1])
+            out = [str(s).strip() for s in arr if str(s).strip()]
+            if out:
+                return out[:6]
+        except ValueError:
+            pass
+    lines = []
+    for ln in text.splitlines():
+        ln = ln.strip().lstrip("-*0123456789.) ").strip().strip('"').strip()
+        if len(ln) > 8:
+            lines.append(ln)
+    return lines[:6]
+
+
+def _suggest_instructions(names: list[str], proficiency: str) -> list[str]:
+    """LLM-written, competency-tailored instruction directives (≤6 short ones).
+    Uses the active Claude-role provider's cheaper model (Anthropic or GLM)."""
+    from infra.llm_provider import make_llm_client, resolve_model
+
+    combo = ", ".join(names)
+    sys_prompt = (
+        "You help an assessment author write a short 'instructions' directive that "
+        "shapes how a realistic coding assessment task is generated. A good directive "
+        "is concrete and actionable: a required deliverable/artifact, a sub-feature to "
+        "implement, an infra dependency to include, or an edge case to cover."
+    )
+    user_prompt = (
+        f"Competency/competencies: {combo} (proficiency: {proficiency}).\n"
+        "Propose 4 distinct, concrete instruction directives an author could attach to "
+        "the task generator for THIS competency at THIS proficiency. Each must be ONE "
+        "sentence, specific, and immediately usable. Return ONLY a JSON array of "
+        "strings — no prose, no markdown."
+    )
+    client = make_llm_client()
+    resp = client.chat.completions.create(
+        model=resolve_model("repair"),
+        messages=[
+            {"role": "system", "content": sys_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        max_tokens=500,
+    )
+    text = (resp.choices[0].message.content or "") if resp.choices else ""
+    return _parse_suggestions(text)
+
+
+@app.get("/api/suggest-instructions")
+def api_suggest_instructions(names: str = "", proficiency: str = "BASIC") -> JSONResponse:
+    """LLM-written instruction suggestions for the selected competency/combo —
+    rendered as clickable chips in the New-run modal. ``names`` is comma-separated.
+    Soft-errors so the modal degrades to a plain textarea."""
+    parsed = [n.strip() for n in (names or "").split(",") if n.strip()]
+    prof = (proficiency or "").upper()
+    if not parsed:
+        raise HTTPException(status_code=400, detail="at least one competency name is required")
+    if prof not in _PROFICIENCIES:
+        prof = "BASIC"
+    key = (tuple(sorted(parsed)), prof)
+    if key in _SUGGEST_CACHE:
+        return JSONResponse({"suggestions": _SUGGEST_CACHE[key], "cached": True})
+    try:
+        suggestions = _suggest_instructions(parsed, prof)
+    except Exception as exc:  # noqa: BLE001 — soft so the modal still works
+        logger.warning(f"trace_ui: suggest-instructions failed: {exc}")
+        return JSONResponse({"suggestions": [], "error": str(exc)}, status_code=503)
+    if suggestions:
+        if len(_SUGGEST_CACHE) >= _SUGGEST_CACHE_MAX:
+            _SUGGEST_CACHE.clear()
+        _SUGGEST_CACHE[key] = suggestions
+    return JSONResponse({"suggestions": suggestions})
 
 
 def _resolve_or_400(run_id: str) -> Path:
