@@ -59,7 +59,7 @@ class GateOutcome(Enum):
     RETRY = "retry"        # gate FAILED → retry generation with feedback
 
 
-def _eval_with_infra_retry(plan, candidate):
+def _eval_with_infra_retry(plan, candidate, on_pass=None):
     """Run the sandbox eval, retrying ONLY on a transient ``infra_error``.
 
     Returns the first result that is not a transient infra_error (a real
@@ -73,6 +73,7 @@ def _eval_with_infra_retry(plan, candidate):
             candidate.get("code_files", {}),
             plan,
             run_sh=candidate.get("run_script"),
+            on_pass=on_pass,
         )
         if not (result.skipped and result.verdict == _INFRA_ERROR_VERDICT):
             return result
@@ -97,12 +98,17 @@ def run_gate_for_attempt(
     candidate_eval: Dict,
     attempt: int,
     task_shape: Optional[str] = None,
+    on_pass=None,
 ) -> Tuple[GateOutcome, str]:
     """Run the E2B build/test gate for one ``create_task`` attempt.
 
     Mutates ``candidate_eval`` to add the ``sandbox_eval`` verdict dict when
     the gate actually ran a verdict. Returns the outcome the retry loop
     should act on, plus the retry-feedback string (empty unless ``RETRY``).
+
+    ``on_pass`` (optional ``callable(sandbox)``) is threaded to
+    ``run_sandbox_eval`` and fires with the still-live sandbox only when the
+    gate passes — the tour step verifies its commands there before teardown.
 
     Skip conditions (both yield ``DISABLED`` — loop proceeds to storage):
 
@@ -137,7 +143,7 @@ def run_gate_for_attempt(
     # gate falls back to the legacy build/test path cleanly if ``run.sh``
     # is absent. The primary gate is the candidate's own ``run.sh`` (LLM-free
     # at the gate, key-gated ping in their session).
-    sb_result = _eval_with_infra_retry(plan, candidate)
+    sb_result = _eval_with_infra_retry(plan, candidate, on_pass=on_pass)
     candidate_eval["sandbox_eval"] = sb_result.as_dict()
 
     runtime_label = (plan.match.template_id or plan.match.suggested_template or "unknown") if plan else "unknown"

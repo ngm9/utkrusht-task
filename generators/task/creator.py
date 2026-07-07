@@ -62,6 +62,7 @@ from generators.task.evaluator import (
 )
 from generators.task.expected_ports import build_expected_ports
 from generators.task.gate import GateOutcome, run_gate_for_attempt
+from generators.task.tour import build_tour_meta, generate_tour
 from generators.task.trace_check import check_trace_consistency
 from generators.task.repository import (
     TaskValidationError,
@@ -526,8 +527,20 @@ def _imperative_prereq_items(pre_requisites: object) -> List[str]:
 # error-driven patch — a cheaper model fixes it as well as Opus at a fraction of
 # the output cost. Substantive failures (scope, fake-LLM, design) stay on Opus.
 # Generic across every stack: the signal is the failure TEXT, not the language.
-_TASK_GEN_MODEL = os.getenv("TASK_GEN_MODEL", "claude-opus-4-8")
-_TASK_GEN_REPAIR_MODEL = os.getenv("TASK_GEN_REPAIR_MODEL", "claude-sonnet-4-6")
+# Task generation runs on the OpenAI (GPT) client with gpt-5.5 — same client
+# family as the answer-code step. Env-overridable; a claude-* override routes
+# to the Anthropic client automatically via _llm_client_for.
+_TASK_GEN_MODEL = os.getenv("TASK_GEN_MODEL", "gpt-5.5")
+_TASK_GEN_REPAIR_MODEL = os.getenv("TASK_GEN_REPAIR_MODEL", "gpt-5.5")
+
+
+def _llm_client_for(model: str):
+    """Pick the Portkey client that matches the model id.
+
+    NB the inverted names in ``_clients.py``: ``openai_via_portkey`` IS the
+    OpenAI/GPT client; ``openai_client`` is Anthropic-via-Portkey.
+    """
+    return openai_via_portkey if model.startswith("gpt-") else openai_client
 _CHEAP_REPAIR = os.getenv("TASK_GEN_CHEAP_REPAIR", "1") != "0"
 
 # Stack-agnostic markers that a failure is mechanical (fixable by a small patch
@@ -748,6 +761,13 @@ def create_task(
         # /scaffold, not LLM-fixable) — abort to stop burning task-gen calls.
         prev_gate_verdict: Optional[str] = None
         cumulative_gen_cost = 0.0
+        # Candidate tour (tasks.tour). For infra tasks it is generated + verified
+        # inside the gate's on_pass hook — the only moment the sandbox is both
+        # booted with final code AND still alive. `attempted` distinguishes
+        # "hook ran but every retry failed" (do not re-generate without the
+        # sandbox) from "hook never fired" (non-infra / gate skipped — the
+        # post-loop fallback generates a judge/manifest-checked tour instead).
+        tour_holder: Dict = {"tour": None, "attempted": False}
         for attempt in range(1, max_attempts + 1):
             set_attempt(attempt)
             # Fix 1 — make the retry loop visible: log the feedback the LLM is
@@ -771,8 +791,9 @@ def create_task(
                 )
             else:
                 try:
-                    # #2: route a mechanical-failure retry to the cheaper repair
-                    # model (Opus for the first attempt + substantive retries).
+                    # #2: route a mechanical-failure retry to the repair model
+                    # (the default task-gen model handles the first attempt +
+                    # substantive retries). Client is picked per model id.
                     _gen_model = _repair_model_for(feedback)
                     if feedback and _gen_model != _TASK_GEN_MODEL:
                         logger.info(
@@ -781,7 +802,8 @@ def create_task(
                         )
                     with trace_stage("task_gen"):
                         candidate = generate_task_with_code(
-                            openai_client, input_data, feedback=feedback,
+                            _llm_client_for(_gen_model), input_data,
+                            feedback=feedback,
                             model=_gen_model,
                         )
                 except LLMOutputTruncated as exc:
@@ -923,10 +945,23 @@ def create_task(
                 # encapsulates the policy; the loop just acts on the outcome.
                 # Pass task_shape so the gate can short-circuit DISABLED for
                 # non_infra tasks (pure-runtime local projects).
+                def _tour_on_pass(sb, _cand=candidate):
+                    # Fires with the gate's still-live sandbox, only on PASS.
+                    # Best-effort by contract: generate_tour returns None on
+                    # failure and the gate hook swallows exceptions — a tour
+                    # problem can never fail the gate or the task.
+                    tour_holder["attempted"] = True
+                    tour_holder["tour"] = generate_tour(
+                        _cand.get("code_files", {}) or {},
+                        build_tour_meta(_cand, match.template_id if match else None),
+                        sandbox=sb,
+                    )
+
                 with trace_stage("gate"):
                     gate_outcome, gate_feedback = run_gate_for_attempt(
                         plan, candidate, candidate_eval, attempt,
                     task_shape=task_shape,
+                        on_pass=_tour_on_pass,
                     )
                 if gate_outcome == GateOutcome.RETRY:
                     last_failure = candidate_eval
@@ -1156,6 +1191,21 @@ def create_task(
             else:
                 logger.warning("No GITHUB_GIST_TOKEN for gist; skipping gist creation")
 
+            # Candidate tour, fallback path: the gate hook never fired (non-infra
+            # task → gate skipped, or gate disabled/skipped). Generate here from
+            # the final code files — local tours are manifest-checked in code, so
+            # no sandbox is needed. If the hook DID run and every retry failed,
+            # do NOT re-generate: a sandbox-verified failure must not be replaced
+            # by an unverified retry. Non-fatal either way — tour stays NULL.
+            if not tour_holder["attempted"]:
+                try:
+                    tour_holder["tour"] = generate_tour(
+                        code_data,
+                        build_tour_meta(task_data, match.template_id if match else None),
+                    )
+                except Exception as exc:  # noqa: BLE001 — tour must never block a task
+                    logger.warning("Tour generation failed (non-fatal): %s", exc)
+
             # Step 3 — flip the row to ready with the final payload.
             ready_task_blob = {
                 "title": draft_payload["task_blob"]["title"],
@@ -1211,6 +1261,7 @@ def create_task(
                 eval_info=eval_info,
                 readme_content=readme_content,
                 is_shared_infra_required=is_shared_infra_required,
+                tour=tour_holder["tour"],
             )
 
             # task_competencies junction — non-fatal per row (DAO handles errors).
