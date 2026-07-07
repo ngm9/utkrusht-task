@@ -162,7 +162,7 @@ def run_pipeline_for_brief(brief: TaskBrief, *, run_id: str, emit: EmitFn,
             return emit(StageEvent("done", "failed", detail="prompt stage failed"))
 
         rec = _stage("04_tasks", [
-            py, "multiagent.py", "generate_tasks",
+            py, "-m", "flows.tech.stages.generate",
             "-c", str(comp_json), "-b", str(bg_json),
             "-s", str(scenarios_file_for(level)),
             "--env", env,

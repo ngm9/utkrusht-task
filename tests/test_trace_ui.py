@@ -381,7 +381,7 @@ def test_launch_validates_and_spawns(monkeypatch: pytest.MonkeyPatch) -> None:
     resp = srv.api_launch(RunRequest(names=["Python", "Redis"], proficiency="basic", count=3, env="dev"))
     body = _json.loads(bytes(resp.body).decode())
     assert body["ok"] and body["proficiency"] == "BASIC" and body["count"] == 3
-    assert captured["cmd"][:6] == [_sys.executable, "run_pipeline.py", "-p", "BASIC", "--env", "dev"]
+    assert captured["cmd"][:7] == [_sys.executable, "-m", "flows.tech", "-p", "BASIC", "--env", "dev"]
     assert captured["cmd"].count("-n") == 2 and "Python" in captured["cmd"] and "Redis" in captured["cmd"]
 
     for bad in (

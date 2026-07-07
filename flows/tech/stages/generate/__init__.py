@@ -37,17 +37,21 @@ from flows.tech.stages.generate.persistence import (
     upload_files_to_github,
 )
 from flows.tech.stages.generate.runtime_resolver import (
+    InfraTemplateMissingError,
     ResolvedPlan,
     TemplateSpec,
     make_combo_key,
+    require_infra_template,
     resolve_plan,
 )
 
 __all__ = [
     # runtime_resolver
+    "InfraTemplateMissingError",
     "ResolvedPlan",
     "TemplateSpec",
     "make_combo_key",
+    "require_infra_template",
     "resolve_plan",
     # evaluator
     "blockers_are_deterministic_only",
