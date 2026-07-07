@@ -29,6 +29,7 @@ from dotenv import load_dotenv
 
 from infra.logger_config import logger
 from infra.tracing.client import trace_client
+from infra.utils import build_scenario_key
 from generators.scenarios.prompts import (
     SCENARIO_SYSTEM_PROMPT,
     SCENARIO_SYSTEM_PROMPT_NON_CODE,
@@ -144,21 +145,6 @@ def get_competency_names(competencies: List[Dict]) -> str:
 # ============================================================================
 # SCENARIO KEY CONSTRUCTION
 # ============================================================================
-
-def build_scenario_key(competencies: List[Dict]) -> str:
-    """Build the scenario lookup key from competencies list.
-
-    Produces keys like 'Java (BASIC), Kafka (BASIC)' that match
-    the key format used in task_scenarios.json files.
-    """
-    formatted = []
-    for comp in competencies:
-        name = comp.get("name", "").strip()
-        proficiency = comp.get("proficiency", "").upper()
-        if name and proficiency:
-            formatted.append(f"{name} ({proficiency})")
-    return ", ".join(sorted(formatted))
-
 
 def get_target_scenario_file(competencies: List[Dict], is_non_code: bool = False) -> Path:
     """Determine the correct scenario file based on competency type and proficiency."""

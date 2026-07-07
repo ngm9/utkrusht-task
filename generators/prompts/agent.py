@@ -904,7 +904,7 @@ class PromptGeneratorAgent(dspy.Module):
         _forced = task_shape_override if task_shape_override in ("infra", "non_infra") else None
         _infra_service = None
         if _forced:
-            from generators.prompts.infra_kinds import resolve as _resolve_infra_kind
+            from infra.infra_kinds import resolve as _resolve_infra_kind
             _ik = _resolve_infra_kind(infra_kind)
             if _forced == "infra":
                 _infra_service = _ik.get("service")

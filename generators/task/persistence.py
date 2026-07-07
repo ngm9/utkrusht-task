@@ -27,6 +27,7 @@ from supabase import Client, create_client
 
 from infra.github_utils import create_github_repo, slugify, upload_files_batch
 from infra.logger_config import logger
+from infra.supabase import init_supabase
 
 
 # GitHub credentials — read once at import. The rest of the package imports
@@ -34,29 +35,6 @@ from infra.logger_config import logger
 GITHUB_UTKRUSHTAPPS_TOKEN = os.getenv("GITHUB_UTKRUSHTAPPS_TOKEN")
 REPO_OWNER = os.getenv("REPO_OWNER")
 GITHUB_GIST_TOKEN = os.getenv("GITHUB_GIST_TOKEN")
-
-
-def init_supabase(env: str = "dev") -> Client:
-    """Initialise a Supabase client for the dev or prod environment.
-
-    Prefers the ``service_role`` key when present — it bypasses RLS, which
-    is needed for the v1 task-builder tables (``conversations``,
-    ``generation_jobs``, ``generated_scenarios``, ``templates``,
-    ``task_template_match``) that carry ``service_role_all`` policies.
-    Falls back to the anon key for environments where the service-role key
-    isn't provisioned (CI smoke tests, contributors without prod access).
-    """
-    suffix = "DEV" if env == "dev" else ""
-    url = os.getenv(f"SUPABASE_URL_APTITUDETESTS{suffix}")
-    key = (
-        os.getenv(f"SUPABASE_SERVICE_ROLE_KEY_APTITUDETESTS{suffix}")
-        or os.getenv(f"SUPABASE_API_KEY_APTITUDETESTS{suffix}")
-    )
-
-    if not url or not key:
-        raise ValueError(f"Missing Supabase credentials for environment: {env}")
-
-    return create_client(url, key)
 
 
 def fetch_existing_task_titles(

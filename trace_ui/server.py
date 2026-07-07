@@ -539,7 +539,7 @@ def api_launch(req: RunRequest) -> JSONResponse:
         raise HTTPException(status_code=400, detail="competency name contains invalid characters")
     count = req.count if isinstance(req.count, int) and 1 <= req.count <= 20 else 2
     task_shape = req.task_shape if req.task_shape in ("auto", "infra", "non_infra") else "auto"
-    from generators.prompts import infra_kinds
+    from infra import infra_kinds
     infra_kind = req.infra_kind if infra_kinds.is_valid(req.infra_kind) else "auto"
 
     cmd = [sys.executable, "run_pipeline.py", "-p", prof, "--env", env, "--count", str(count),
@@ -559,7 +559,7 @@ def api_launch(req: RunRequest) -> JSONResponse:
 @app.get("/api/infra-kinds")
 def api_infra_kinds() -> JSONResponse:
     """Infra-service options for the New-run modal's force-infra dropdown."""
-    from generators.prompts import infra_kinds
+    from infra import infra_kinds
     return JSONResponse({"kinds": infra_kinds.list_kinds()})
 
 

@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-from generators.prompts import infra_kinds
+from infra import infra_kinds
 from trace_ui import server
 from trace_ui.server import app
 

@@ -40,7 +40,7 @@ def _client(env: str) -> Any | None:
     """Cached Supabase client per env. Returns None on failure so callers
     can degrade gracefully."""
     try:
-        from generators.task.persistence import init_supabase
+        from infra.supabase import init_supabase
         return init_supabase(env)
     except Exception as exc:
         logger.warning("scenarios repository: supabase init failed for env=%s: %s", env, exc)

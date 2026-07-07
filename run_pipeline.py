@@ -252,7 +252,7 @@ def main() -> int:
     ap.add_argument("--infra-kind", default="auto",
                     help="When --task-shape=infra, the self-hosted service to ground the "
                          "task in: auto/vector-db/redis/kafka/postgres/mcp-server "
-                         "(see generators/prompts/infra_kinds.py).")
+                         "(see infra/infra_kinds.py).")
     ap.add_argument("--skip-preflight", action="store_true",
                     help="Skip the preflight stage (not recommended).")
     ap.add_argument("--python", default=None,
@@ -358,7 +358,7 @@ def main() -> int:
     # the generated task genuinely needs infra (not docker-compose bolted onto a
     # mockable one). The matching shape force happens in stage 3 below.
     if args.task_shape == "infra":
-        from generators.prompts.infra_kinds import resolve as _resolve_infra_kind
+        from infra.infra_kinds import resolve as _resolve_infra_kind
         scenario_cmd += ["--focus-areas", _resolve_infra_kind(args.infra_kind)["directive"]]
     rec = _run_stage(combo_dir, "02_scenarios", scenario_cmd)
     stages.append(rec)

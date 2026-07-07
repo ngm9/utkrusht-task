@@ -24,7 +24,7 @@ import time
 import uuid
 from typing import Any, Dict, Optional
 
-from generators.task.persistence import init_supabase
+from infra.supabase import init_supabase
 from task_builder.runner import StageEvent, run_pipeline_for_brief
 from task_builder.slots import TaskBrief
 
