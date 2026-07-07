@@ -1,4 +1,4 @@
-PROMPT_POSTGRESQL_INPUT_AND_ASK = """
+﻿PROMPT_POSTGRESQL_INPUT_AND_ASK = """
 Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a PostgreSQL assessment task.
 
 INPUT COMPETENCIES:
@@ -259,7 +259,7 @@ NEVER generate empty content - always provide substantial business context that 
    }},
    "outcomes": "Expected results after completion in 2-3 lines focusing on measurable basic performance improvements and optimized database operations requiring foundational-level skills. Use simple english.",
    "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific database optimization goal, and (3) the expected outcome emphasizing measurable performance improvements.",
-   "pre_requisites": "Bullet-point list of tools, knowledge, and environment required to complete the basic-level optimization task. Mention things like Docker, Docker Compose, PostgreSQL client tools (pgAdmin/DBeaver/psql), basic SQL knowledge, understanding of EXPLAIN, foundational PostgreSQL concepts (indexes, simple queries, data types), etc.",
+   "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
    "answer": "High-level solution approach focusing on basic database optimization strategies and foundational-level performance tuning techniques for the given simple performance issues. Include specific basic optimization techniques like: which simple indexes to create, basic query improvements needed, simple schema changes required, etc.",
    "hints": "A single line hint on what a good basic-level approach to analyze and optimize the database performance could include. These hints must NOT give away the specific optimizations needed, but gently nudge the candidate toward basic database performance analysis practices suitable for foundational-level skills (e.g., 'Start by checking if frequently queried columns have indexes').",
    "definitions": {{

@@ -1,0 +1,11 @@
+[
+    {
+        "competency_id": "c2e4d70d-2eb5-4816-ae91-4c0b6b0f9d19",
+        "created_at": "2024-11-12T12:00:00+00:00",
+        "proficiency": "ADVANCED",
+        "organization_id": "bfbd7da3-a43b-47dc-b828-146733b5c81e",
+        "name": "Python",
+        "scope": "An individual at the ADVANCED proficiency level in Python can design and develop complex, scalable applications, optimizing code for performance and efficiency. They master advanced concepts like metaprogramming, decorators, context managers, concurrency (multi-threading, multi-processing, asynchronous programming), and advanced OOP principles (inheritance, polymorphism, metaclasses). Proficient with tools such as profiling and debugging utilities (cProfile, pdb), testing frameworks (unittest, pytest), CI/CD platforms (Jenkins, GitLab CI/CD), and containerization tools (Docker, Kubernetes), cloud providers like AWS and Azure, they integrate Python applications with databases, RESTful APIs, message queues, and external systems. They have used and mastered libraries like NumPy, Pandas, PyMongo, OpenCV, Scikit Learn and frameworks like Flask, Django etc. They optimize database interactions using ORMs like SQLAlchemy, have understanding of SQL and NoSQL datbases, implement best practices and design patterns, and ensure secure coding practices to mitigate vulnerabilities. Capable of refactoring legacy code for better performance and maintainability, they design scalable architectures including microservices and distributed systems, and set up automated workflows for building, testing, and deploying applications. Additionally, they lead and mentor junior developers, conduct thorough code reviews, contribute to technical documentation, and proactively improve existing systems and processes.",
+        "long_scope": null
+    }
+]

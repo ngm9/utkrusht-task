@@ -1,4 +1,4 @@
-PROMPT_GOLANG_BASIC_CONTEXT = """
+﻿PROMPT_GOLANG_BASIC_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -133,7 +133,7 @@ Based on the real-world scenarios provided in following conversations, create a 
   }},
   "outcomes": "Expected results after completion focusing on functionality and code correctness. 2-3 lines describing functional outcomes and basic code quality.",
   "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific implementation or fix goal, and (3) the expected outcome emphasizing correctness, structure, and maintainability.",
-  "pre_requisites": "Bullet-point list of basic tools and environment setup required. Include basic Go knowledge expectations like understanding packages, modules, basic data structures, error handling, etc.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "Clear solution approach with step-by-step guidance on fundamental concepts to apply",
   "hints": "a single line hint focusing on the fundamental Go concept or approach that could be useful. These hints must NOT give away the answer, but guide towards basic Go thinking.",
   "definitions": {{

@@ -1,4 +1,4 @@
-PROMPT_JAVA_KAFKA_INTERMEDIATE_CONTEXT = """
+﻿PROMPT_JAVA_KAFKA_INTERMEDIATE_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -212,7 +212,7 @@ Based on the real-world scenarios provided, create a Kafka-focused optimization 
   }}}},
   "outcomes": "Bullet-point list of expected results after completion, using simple, non-technical language. Each bullet must describe ONE clear deliverable or requirement and be understandable to non-engineers. One bullet MUST explicitly state: 'Write production level clean code with best practices including proper design patterns, naming conventions, exception handling, logging and observability.'",
   "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific Kafka optimization goal, and (3) the expected outcome emphasizing improved performance, reliability, and scalability.",
-  "pre_requisites": "Bullet-point list of tools, libraries, environment setup, and knowledge required. Include Java 17+, Maven/Gradle, Docker, Docker Compose, Kafka fundamentals (topics, partitions, consumer groups, producers, consumers), Spring Boot basics, and Kafka optimization concepts.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach focusing primarily on Kafka optimization strategies: topic partitioning, consumer group configuration, producer/consumer settings, serialization, error handling, dead letter queues, monitoring, throughput optimization, delivery guarantees. Minimal Java configuration changes mentioned.",
   "hints": "A single line hint focusing on Kafka optimization approach. Must NOT give away specific implementations but gently nudge toward Kafka best practices.",
   "definitions": {{{{

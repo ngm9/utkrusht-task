@@ -1,4 +1,4 @@
-PROMPT_LLAMAINDEX_PYTHON_BASIC_CONTEXT = """
+﻿PROMPT_LLAMAINDEX_PYTHON_BASIC_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -170,7 +170,7 @@ Based on the real-world scenarios provided, create a Python + LlamaIndex task th
   }},
   "outcomes": "Bullet-point list in simple language. One bullet MUST explicitly state: 'Write production-level clean code with best practices including proper naming conventions, exception handling, logging, and clear project structure.'",
   "short_overview": "Bullet-point list in simple language describing: (1) the business problem, (2) the implementation or fix goal, and (3) the expected outcome emphasizing correctness, source quality, and maintainability.",
-  "pre_requisites": "Bullet-point list of tools, libraries, environment setup, and knowledge required. Include Python 3.10+, pip, virtual environment usage, basic Python development, and LlamaIndex concepts such as document loading, chunking, indexing, persistence, and querying.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach describing the intended flow at a non-code level.",
   "hints": "A single line hint that gently nudges the candidate toward a good approach without giving away the implementation.",
   "definitions": {{

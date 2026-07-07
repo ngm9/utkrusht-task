@@ -1,4 +1,4 @@
-PROMPT_NEXTJS_TYPESCRIPT_CONTEXT = """
+﻿PROMPT_NEXTJS_TYPESCRIPT_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -85,7 +85,7 @@ The output should be a valid json schema:
       "additional_files": "Additional files as needed for intermediate complexity"
   }},
   "outcomes": "Expected results after completion in 3-4 lines describing the functional application with multiple features working together. Use simple english.",
-  "pre_requisites": "Bullet-point list of tools, libraries, and environment setup required. Should include: Node.js 18+, npm/yarn, Git, **solid TypeScript knowledge**, **Next.js 13+ App Router familiarity**, **React hooks and state management understanding**, **API design principles**, etc.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "Comprehensive high-level solution approach covering architecture, implementation strategy, and key technical decisions",
   "hints": "A strategic hint focusing on architectural approach or key concept that guides thinking without revealing implementation details. Should help intermediate developers identify the right direction.",
   "definitions": {{

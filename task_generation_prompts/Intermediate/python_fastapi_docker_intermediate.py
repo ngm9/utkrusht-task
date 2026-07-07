@@ -1,4 +1,4 @@
-PROMPT_PYTHON_DOCKER_OPTIMIZATION_INSTRUCTIONS_INTER = """
+﻿PROMPT_PYTHON_DOCKER_OPTIMIZATION_INSTRUCTIONS_INTER = """
 ## GOAL
 As a technical architect super experienced in Docker containerization and deployment, you are given a list of real world scenarios and proficiency levels for Docker.
 Your job is to generate a task, with the given specifications, so that a candidate is presented with a Python FastAPI application that needs to be optimized and properly containerized using Docker with focus on Docker configuration, optimization, and deployment practices that require intermediate-level Docker skills.
@@ -303,7 +303,7 @@ Provide verification approaches that help candidates validate their optimization
       "Additional Python files as needed following FastAPI structure (all optimized)"
   }},
   "outcomes": "Expected results after completion in 2-3 lines focusing on measurable Docker optimization improvements: reduced image size, faster build times, quicker startup, better resource efficiency, enhanced security. Use simple english with specific improvements.",
-  "pre_requisites": "Bullet-point list of tools and environment setup required. Mention Docker, Docker Compose, basic understanding of Python FastAPI (no Python expertise needed), Docker performance analysis tools (docker stats, docker history), time measurement tools. Focus on Docker optimization requirements.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach focusing primarily on Docker optimization strategies: converting to multi-stage builds for size reduction, selecting appropriate base images (Alpine/slim), optimizing layer caching for faster rebuilds, implementing efficient dependency installation with caching, configuring proper resource limits, adding security hardening (non-root user), optimizing build context with .dockerignore, implementing proper health checks for faster readiness. Minimal Python configuration changes mentioned. Include expected performance improvements with specific numbers.",
   "task_overview": ["Array of strings where each string is a 3-4bullet point similar as the task scenario overview from the README.md file. Each point should be concise and what task is all about giving out the overview of that"],
   "hints": "A single line hint suggesting that candidates should analyze the current Docker setup to identify inefficiencies and focus on measurable optimization opportunities (image size, build time, startup time, resource usage, security). Must NOT give away specific Docker implementations but gently nudge toward measuring and improving performance metrics.",

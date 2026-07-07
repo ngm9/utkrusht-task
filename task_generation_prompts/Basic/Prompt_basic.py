@@ -1,4 +1,4 @@
-PROMPT_CONTEXT = """
+﻿PROMPT_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -130,7 +130,7 @@ Based on the provided `real_world_task_scenarios` , create a Prompt task that:
    }},
    "outcomes": "A very short description (1–2 sentences) of what tangible deliverables should exist if the task is completed well, without revealing the solution. For example: a clear problem diagnosis, a set of improved prompts/flows or configs, basic metrics or observations from the data, and a short executive-style summary tying changes to business impact.",
    "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or AI problem, (2) the specific prompt engineering or optimization goal, and (3) the expected outcome emphasizing correctness, structure, and maintainability.",
-   "pre_requisites": "List Bullet-points required for knowledge and tools for the task:\\n- Access to LLM playground (ChatGPT, Claude, or similar) for prompt testing\\n- Basic data analysis skills (CSV/JSON handling, spreadsheet tools or Python)\\n- Understanding of prompt engineering and AI system design fundamentals\\n- Documentation tools (Word/Markdown editor)\\n- Ability to query/filter data and identify patterns\\n- Critical thinking for root cause analysis",
+   "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
    "answer": "Only a high-level solution approach.
    "hints": "A single guiding hint that nudges toward good diagnostic or analytical practices without revealing the solution. Example: 'Start by examining patterns in the failure cases – what do they have in common that successful cases don't?' or 'Consider how the multi-step flow might be creating cascading errors from early stages.'",
    "definitions": {{

@@ -1,4 +1,4 @@
-PROMPT_REACT_OPTIMIZATION_INTERMEDIATE_CONTEXT = """
+﻿PROMPT_REACT_OPTIMIZATION_INTERMEDIATE_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -187,7 +187,7 @@ Based on real-world scenarios, create a React + TypeScript task that:
       ...
   }},
   "outcomes": "Expected results after completion focusing on performance improvements, architectural quality, and code organization. 3-4 lines describing both functional and optimization-focused outcomes, including the ability to analyze bottlenecks, apply React + TypeScript optimization techniques, and maintain clean, scalable architecture.",
-  "pre_requisites": "Bullet-point list of tools, libraries, and environment setup required. Include expectations such as strong understanding of React rendering behavior, TypeScript basics and intermediate patterns, performance profiling tools, React optimization hooks, and architectural thinking.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach with emphasis on which parts of the application to profile, what optimization techniques to apply, and how to balance performance, readability, and maintainability without exposing exact implementation details.",
   "hints": "A single line hint focusing on where to start optimization (e.g., component tree analysis, state management, data fetching) and suggesting architectural thinking without giving away the answer.",
   "definitions": {{

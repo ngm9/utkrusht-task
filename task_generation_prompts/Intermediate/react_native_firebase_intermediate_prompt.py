@@ -1,4 +1,4 @@
-PROMPT_REACT_NATIVE_FIREBASE_INTERMEDIATE_CONTEXT = """
+﻿PROMPT_REACT_NATIVE_FIREBASE_INTERMEDIATE_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -340,7 +340,7 @@ Describe the business scenario, what Firebase services are involved, and what ar
   }},
   "outcomes": "Bullet-point list. One bullet MUST state: 'Write production level clean code with best practices including proper design patterns, naming conventions, exception handling, logging and observability.'",
   "short_overview": "Bullet-point list: (1) business problem, (2) implementation goal, (3) expected outcome. but no need to mention in the start which point it belongs to. Just a concise 3-4 sentence overview.",
-  "pre_requisites": "Bullet-point list Example :Node.js 18+, Expo CLI, Expo Go, Git, intermediate React Native + Firebase knowledge (Firestore queries, real-time listeners, auth patterns, custom hooks, data layer architecture).",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach with emphasis on architectural decisions",
   "hints": "Single line focusing on architectural approach. Must NOT give away the answer.",
   "definitions": {{

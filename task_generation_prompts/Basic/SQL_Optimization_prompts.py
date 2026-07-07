@@ -1,4 +1,4 @@
-PROMPT_FASTAPI_POSTGRESQL_INPUT_AND_ASK = """
+﻿PROMPT_FASTAPI_POSTGRESQL_INPUT_AND_ASK = """
 Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Python FastAPI and PostgreSQL assessment task.
 
 INPUT COMPETENCIES:
@@ -320,7 +320,7 @@ NEVER generate empty content - always provide substantial business context that 
   }},
   "outcomes": "Expected results after completion in 2-3 lines focusing on functional database schema design and successful API integration with populated data. Use simple english.",
   "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific database schema design or optimization goal, and (3) the expected outcome emphasizing correctness, structure, and maintainability.",
-  "pre_requisites": "Bullet-point list of tools, libraries, and environment setup required to complete the task. Mention things like Python 3.10+, Docker, Docker Compose, PostgreSQL client tools (pgAdmin/DBeaver), Git, pip, virtual environment support, etc.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach focusing on database schema design principles and data modeling approach for the given business requirements",
   "hints": "A single line hint on what a good approach to solve the database schema design task could include. These hints must NOT give away the answer, but gently nudge the candidate toward good database design principles.",
   "definitions": {{
@@ -571,7 +571,7 @@ The candidate will receive a FULLY FUNCTIONAL FastAPI application that is alread
     }},
     "outcomes": "Expected results after completion in 2-3 lines focusing on measurable performance improvements at both database and API levels, optimized database operations, and efficient API endpoint performance. Use simple english.",
     "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific database and API optimization goal, and (3) the expected outcome emphasizing measurable performance improvements.",
-    "pre_requisites": "Bullet-point list of tools, libraries, and environment setup required to complete the optimization task. Mention things like Python 3.10+, Docker, Docker Compose, PostgreSQL client tools (pgAdmin/DBeaver), Git, pip, virtual environment support, query analysis tools, API testing tools (Postman/curl), performance monitoring tools, etc.",
+    "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
     "answer": "High-level solution approach focusing on database optimization strategies, performance tuning techniques, AND API endpoint optimization patterns for the given performance issues at both layers",
     "hints": "A single line hint on what a good approach to analyze and optimize both the database performance AND API endpoint efficiency could include. These hints must NOT give away the specific optimizations needed, but gently nudge the candidate toward good database performance analysis practices AND efficient API design patterns.",
     "definitions": {{

@@ -1,4 +1,4 @@
-PROMPT_HTML_CSS_JS_BASIC_CONTEXT = """
+﻿PROMPT_HTML_CSS_JS_BASIC_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -160,7 +160,7 @@ Based on the real-world scenarios provided in following conversations, create an
   }},
   "outcomes": "Bullet-point list in simple language. Must include expected results after completion and one bullet explicitly stating: 'Write production-level clean code with best practices including proper naming conventions, error handling, and code organization.'",
   "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific implementation or fix goal, and (3) the expected outcome emphasizing correctness, structure, and maintainability.",
-  "pre_requisites": "Bullet-point list of tools, libraries, environment setup, and knowledge required. Include modern browser (Chrome/Firefox), code editor, Git, and fundamentals of HTML5 (semantic elements, forms, accessibility attributes), CSS3 (Flexbox, Grid, media queries, variables), and JavaScript ES6+ (DOM manipulation, event handling, async/await, array methods).",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach describing main components and flow across HTML, CSS, and JS.",
   "hints": "Single line suggesting focus area. Example: 'Focus on connecting semantic HTML structure with responsive CSS layout and proper DOM event delegation in JavaScript'",
   "definitions": {{

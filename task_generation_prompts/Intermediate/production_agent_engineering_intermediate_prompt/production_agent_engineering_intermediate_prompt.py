@@ -487,7 +487,7 @@ full senior-IC advanced task (no multi-subsystem sprawl). Solvable within
   }},
   "hints": ["...", "..."],
   "outcomes": "A strong submission bounds the loop, routes to the fallback model on 5xx, enforces the cost ceiling pre-call, keeps replies on-policy, and ships production-clean code (clear naming, explicit error handling, structured logging, sensible structure).",
-  "pre_requisites": ["Python 3.10+", "LangGraph", "LiteLLM model routing", "Anthropic/OpenAI SDKs", "pytest", "a provider API key via .env"],
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "short_overview": ["Make an unbounded, crash-prone support agent production-safe", "Bound the loop, add model fallback + cost ceiling", "Keep replies on-policy within budget"]
 }}
 

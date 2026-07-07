@@ -1,4 +1,4 @@
-PROMPT_FASTAPI_KAFKA_CONTEXT_INTERMEDIATE = """
+﻿PROMPT_FASTAPI_KAFKA_CONTEXT_INTERMEDIATE = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -92,7 +92,7 @@ Based on the real-world scenarios provided, create a FastAPI + Kafka task that:
 ## Technology Stack:
 - **Runtime**: Python 3.11+ with FastAPI
 - **Kafka Client**: aiokafka (preferred for async FastAPI) or confluent-kafka-python
-- **Kafka Broker**: Use `bitnami/kafka` with KRaft mode (no Zookeeper) or `confluentinc/cp-kafka` in Docker Compose
+- **Kafka Broker**: Use ONLY `confluentinc/cp-kafka:7.6.1` in Docker Compose — do NOT use `bitnami/kafka` (image no longer available on Docker Hub)
 - **Database**: PostgreSQL with SQLAlchemy/asyncpg if the scenario requires persistence
 - **Containerization**: Docker and Docker Compose
 - **ASGI Server**: uvicorn
@@ -160,7 +160,7 @@ Based on the real-world scenarios provided, create a FastAPI + Kafka task that:
   }},
   "outcomes": "Bullet-point list. Must include: 'Write production-level clean code with best practices including proper design patterns, naming conventions, exception handling, logging and observability.'",
   "short_overview": "Bullet-point list describing: (1) the high-level business problem requiring event-driven communication, (2) the specific Kafka architecture/implementation goal, and (3) the expected outcome.",
-  "pre_requisites": "Bullet-point list: Python 3.11+, FastAPI, aiokafka, Docker, Docker Compose, intermediate Kafka concepts (partitioning, consumer groups, offset management, dead-letter topics, idempotency), REST API design, async/await patterns, SQLAlchemy basics.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach describing the Kafka architecture, async message flow design, and key implementation decisions within FastAPI.",
   "hints": "Single line suggesting focus area for Kafka event flow design, async patterns, idempotency, and error handling strategy.",
   "definitions": {{
@@ -277,7 +277,8 @@ Provide practical guidance without revealing specific implementations:
 5. **Task must be completable within the allocated time** for INTERMEDIATE proficiency
 6. **NO comments in code** that reveal the solution
 7. **Focus on 2-3 Python services** communicating via Kafka with intermediate patterns
-8. **docker-compose.yml must NOT have a `version:` field**
+8. **KAFKA IMAGE**: Use ONLY `confluentinc/cp-kafka:7.6.1` — NEVER `bitnami/kafka` (removed from Docker Hub; sandbox will fail to pull it)
+9. **docker-compose.yml must NOT have a `version:` field**
 9. **SCOPE**: 3-4 implementation objectives focused on Kafka architecture, idempotent processing, dead-letter patterns, and production-grade error handling
 10. **INTERMEDIATE COMPLEXITY**: Tasks should require architectural decisions, not just wiring code. Candidates should reason about message ordering, delivery guarantees, async lifecycle management, and consistency patterns.
 """
@@ -287,5 +288,10 @@ PROMPT_REGISTRY = {
         PROMPT_FASTAPI_KAFKA_CONTEXT_INTERMEDIATE,
         PROMPT_FASTAPI_KAFKA_INPUT_AND_ASK_INTERMEDIATE,
         PROMPT_FASTAPI_KAFKA_INTERMEDIATE,
-    ]
+    ],
+    "Kafka (INTERMEDIATE), Python - FastAPI (INTERMEDIATE)": [
+        PROMPT_FASTAPI_KAFKA_CONTEXT_INTERMEDIATE,
+        PROMPT_FASTAPI_KAFKA_INPUT_AND_ASK_INTERMEDIATE,
+        PROMPT_FASTAPI_KAFKA_INTERMEDIATE,
+    ],
 }

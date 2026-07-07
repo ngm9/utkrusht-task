@@ -1,4 +1,4 @@
-PROMPT_JAVASCRIPT_BASIC_CONTEXT = """
+﻿PROMPT_JAVASCRIPT_BASIC_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -115,7 +115,7 @@ Based on the real-world scenarios provided in following conversations, create a 
   }}}},
   "outcomes": "Bullet-point list in simple language. Must include expected results after completion and one bullet explicitly stating: 'Write production-level clean code with best practices including proper naming conventions, error handling, and code organization.'",
   "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific implementation or fix goal, and (3) the expected outcome emphasizing correctness, structure, and maintainability.",
-  "pre_requisites": "Bullet-point list of tools, libraries, environment setup, and knowledge required. Include modern browser or Node.js 18+, IDE, Git, and JavaScript fundamentals (ES6+ syntax, DOM manipulation, async/await, array methods, error handling).",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach describing main components and flow.",
   "hints": "Single line suggesting focus area. Example: 'Focus on proper DOM element selection, event delegation, and input validation before processing data'",
   "definitions": {{{{

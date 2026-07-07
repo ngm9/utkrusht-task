@@ -1,4 +1,4 @@
-PROMPT_PYTHON_INTERMEDIATE_CONTEXT = """
+﻿PROMPT_PYTHON_INTERMEDIATE_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -147,7 +147,7 @@ Based on the real-world scenarios provided, create a Python task that:
   }},
   "outcomes": "Bullet-point list. Expected results after completion.",
   "short_overview": "Bullet-point list: (1) business context and problem, (2) implementation goal, (3) expected outcome.",
-  "pre_requisites": "Bullet-point list of tools and knowledge required. Include Python 3.8+, pip, venv, Git, intermediate Python (OOP, APIs, testing) as relevant.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach",
   "hints": "Single line suggesting focus area. Must NOT give away the answer.",
   "definitions": {{
