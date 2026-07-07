@@ -70,26 +70,58 @@ def test_launch_caps_instructions_length(monkeypatch):
 
 def test_parse_suggestions_json_array():
     from trace_ui.server import _parse_suggestions
-    assert _parse_suggestions('["a clear directive", "another directive"]') == \
-        ["a clear directive", "another directive"]
+    assert _parse_suggestions('["a clear directive", "another directive"]') == [
+        {"text": "a clear directive", "shape": None},
+        {"text": "another directive", "shape": None},
+    ]
 
 
 def test_parse_suggestions_fenced_json():
     from trace_ui.server import _parse_suggestions
     out = _parse_suggestions('```json\n["fenced directive one", "fenced directive two"]\n```')
-    assert out == ["fenced directive one", "fenced directive two"]
+    assert out == [
+        {"text": "fenced directive one", "shape": None},
+        {"text": "fenced directive two", "shape": None},
+    ]
 
 
 def test_parse_suggestions_line_fallback():
     from trace_ui.server import _parse_suggestions
     out = _parse_suggestions("- first long directive here\n2) second long directive here")
-    assert out == ["first long directive here", "second long directive here"]
+    assert out == [
+        {"text": "first long directive here", "shape": None},
+        {"text": "second long directive here", "shape": None},
+    ]
 
 
 def test_parse_suggestions_empty():
     from trace_ui.server import _parse_suggestions
     assert _parse_suggestions("") == []
-    assert _parse_suggestions("nope no json no bullets") == ["nope no json no bullets"]
+    assert _parse_suggestions("nope no json no bullets") == [
+        {"text": "nope no json no bullets", "shape": None},
+    ]
+
+
+def test_parse_suggestions_objects_with_shape():
+    from trace_ui.server import _parse_suggestions
+    out = _parse_suggestions(
+        '[{"directive": "add a Postgres-backed audit log", "shape": "infra"},'
+        ' {"directive": "implement a bounded retry decorator", "shape": "non_infra"}]'
+    )
+    assert out == [
+        {"text": "add a Postgres-backed audit log", "shape": "infra"},
+        {"text": "implement a bounded retry decorator", "shape": "non_infra"},
+    ]
+
+
+def test_parse_suggestions_normalises_shape_aliases():
+    from trace_ui.server import _parse_suggestions
+    out = _parse_suggestions(
+        '[{"directive": "x pure logic, no services", "shape": "local"},'
+        ' {"directive": "y add a redis cache layer", "shape": "infrastructure"},'
+        ' {"directive": "z some directive", "shape": "weird"}]'
+    )
+    assert [o["shape"] for o in out] == ["non_infra", "infra", None]
 
 
 # ----------------------------------------------------------------------
@@ -103,14 +135,16 @@ def test_suggest_endpoint_returns_and_caches(monkeypatch):
 
     def fake(names, prof):
         calls.append((tuple(names), prof))
-        return [f"directive for {','.join(names)} @ {prof}"]
+        return [{"text": f"directive for {','.join(names)} @ {prof}", "shape": "infra"}]
 
     monkeypatch.setattr(srv, "_suggest_instructions", fake)
     srv._SUGGEST_CACHE.clear()
 
     resp = srv.api_suggest_instructions(names="Python,Kafka", proficiency="intermediate")
     body = json.loads(bytes(resp.body).decode())
-    assert body["suggestions"] == ["directive for Python,Kafka @ INTERMEDIATE"]
+    assert body["suggestions"] == [
+        {"text": "directive for Python,Kafka @ INTERMEDIATE", "shape": "infra"}
+    ]
 
     # same combo (order-insensitive key) → served from cache, no second LLM call
     resp2 = srv.api_suggest_instructions(names="Kafka,Python", proficiency="INTERMEDIATE")

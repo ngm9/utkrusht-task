@@ -1,14 +1,27 @@
+# Set by the prompt-generator open-ended dial — do not edit.
+# Consumed by infra.utils so the task row records which kind of task
+# (specified vs withhold-the-solution) this combo produces.
+OPEN_ENDED = False
+
+
 # Set by the prompt-generator shape classifier — do not edit.
 # Consumed by infra.utils for the E2B-gate skip decision.
-TASK_SHAPE = "infra"
+TASK_SHAPE = "non_infra"
 
 
-# task_generation_prompts/Intermediate/context_engineering_intermediate_prompt.py
+# task_generation_prompts/Intermediate/context_engineering_intermediate_prompt/context_engineering_intermediate_prompt.py
 #
-# Task-generation prompt module for Context Engineering · INTERMEDIATE.
-# Exports PROMPT_REGISTRY for infra/utils.py prompt loading.
-# All literal braces inside prompt strings are doubled so downstream str.format()
-# only consumes the supported placeholders.
+# CURATED task-generation prompt module for AI-agent BUILD-IT tasks.
+# Competency: "Context Engineering"  ·  Proficiency: INTERMEDIATE
+#
+# Contract:
+#   * Export a top-level dict named exactly PROMPT_REGISTRY.
+#   * Key it exactly "Context Engineering (INTERMEDIATE)".
+#   * Value is a LIST of prompt strings, replayed as sequential user turns.
+#   * The ONLY legal {placeholders} are:
+#       organization_background, role_context, minutes_range,
+#       competencies, real_world_task_scenarios, question_prompt
+#     EVERY other literal brace is doubled ({{ }}) so str.format() survives.
 
 PROMPT_CONTEXT_ENGINEERING_INTERMEDIATE_CONTEXT = """
 Let me provide you with some context about the company and role.
@@ -26,12 +39,22 @@ Use this context ONLY to gauge who is hiring and how senior the engineer must be
 The employer's industry is NOT the business domain of the assessment task unless
 the scenario you pick explicitly matches it. Do not drift the task into the
 employer's domain. You are generating an assessment for an INTERMEDIATE engineer
-who can design, debug, and implement practical context pipelines for LLM systems.
+who can build, debug, and improve context pipelines for real LLM applications.
 """
 
 PROMPT_CONTEXT_ENGINEERING_INTERMEDIATE_INPUT_AND_ASK = """
-Now that you understand the company context and role requirements, let me provide
-you with the specific inputs for generating a Context Engineering assessment task.
+You are generating ONE realistic, INTERMEDIATE "build-it" assessment task for a
+Context Engineering candidate. The candidate clones a runnable Python agent
+repository, sets their own provider key in `.env`, runs `./run.sh`, and writes
+roughly 60-140 lines of code inside 1-2 focused stub files. This is a coding
+session, NOT a write-a-memo / essay / quiz exercise.
+
+CALIBRATION: this probes practical context-engineering judgment for a candidate
+with a few years of experience. The task should isolate ONE clear context
+decision, or at most two tightly-related decisions, such as bounded context
+packing, tenant-scoped retrieval, memory freshness/deduplication, prompt-section
+separation, citation-grounding, or token-budget tradeoffs. Do not turn it into a
+whole platform build.
 
 INPUT COMPETENCIES:
 {competencies}
@@ -39,313 +62,295 @@ INPUT COMPETENCIES:
 INPUT ROLE CONTEXT:
 {role_context}
 
-INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
+INPUT REAL-WORLD SCENARIOS:
 {real_world_task_scenarios}
 
 TIME EXPECTATION:
-The task must fit in {minutes_range} for a strong INTERMEDIATE candidate. Scope it
-as a focused build-it/debug-it work item: roughly 5 minutes to inspect the repo and
-start the infrastructure, 10 minutes to understand the context pipeline failure,
-and the remaining time to implement or repair one well-isolated context decision.
+The task must fit in {minutes_range} for a strong INTERMEDIATE candidate. Budget
+it as: ~5 minutes setup, ~5 minutes reading fixtures and traces, and ~20 minutes
+writing or adjusting code. Keep the repository lean and focused.
 
 QUESTION CALIBRATION SIGNAL:
 {question_prompt}
 
-You are generating ONE realistic, INTERMEDIATE "build-it" assessment task for a
-Context Engineering candidate. This is a coding/debugging session, NOT a
-write-a-memo, essay, quiz, or pure system-design exercise.
+CORE JOB — BUILD ONE CONTEXT-ENGINEERING AGENT REPO from these fields:
+  **Stack:** Python 3 with a real model client such as litellm, openai, or anthropic; local fixtures; pytest invariants.
+  **Domain:** The business setting from one provided real-world scenario.
+  **Candidate writes:** The stub file(s) that assemble, retrieve, budget, cache, or manage context.
+  **Provided broken:** A context pipeline flaw such as dump-all retrieval, unsafe tenant mixing, unbounded prompt growth, stale memory, missing source separation, or lossy truncation.
+  **Invariants:** Candidate-facing tests that inspect constructed context, retrieval decisions, memory updates, citations, and guardrails.
+  **Senior signal:** The candidate's context-modeling judgment: what to include, exclude, order, scope, summarize, cite, retain, or redact.
 
-You MUST draw inspiration from ONE of the real-world scenarios provided above to
-create the task. Use the provided real-world scenario as the basis for this task -
-do not invent a different domain. When multiple scenarios are listed, pick the one
-whose technical surface area best fits the candidate level. The task scenario
-should closely align with the business context, technical requirements, and domain
-described in the selected real-world scenario.
+SCENARIO HANDLING — READ CAREFULLY:
+- You MUST draw inspiration from ONE of the real-world scenarios provided above
+  to create the task.
+- Use the provided real-world scenario as the basis for this task - do not invent
+  a different domain. When multiple scenarios are listed, pick the one whose
+  technical surface area best fits Context Engineering at INTERMEDIATE level.
+- The task scenario should closely align with the business context, technical
+  requirements, and domain described in the selected real-world scenario.
+- If the provided scenario is mostly about tool validation, enrollment safety, or
+  concurrency, translate only the context-relevant surface into a context task:
+  evidence selection, prompt assembly, session state, explicit confirmation
+  context, tenant scoping, source separation, or latency-aware context assembly.
+- If `REAL-WORLD SCENARIOS` is empty or "(none provided)", design a realistic
+  domain yourself, but keep it centered on context construction, retrieval,
+  memory/state, token budgeting, grounding, privacy, or access control.
 
-The generated task should test applied context engineering judgment, such as:
-- separating model knowledge from runtime context;
-- assembling prompts with clear layers for instructions, user input, retrieved
-  evidence, tool outputs, and state;
-- improving a retrieval, caching, memory, or token-budget decision;
-- preserving tenant/session boundaries and freshness constraints;
-- debugging context failures using traces, fixtures, logs, or tests;
-- validating groundedness, recall/precision, hallucination risk, latency, and
-  context size.
-
-For this task shape, include an external service in docker-compose because the
-selected scenario exercises a datastore, cache, vector store, search service, or
-similar backing context component. Do not add unrelated infrastructure. If the
-scenario is the fare-rules latency/cache scenario, the external service should be
-the cache or datastore actually used by the candidate-facing code, with the
-business rule source and cache behavior represented consistently across fixtures,
-tests, README, and scripts.
-
-Before generating the final task, briefly internalize:
-1. Which real-world scenario you selected and why it fits Context Engineering at
-   INTERMEDIATE level.
-2. Which single context-pipeline failure the candidate must fix: retrieval scope,
-   stale/duplicated memory, prompt assembly, token budgeting, context-aware
-   caching, tenant isolation, evidence formatting, or grounding behavior.
-3. Which external service the task genuinely needs, and which files start the
-   candidate in a FULLY FUNCTIONAL but intentionally incomplete local project.
+Before generating, briefly internalize:
+1. Which scenario you selected and why it is a Context Engineering task.
+2. Which context failure is observably present in the shipped repo.
+3. Which candidate stubs isolate the context decision without handing over the fix.
+4. Which local fixtures and invariant tests make the problem reproducible without
+   replacing the real LLM path.
 """
 
 PROMPT_CONTEXT_ENGINEERING_INTERMEDIATE_INSTRUCTIONS = """
 ## GOAL
-As a technical architect super experienced in Context Engineering for LLM systems,
-you are given a list of real world scenarios and proficiency levels for Context
-Engineering. Generate ONE INTERMEDIATE build-it/debug-it task that requires the
-candidate to improve a runnable context pipeline, not merely describe one.
+As a technical architect super experienced in Context Engineering for LLM-backed
+systems, you are given a list of real world scenarios and proficiency levels for
+Context Engineering. Generate ONE INTERMEDIATE Context Engineering "build-it"
+task: a FULLY FUNCTIONAL local Python repository that is deliberately incomplete
+in the context pipeline. It ships working scaffolding, realistic fixtures, a real
+LLM call path, and candidate stubs that raise `NotImplementedError`; the
+candidate makes the agent grounded, scoped, safe, and token-aware by filling the
+stubs and fixing the planted context flaws.
 
-The task must be practical and time-bounded. It should ship a FULLY FUNCTIONAL
-starter project with a FULLY POPULATED local dataset or fixture set, an external
-datastore/cache/vector/search service started by docker-compose, failing or
-incomplete behavior that is visible through tests or traces, and a focused
-candidate implementation area.
+The agent calls a REAL model via litellm or the anthropic/openai SDK on the
+candidate's key. NEVER use a FakeLLM. NEVER use a regex / keyword intent parser
+as the agent's reasoning. NEVER use a deterministic stand-in for the model.
+NEVER use time.sleep / asyncio.sleep to simulate the agent. Fixtures may make
+local tool inputs, retrieved documents, traces, and expected context artifacts
+deterministic; they must NOT replace the model's reasoning.
+
+The generated task must be a coding exercise, not an essay, not a framework
+syntax drill, and not a pure prompt-writing exercise. The candidate should work
+inside a small Python project that can run locally from `/root/task`.
 
 ## CONTEXT & CANDIDATE EXPECTATION
-The candidate is an intermediate AI Agent / Context Engineering practitioner with
-a few years of experience. They should be able to independently reason about
-runtime context, retrieval, memory/state, token budgets, prompt templates, access
-scoping, and evaluation signals, but they should not be expected to design an
-entire enterprise RAG platform from scratch.
+The candidate is an INTERMEDIATE Context Engineering practitioner. They should
+already understand runtime context as the information supplied to a model at
+inference time: system instructions, task instructions, user input, prior turns,
+retrieved evidence, tool outputs, user/session state, metadata, safety policy,
+and application configuration. They can distinguish model knowledge from runtime
+grounding data, analyze what context a business problem requires, and implement
+a pragmatic context pipeline with token limits, retrieval filters, memory/state
+handling, source separation, and evaluation fixtures.
 
-The assessment should feel like a realistic work item from an engineering team:
-a context-rich assistant is returning stale, noisy, slow, ungrounded, or unsafe
-answers because of a narrow context-pipeline flaw. The candidate must inspect the
-provided code, fixtures, and tests, then make a pragmatic fix.
+**CRITICAL**: Stay within Context Engineering scope. The task may use an agent
+loop, but the assessed work is context construction: retrieval and grounding,
+chunk selection, metadata filtering, prompt layout, context budgeting,
+conversation memory, tenant/user scoping, citation support, prompt-injection
+resistance, PII minimization, caching/freshness, and failure analysis from
+traces. Do NOT make the primary skill model fine-tuning, ML training,
+infrastructure provisioning, frontend work, SQL tuning, or generic tool-call
+schema validation.
 
-The employer in `organization_background` is administering the assessment. The
-task's business domain must come from ONE selected real-world scenario, not from
-the employer background unless the scenario itself uses that domain.
+**CRITICAL**: The task should be solvable within {minutes_range}. Keep the
+candidate-written code to 1-2 files and about 60-140 lines. Include tests that
+surface the expected behavior, but do not require the generated `run.sh` to pass
+those tests on the unsolved starter.
 
 ## INSTRUCTIONS
 
 ### Nature of the Task
-- Create a build-it/debug-it repository for Context Engineering at INTERMEDIATE
-  level. The candidate should modify 1-2 source files, roughly 50-120 lines of
-  implementation, and should not need to write a large new subsystem.
-- **CRITICAL**: Stay within the Context Engineering scope. Valid task centers
-  include context-aware caching, retrieval filtering/scoping, prompt assembly,
-  evidence formatting, context token budgeting, memory deduplication/freshness,
-  tenant/session isolation, or groundedness evaluation.
-- **CRITICAL**: Do NOT turn this into a pure prompt-writing exercise, an essay,
-  a generic LLM app wiring task, a frontend task, a fine-tuning/model-training
-  task, or a framework trivia drill.
-- **CRITICAL**: The candidate must interact with real project files and tests.
-  The repo must be runnable locally and include realistic fixtures, traces, or
-  seed data that expose the context failure indirectly.
-- **CRITICAL**: Because this is an infra-shaped task, include docker-compose.yml,
-  run.sh, and kill.sh. The compose stack must contain only the datastore/cache/
-  vector/search service the selected scenario actually exercises.
-- If the chosen scenario involves repeated access to a stable business-rule or
-  reference-data source, a good task can focus on context-aware caching with a
-  TTL/freshness key and reuse of cached evidence during final prompt assembly.
-- If the chosen scenario involves noisy RAG answers, a good task can focus on
-  retrieval filtering, metadata scoping, deduplication, top-k selection, or
-  assembling the evidence block without dumping irrelevant documents.
-- If the chosen scenario involves multi-turn support or workflow assistance, a
-  good task can focus on compact state, memory expiry, durable facts, or session
-  isolation.
-- If the chosen scenario involves safety/privacy, a good task can focus on
-  tenant-aware retrieval, PII redaction before context assembly, or prompt
-  injection resistance through clear separation of trusted instructions and
-  untrusted retrieved content.
-- The difficulty must be INTERMEDIATE: one meaningful context engineering
-  decision, at most two tightly-related concerns, no multi-service platform
-  sprawl, and solvable within {minutes_range}.
-- If you include diagrams, ensure they are written in mermaid format, properly
-  indented and also in code blocks.
-- **FILE LOCATION**: All code and scripts must reference /root/task as the base
-  directory.
+Create a realistic work item where a context-rich LLM application is failing in
+production because the assembled context is incomplete, noisy, stale,
+over-broad, unsafe, or too large. The repository must be FULLY FUNCTIONAL as a
+starter: dependencies install, fixtures load, imports succeed, `./run.sh` exits
+successfully, and the candidate can inspect the code, traces, and tests before
+implementing the missing context logic.
+
+Valid INTERMEDIATE Context Engineering task shapes include:
+- A support or workflow assistant that dumps an entire local knowledge base into
+  the prompt instead of retrieving a small tenant-scoped evidence set.
+- A multi-turn assistant that loses decision-critical session facts or carries
+  stale memory into unrelated turns.
+- A RAG answerer whose prompt mixes instructions, retrieved evidence, user text,
+  and untrusted content without delimiters or citation structure.
+- A context-budgeting middleware that must count tokens and preserve the most
+  relevant policy/evidence/user-state sections under a model input ceiling.
+- A retrieval pipeline that must filter by tenant, permission, freshness, source
+  quality, or document type before ranking evidence.
+- A context-aware cache or summary layer that must respect freshness and
+  permissions rather than serving stale or cross-tenant context.
+
+**CRITICAL**: The task must contain a real LLM/agent loop. The live path must call
+a real model through litellm, openai, or anthropic using the candidate's own key
+from `.env`. The candidate-filled stubs are the context logic around that real
+model: retrieval selection, context packing, memory/state updates, prompt
+assembly, redaction, token budgeting, or source ordering. The stubs are NOT a
+fake model and NOT a regex intent parser.
+
+**CRITICAL**: For Context Engineering, deterministic grading fixtures may assert
+the constructed prompt sections, selected evidence IDs, memory records, token
+counts, source citations, or access-control decisions. Those fixtures may not
+pretend to be the LLM. The real model path must remain available for the
+candidate's end-to-end run.
+
+**CRITICAL**: The candidate-facing README, question, comments, and stub
+docstrings may describe the symptom and the expected business outcome, but they
+must not leak the reference answer. Since `open_ended` is false for this
+generation style, tests and stub contracts MAY describe observable return shapes
+and acceptance conditions, but avoid writing the solution in prose.
+
+If you include diagrams, ensure they are written in mermaid format, properly
+indented and also in code blocks.
 
 ## AI AND EXTERNAL RESOURCE POLICY
 Candidates are permitted and encouraged to use any external resources they find
-helpful, including but not limited to Google, Stack Overflow, Context Engineering
-articles, Python documentation, Redis/Qdrant/PostgreSQL documentation where
-relevant, and AI-powered tools, agentic IDEs, or Large Language Models (LLMs).
+helpful, including but not limited to Google, Stack Overflow, Python
+documentation, LangChain/LlamaIndex/LiteLLM/OpenAI/Anthropic documentation,
+tiktoken documentation, fastembed documentation, and AI-powered tools, agentic
+IDEs, or Large Language Models (LLMs).
 
-- The task is designed to evaluate applied engineering judgment, debugging, and
-  implementation ability rather than memorization.
-- Candidates may use AI assistants to understand the codebase, but the submitted
-  solution must satisfy the provided tests and preserve the stated constraints.
-- The task should not depend on hidden trivia, obscure library APIs, or exact
-  memorization of framework syntax.
-- The candidate should still need to reason about context quality, freshness,
-  access scope, token budget, and observable behavior; a one-shot generic LLM
-  answer should not be enough to complete it correctly.
+- The assessment evaluates applied Context Engineering judgment, not
+  memorization.
+- Candidates may use AI assistance, but they must still inspect the repository,
+  understand the context failure, and produce a working implementation.
+- External resources should not be required to infer hidden business rules; the
+  repository must contain enough fixtures, tests, traces, and docs to make the
+  problem fair.
+- Do not include rules that ban AI tools or external documentation.
 
 ## Code Generation Instructions
-Generate a local Python project unless the selected scenario explicitly requires
-a different runtime. The project should be small, realistic, and runnable from
-/root/task.
+Generate a pure local Python project. Use Python 3.11-compatible code, a
+`requirements.txt` manifest, package-style source files under an `agent/` or
+`context_agent/` directory, candidate-facing tests under `invariants/`, and
+realistic local fixtures under `fixtures/`. **FILE LOCATION**: All code and
+scripts must reference /root/task as the base directory.
 
-The candidate-facing repo should usually include:
-- a package such as `app/` or `context_pipeline/` containing context assembly,
-  retrieval, caching, memory, or prompt-template code;
-- one or two candidate files with neutral stubs or intentionally incomplete logic;
-- working helper modules for fixtures, tracing, token counting, data loading, or
-  service clients;
-- tests under `tests/` that check the expected context behavior after the
-  candidate completes the work;
-- fixtures under `fixtures/` or seed data loaded into the external service;
-- README.md with only the required four candidate-facing sections;
-- pyproject.toml or an equivalent native runtime manifest;
-- docker-compose.yml, run.sh, kill.sh, and a datastore/cache/search configuration
-  file when needed.
+The repository should normally contain 8-12 files:
+- `README.md` with the exact four candidate-facing sections described below.
+- `requirements.txt` listing every third-party package the project imports.
+- `.env.example` declaring `OPENAI_API_KEY=` and/or `ANTHROPIC_API_KEY=`, plus
+  model-name configuration if needed.
+- `run.sh` as a deployability/readiness probe.
+- `agent/__init__.py` and `agent/__main__.py` or equivalent package entrypoint.
+- A complete model client wrapper, such as `agent/llm_client.py`, that performs
+  a real provider call when a key is present and the end-to-end agent is invoked.
+- Working support modules such as `agent/prompts.py`, `agent/schema.py`,
+  `agent/fixtures.py`, or `agent/tracing.py`.
+- Candidate-stub modules such as `agent/context_builder.py`,
+  `agent/retrieval.py`, `agent/memory.py`, or `agent/budget.py`; these should
+  raise `NotImplementedError` in the functions the candidate must fill.
+- `fixtures/*.json` or `fixtures/*.jsonl` containing documents, policies, users,
+  session turns, traces, or evaluation cases.
+- `invariants/test_*.py` containing candidate-facing pytest tests that fail until
+  the candidate completes the context logic.
 
-Do not leak the solution into code comments, README text, function names, fixture
-labels, or hints. Candidate stubs may raise `NotImplementedError` with a neutral
-one-line contract, but must not describe the implementation strategy. The answer
-field is the only place where the reference approach belongs.
+Use real libraries when appropriate:
+- `litellm`, `openai`, or `anthropic` for real model calls.
+- `python-dotenv` for loading `.env`.
+- `tiktoken` for token accounting when the task involves prompt budgets.
+- `fastembed` for local embeddings when the task involves semantic retrieval.
+- `pytest` for invariant tests.
+Avoid heavyweight dependencies such as torch or sentence-transformers unless the
+scenario absolutely requires them.
 
-Common task patterns that fit this competency:
-- a travel support assistant repeatedly fetching the same fare-rule context and
-  needing request-scoped or TTL caching keyed by rule version;
-- an internal policy Q&A assistant retrieving cross-tenant documents because
-  metadata filters are missing or applied too late;
-- a workflow copilot stuffing all prior turns into the prompt and exceeding a
-  context budget instead of summarizing or selecting relevant state;
-- a support agent using stale durable memory because it appends conflicting facts
-  without freshness or deduplication;
-- a RAG assistant hallucinating when evidence is missing because prompt assembly
-  does not separate retrieved evidence, user input, and unknown behavior.
+The generated repo must not require any external datastore, vector database,
+cache, queue, browser, or server process. If retrieval is needed, use local JSON,
+JSONL, Markdown, SQLite from the Python standard library, in-memory indexes, or
+local fastembed vectors persisted inside the repository.
 
 ## Infrastructure Requirements
-The generated task MUST include infrastructure because the authoritative task
-shape is infra. Include only the external service needed by the selected scenario.
-Do not add unrelated databases, queues, dashboards, or app containers.
-
-The infrastructure must be deterministic and simple:
-- docker-compose.yml starts the datastore/cache/vector/search service.
-- run.sh starts the service with `docker compose up -d`, waits for readiness, and
-  performs a lightweight readiness check.
-- kill.sh tears down containers, volumes, networks, images, and /root/task
-  idempotently.
-- If seed data is needed, include it as an explicit file such as init_database.sql,
-  redis seed commands, JSON fixtures loaded by run.sh, or a tiny Python seed
-  script. The starter data must be FULLY POPULATED and internally consistent.
+This is a non-infrastructure task. The generated repository MUST be a pure local
+Python project using native Python packaging and test commands. Do not require
+any Docker daemon, external datastore, hosted vector database, queue, cache,
+search engine, or database service.
 
 ### Docker-compose Instructions
-- docker-compose.yml MUST be included for the datastore/cache/vector/search
-  service the task actually exercises.
-- docker-compose.yml **MUST NOT include any version specification**.
-- docker-compose.yml **MUST NOT include environment variables or .env file references**.
-- **SECURITY-CRITICAL**: ports MUST be bound to localhost only using
-  `127.0.0.1:<port>:<port>` for every datastore exposed to the host.
-- Do not include an application container unless the scenario absolutely requires
-  one. Prefer running the Python project directly on the host and using compose
-  only for the backing service.
-- Use stable official images where possible. Examples include Redis for
-  context-aware caching, Qdrant for vector retrieval, or a simple search service
-  when the scenario genuinely requires it.
-- Name services clearly, such as `redis`, `qdrant`, or `context-store`.
-- Include healthchecks or readiness-friendly commands only when they are reliable
-  without credentials or external network calls.
-- Keep volumes and networks minimal and named consistently with the repo.
+Do not generate a compose file. Do not include compose commands in setup,
+readiness, verification, README, or tests. This task must run locally with Python
+and the dependencies installed from `requirements.txt`.
 
-### Redis Configuration Instructions
-If the selected scenario uses Redis as the external cache or context store:
-- Include a `redis.conf` only if custom TTL, persistence, or eviction behavior is
-  needed for the scenario. Otherwise the default Redis image is acceptable.
-- Bind Redis only to localhost in docker-compose using `127.0.0.1:6379:6379`.
-- Seed data may live in JSON fixtures and be loaded by the app or tests; do not
-  require manual Redis CLI setup from the candidate.
-- The task may require the candidate to implement cache keys, TTL behavior,
-  version-aware invalidation, or reuse of cached evidence, but the README must
-  not reveal the implementation details.
-- If a different datastore is more appropriate for the chosen scenario, replace
-  this with the minimal configuration file or seed mechanism for that datastore,
-  but keep the same simplicity and localhost-only binding rules.
+### Local Fixture and Configuration Instructions
+Use local fixtures only. Do not generate database initialization scripts or
+datastore configuration. Local documents, traces, policies, tenant metadata,
+session histories, and evaluation cases should live under `fixtures/` and should
+be internally consistent with the README, tests, and code comments. Secrets must
+not appear in fixtures. The `.env.example` file must declare provider key names
+but must not contain real credentials.
 
 ### Run.sh Instructions
-- Include a run.sh file at the repository root.
-- run.sh must start with `#!/usr/bin/env bash` and `set -euo pipefail`.
-- run.sh must `cd /root/task` before running project commands.
-- run.sh MUST use `docker compose up -d` to start the required external service.
-- run.sh must wait for the service to become reachable using a deterministic
-  local check, not a sleep-only approach.
-- run.sh must not call paid model APIs, require API keys, or contact external
-  internet services.
-- run.sh must not run the candidate's unfinished implementation in a way that
-  causes the readiness check to fail before the candidate starts. It may perform
-  imports, seed fixture data, check service connectivity, and print the native
-  test command the candidate can run.
-- Do not include `apt-get install`, `pip install`, or `npm install` commands for
-  runtime or common libraries in run.sh.
-- End run.sh with a clear success message such as `ready`.
+Generate `run.sh` and make it executable in spirit with a proper shebang:
+`#!/usr/bin/env bash`. It must use `/root/task` as the working directory and its
+FIRST substantive step must install the task's own dependencies with
+`pip install -q -r requirements.txt`. Do NOT apt-get or system-install Python;
+the runtime is already available.
+
+`run.sh` is a DEPLOYABILITY probe, NOT the grader. It proves that the starter repo
+is usable before the candidate solves it:
+1. Change to `/root/task`.
+2. Install dependencies from `requirements.txt`.
+3. Load `.env` only if present; absence of a provider key must not fail readiness.
+4. Run an import/static self-check such as `python -m agent --selfcheck`.
+5. The self-check may validate fixture files, schema shapes, prompt templates,
+   tokenizers, and local embedding initialization.
+6. The self-check must NOT invoke candidate stubs that still raise
+   `NotImplementedError`.
+7. The self-check must NOT run the full agent loop or require a model call.
+8. If a provider key is present, an optional direct one-token provider ping may
+   run through the model client, but it must not call the unfinished agent logic.
+9. Print a clear final readiness message such as `ready`.
+
+If `run.sh` also runs pytest collection or candidate-facing invariant tests, it
+must treat pytest exit code 0 and exit code 1 as deployable because failing tests
+are expected on the unsolved starter. It must exit non-zero only for collection,
+configuration, dependency, internal, or no-tests-collected failures. For pytest,
+capture the exit code and branch so that 0 and 1 exit successfully while 2, 3, 4,
+or 5 fail the readiness probe.
 
 ## kill.sh file instructions
-Create a kill.sh file that is safe to run multiple times and performs all cleanup
-from /root/task. It must:
+Do not generate a cleanup script for this task. There are no containers, volumes,
+networks, or datastore processes to stop. Keep the repository pure local and
+Python-native.
 
-1. Start with `#!/usr/bin/env bash` and `set -euo pipefail`.
-2. Print a clear log line before every cleanup step.
-3. Stop running compose containers with `docker compose down --remove-orphans`
-   from /root/task, using `|| true` so the script is idempotent.
-4. Remove compose volumes for the task with `docker compose down -v
-   --remove-orphans || true`.
-5. Remove task-specific Docker networks with `docker network rm <network-name>
-   || true` where a custom network was created.
-6. Force-remove task-specific images if an app image or custom image was created,
-   using `docker rmi -f <image-name> || true`. If no custom image exists, include
-   a logged no-op or skip safely.
-7. Run `docker system prune -a --volumes -f || true`.
-8. Remove the task directory with `rm -rf /root/task || true`.
-9. Print `Cleanup completed successfully!` as the final message.
-
-The script must use `|| true` for destructive cleanup commands so repeated runs
-do not fail. It must not prompt for confirmation or depend on environment
-variables.
+### Dockerfile Instructions
+Do not generate a Dockerfile. This task does not need an application container.
 
 The output should be a valid json schema:
-- README.md: Candidate-facing concise task overview, helpful tips, objectives,
-  and verification instructions only.
-- docker-compose.yml: Localhost-bound datastore/cache/vector/search service,
-  with no version specification and no environment variables.
-- run.sh: Infrastructure startup and readiness script using docker compose up -d.
-- kill.sh: Idempotent cleanup script following the nine-step shape above.
-- pyproject.toml or equivalent manifest: Native runtime manifest with the small
-  set of dependencies used by the project.
-- Source files: Starter context pipeline code with one focused incomplete area.
-- Tests: Candidate-facing tests that verify context behavior after completion.
-- Fixtures or seed files: Fully populated realistic data supporting the scenario.
-- Optional datastore configuration: redis.conf, init file, or seed script only
-  when required by the chosen datastore.
+- `README.md`: Candidate-facing overview with exactly the four required sections.
+- `requirements.txt`: Python dependency manifest with every imported third-party package.
+- `.env.example`: Provider key and model configuration template with no secrets.
+- `run.sh`: Local readiness script using `/root/task` and installing dependencies first.
+- `agent/__init__.py`: Minimal package marker or package exports.
+- `agent/__main__.py`: CLI entrypoint supporting `--selfcheck` and optionally an end-to-end run.
+- `agent/llm_client.py`: Complete real provider client wrapper used by the live agent path.
+- `agent/context_builder.py` or similar: Candidate-stub file for assembling context.
+- `agent/retrieval.py`, `agent/memory.py`, or `agent/budget.py`: Candidate-stub or supporting context logic files as needed by the scenario.
+- `agent/prompts.py` or `agent/schema.py`: Working prompt templates and structured context schemas.
+- `fixtures/*.json` or `fixtures/*.jsonl`: Realistic local documents, traces, sessions, policies, or eval cases.
+- `invariants/test_context_*.py`: Candidate-facing tests for constructed context, retrieval scope, memory behavior, citations, privacy, or token budgets.
 
 ## Code file requirements
-- code_files must be a flat object mapping file paths to full file contents.
-- Every file required to run the project must be present; do not reference files
-  that are missing from code_files.
-- Use realistic names, IDs, timestamps, document versions, tenant IDs, rule
-  versions, scores, and trace rows that are internally consistent.
-- Include enough data to expose the failure without making the task bulky.
-- The source code must be readable and production-like: clear function names,
-  typed interfaces where helpful, structured errors, and small modules.
-- The candidate's unfinished area must be obvious from running or reading the
-  code, but the correct implementation must not be spelled out.
-- Tests should verify observable outcomes such as fewer repeated lookups, scoped
-  retrieval, preserved citations, no stale context, token budget compliance, or
-  safe unknown behavior.
-- Avoid brittle tests that require one exact implementation. There should be
-  multiple valid approaches that satisfy the context-engineering outcome.
-- Do not require live LLM calls, external API keys, paid services, or internet
-  access.
-- If using a tokenizer or embedding library, keep it lightweight and local.
-- If using a vector store, include preloaded or easily seeded data so the task is
-  FULLY POPULATED before the candidate begins.
+All generated `code_files` must be complete file contents, not snippets. The
+starter repository must import and self-check successfully before the candidate
+implements the stubs. Candidate stubs should raise `NotImplementedError` with a
+neutral one-line message naming the purpose, not the solution.
+
+The code should model context explicitly. Prefer typed dictionaries, dataclasses,
+or Pydantic models for context sections, evidence records, tenant metadata,
+session state, citations, and assembled prompt payloads. Keep prompt templates
+clear and separated into instructions, policy, user input, retrieved evidence,
+memory/session state, and tool/output constraints. Use delimiters around
+untrusted content and preserve source identifiers for attribution.
+
+Include realistic failure evidence without annotating it as the fix: traces may
+show hallucinated answers from noisy evidence, cross-tenant snippets appearing in
+context, stale memory overriding fresh user input, excessive prompt token counts,
+or missing citations. Tests may assert observable behavior such as no cross-tenant
+evidence, bounded token count, required source IDs, retention of recent decision
+facts, or graceful "unknown" behavior when evidence is insufficient.
+
+Do not leak the reference answer into candidate-facing code, README, comments, or
+fixture names. The full solution approach belongs only in the `answer` field.
 
 ## .gitignore INSTRUCTIONS
-Generate a .gitignore appropriate for the runtime and infrastructure. It should
-exclude:
-- virtual environments and local dependency folders;
-- Python caches and test caches;
-- local databases, dumps, and generated service data;
-- logs, coverage output, and temporary files;
-- .env files and local secret material.
-
-Do not ignore source files, fixtures, README.md, tests, docker-compose.yml,
-run.sh, kill.sh, or seed/config files required for the task.
+Generate a `.gitignore` when useful. It should ignore Python caches, virtual
+environments, pytest caches, local `.env`, coverage artifacts, editor folders,
+and temporary outputs. It must not ignore fixtures, invariant tests, README,
+requirements, or source files needed to run the task.
 
 ## README.md INSTRUCTIONS
 The README must be concise and open-ended. Each section should have only the
@@ -356,127 +361,105 @@ implementation approach on their own.
 Do NOT directly tell candidates what to implement — provide direction and
 guidance to help them discover solutions.
 
-README.md must contain EXACTLY these output sections, in this order, and no
+The README.md must contain EXACTLY these output sections, in this order, and no
 others:
-1. Task Overview
-2. Helpful Tips
-3. Objectives
-4. How to Verify
 
 ### Task Overview
-- Use the markdown heading `## Task Overview`.
-- Write 3-4 meaningful sentences. No bullet list.
-- Describe the business scenario, current state, and why the problem matters.
-- NEVER leave this section empty.
-- Do not include bold time-budget callouts.
-- Do not name the exact function, class, or algorithm that solves the issue.
-- Do not include database connection details, hostnames, usernames, passwords,
-  client-tool suggestions, or `<DROPLET_IP>` placeholders.
-
-### Helpful Tips
-- Use the markdown heading `## Helpful Tips`.
-- Provide 4-5 bullets max.
-- Provide practical guidance without revealing specific implementations.
-- Each bullet must start with an action word: `Consider`, `Think about`,
-  `Explore`, `Review`, or `Analyze`.
-- Tips guide discovery. They MUST NOT name the specific API, library, function,
-  pattern, data structure, or algorithm that solves the task.
-- Keep the tips focused on context quality, freshness, scoping, token budget,
-  evidence inspection, or observable behavior.
+Task Overview must be 3-4 meaningful sentences. No bullet list. It describes the
+business scenario, current state, and why the context failure matters. It is
+NEVER empty. Do not include bold time-budget callouts. Do not name the stub
+functions or give the implementation plan.
 
 ### Objectives
-- Use the markdown heading `## Objectives`.
-- Provide 4-6 bullets max.
-- Frame objectives around outcomes rather than specific technical
-  implementations. Objectives describe the what and why, never the how.
-- Each bullet must state an observable end-state, not a step or an API/library to
-  use.
-- Good objectives mention outcomes such as grounded responses, scoped evidence,
-  reduced repeated context fetches, preserved freshness, bounded context size,
-  tenant-safe retrieval, or stable verification results.
-- Do not enumerate file names, function names, exact test names, or hidden
-  thresholds as a checklist.
+Objectives must contain 4-6 bullets max. Frame objectives around outcomes rather
+than specific technical implementations. Objectives describe the "what" and
+"why", never the "how". Each bullet states an observable end-state, not a step,
+API, library, or function to use.
+
+### Helpful Tips
+Helpful Tips must contain 4-5 bullets max. Provide practical guidance without
+revealing specific implementations. Each bullet starts with an action word:
+"Consider", "Think about", "Explore", "Review", or "Analyze". Tips guide
+discovery — they MUST NOT name the specific API, library, function, pattern, data
+structure, or algorithm that solves the task.
 
 ### How to Verify
-- Use the markdown heading `## How to Verify`.
-- Provide 4-6 bullets max.
-- Frame verification in terms of observable outcomes. Describe WHAT to verify and
-  the expected behavior, not the specific implementation to write.
-- Each bullet should be a check the candidate can run or observe, such as command
-  output, test results, response shape, latency observation, log line, cache hit
-  count, retrieval trace, or memory reading.
-- It may mention running `./run.sh` and the native test command, but it must not
-  include setup commands like install commands or docker internals beyond what is
-  necessary for verification.
+How to Verify must contain 4-6 bullets max. Frame verification in terms of
+observable outcomes. Describe WHAT to verify and the expected behavior, not the
+specific implementation to write. Each bullet is a check the candidate can run:
+test output, response shape, prompt/context inspection, source/citation presence,
+token reading, privacy observation, or log line.
 
-CONTENT TO EXCLUDE FROM THE README (instruction — do not emit as a section):
-Keep the following out of README.md:
-- Setup commands such as `npm install`, `pip install`, `docker compose up`,
-  `mvn test`, or similar installation instructions.
+For tasks that call a real LLM and include `.env.example` declaring
+`OPENAI_API_KEY` or `ANTHROPIC_API_KEY`, How to Verify MUST open with a GitHub
+note admonition embedded INSIDE the section as a blockquote, never as a new
+heading:
+> [!NOTE]
+> Copy `.env.example` to `.env` and set your provider key. The invariant tests run offline and need no key; only the end-to-end run does.
+
+## CONTENT TO EXCLUDE FROM THE README (instruction — do not emit as a section)
+Keep the following OUT of the README:
+- Setup commands such as `pip install`, `docker compose up`, `pytest`, or shell
+  command walkthroughs beyond high-level verification language.
 - Direct solutions or architectural decisions.
 - Step-by-step implementation guides.
 - Specific APIs, method names, library names, pattern names, or data-structure
   names that reveal the solution.
 - Code snippets that give away the answer.
-- Directive phrases like `you should implement`, `add this middleware`,
-  `create this class`, or `use <specific API>`.
-- Database-connection details such as host, port, username, password, or
-  client-tool suggestions.
-- Any heading named `NOT TO INCLUDE`, `CONTENT TO EXCLUDE`, or similar in the
-  emitted README itself.
+- Directive phrases like "you should implement", "add this middleware", "create
+  this class", or "use this specific API".
+- Database connection details, hostnames, ports, usernames, passwords, client
+  tool suggestions, or infrastructure placeholders.
 
 ## REQUIRED OUTPUT JSON STRUCTURE
 Output a SINGLE raw JSON object with EXACTLY these keys and no others. Each value
-must be populated with the generated task content.
+below describes what to fill in; replace descriptions with the generated task
+content.
 
 {{
-  "name": "A kebab-case GitHub repository name under 50 characters that summarizes the task without using placeholders.",
-  "title": "A human-readable display title in '<action verb> <subject>' format, 50-80 characters, different from name.",
-  "question": "The full candidate-facing task description written like a realistic engineering ticket or incident note; it should describe symptoms, business impact, constraints, and how to start without revealing the implementation.",
-  "code_files": "An object mapping every required filepath to the complete file contents for the candidate repository, including README.md, docker-compose.yml, run.sh, kill.sh, manifest, source files, tests, fixtures, and any required datastore configuration or seed files.",
-  "answer": "Evaluator-facing high-level solution guidance describing the root cause, expected strong fix, relevant tradeoffs, and evidence in the provided files without duplicating full solution code.",
-  "definitions": "An object of concise term-to-definition pairs for context engineering terms used in the task, such as runtime context, retrieved evidence, tenant scope, token budget, freshness, groundedness, cache key, or memory state.",
-  "hints": "A single line nudging investigation without revealing the fix; it should point candidates toward inspecting traces, retrieved evidence, repeated lookups, context size, freshness, or access scope.",
-  "outcomes": "Expected results after completion in 2-3 lines focusing on measurable context quality, correctness, latency, safety, or reliability improvements. Use simple english.",
-  "pre_requisites": "A bullet list of tools and knowledge needed, including basic Python project navigation, docker compose for the provided service, context assembly concepts, retrieval or caching fundamentals, and running the provided tests.",
-  "short_overview": "A bullet list summarising the business problem, the context engineering focus, the external service involved, and the expected observable outcome."
+  "name": "A kebab-case GitHub repository name under 50 characters that is distinct from the human-readable title and reflects the context-engineering work item.",
+  "title": "A human-readable display title in '<action verb> <subject>' format, 50-80 characters, describing the main context-engineering improvement without revealing the solution.",
+  "question": "The full candidate-facing task description written like a realistic work ticket or incident-channel request, stating the observable context failure, business impact, constraints, and how to start without naming the solution.",
+  "code_files": "An object mapping each repository filepath to the complete file contents for a runnable local Python project, including README, requirements, .env.example, run.sh, source modules, fixtures, and invariant tests.",
+  "answer": "Evaluator-facing high-level solution guidance summarizing root causes, expected fix shape, tradeoffs, residual risks, and evidence reviewers should look for, without duplicating full solution files.",
+  "definitions": "An object mapping context-engineering terms used in the task to concise definitions that clarify concepts such as grounding, token budget, retrieved evidence, memory, tenant isolation, prompt injection, or citation.",
+  "hints": "A single line or short list nudging investigation toward the observable context symptom without revealing the specific implementation or reference fix.",
+  "outcomes": "Expected results after completion in 2-3 lines focusing on measurable improvements to groundedness, relevance, safety, token control, source traceability, and production-clean code quality.",
+  "pre_requisites": "A bullet list of assumed prior knowledge and skills expressed as declarative capability phrases only, such as Python 3.11 proficiency, comfort with pytest, familiarity with runtime context, understanding of RAG or memory concepts, and a provider key via .env.",
+  "short_overview": "A bullet list summarizing the business problem, the context-engineering focus, the starter repository shape, and the expected observable outcome."
 }}
 
-Use these EXACT keys. Do NOT use synonyms: not `task_title` for `title`, not
-`files` for `code_files`, not `context` for `question`, and not `solution` for
-`answer`. Do NOT emit `criterias`; the pipeline injects it. Output raw JSON only
-with no markdown fences and no commentary around it.
+Use these EXACT keys. Do NOT use synonyms such as `task_title`, `files`,
+`repository`, `context`, `solution`, or `criteria`. Do NOT emit `criterias`; the
+pipeline injects it. Output raw JSON only — no markdown fences and no prose
+around the JSON object.
 
 ## CRITICAL REMINDERS
-- Output raw JSON only, starting with `{{` and ending with `}}`.
-- Generate ONE coherent INTERMEDIATE Context Engineering task, not a list of
-  alternatives.
-- Use ONE selected real-world scenario as the domain source. Do not drift into
-  the employer's domain unless the scenario itself does.
-- Because this is an infra-shaped task, code_files MUST include docker-compose.yml,
-  run.sh, and kill.sh.
-- docker-compose.yml **MUST NOT include any version specification**.
-- docker-compose.yml **MUST NOT include environment variables or .env file
-  references**.
-- **SECURITY-CRITICAL**: every exposed datastore port must be localhost-bound
-  using `127.0.0.1:<port>:<port>`.
-- run.sh must use `docker compose up -d` and must not require API keys, paid model
-  calls, internet access, or package installation.
-- kill.sh must follow the nine-step cleanup shape and end with
-  `Cleanup completed successfully!`.
-- README.md must contain exactly four sections in this order: Task Overview,
-  Helpful Tips, Objectives, How to Verify.
-- The README must be concise, non-revealing, and must not include setup commands,
-  solution steps, direct API names that reveal the fix, or database credentials.
-- Keep the candidate work focused: one context decision, at most two tightly
-  related concerns, and no advanced platform sprawl.
-- The starter project must be FULLY FUNCTIONAL and FULLY POPULATED, while the
-  target behavior remains incomplete until the candidate finishes the task.
-- The solution and root cause belong only in the `answer` field, never in
-  README.md, comments, hints, fixtures, or candidate-facing code.
-- Ensure all literal file paths, ports, service names, fixture IDs, tenant IDs,
-  versions, and expected behaviors are consistent across every generated file.
-- The task must be solvable within {minutes_range}.
+1. Output must be valid JSON only, starting with `{{` and ending with `}}`.
+2. Generate a pure local Python project; do not include container, compose,
+   datastore, database initialization, or cleanup infrastructure.
+3. `run.sh` must install dependencies first and must pass on the unsolved starter
+   without invoking candidate stubs or requiring an API key.
+4. The live agent path must call a real model through litellm, openai, or
+   anthropic using the candidate's provider key.
+5. NEVER use a FakeLLM.
+6. NEVER use a regex / keyword intent parser as the agent's reasoning.
+7. NEVER use a deterministic stand-in for the model.
+8. NEVER use time.sleep / asyncio.sleep to simulate the agent.
+9. Fixtures may make local tool inputs, retrieved documents, traces, and expected
+   context artifacts deterministic; they must NOT replace the model's reasoning.
+10. Center the task on Context Engineering: context assembly, retrieval,
+    grounding, token budgeting, memory/state, prompt sectioning, privacy,
+    access-control, injection resistance, caching, evaluation, or debugging.
+11. Keep the candidate-written work focused: 1-2 stub files, roughly 60-140 lines,
+    and solvable within {minutes_range}.
+12. README.md must contain exactly four sections in this order: Task Overview,
+    Objectives, Helpful Tips, How to Verify.
+13. Do not leak the reference answer into README, code comments, fixtures, tests,
+    question, hints, or stub docstrings.
+14. The `answer` field is evaluator-facing and should include the expected fix
+    approach, root cause, tradeoffs, and review signals.
+15. All file paths and scripts must assume `/root/task` as the base directory.
 """
 
 PROMPT_REGISTRY = {

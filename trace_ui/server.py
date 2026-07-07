@@ -510,6 +510,7 @@ class RunRequest(BaseModel):
     env: str = "dev"
     instructions: str = ""           # AUTHORITATIVE free-text directive (replaces infra/non_infra force)
     llm_provider: str = "anthropic"  # anthropic (Claude) | glm (GLM via OpenRouter)
+    open_ended: bool | None = None   # difficulty dial: True=open, False=closed, None=default by proficiency
 
 
 def _spawn_pipeline(cmd: list[str]) -> None:
@@ -544,10 +545,18 @@ def api_launch(req: RunRequest) -> JSONResponse:
     # pathological paste can't blow the argv limit; passed as argv (no shell).
     instructions = (req.instructions or "").strip()[:4000]
 
+    # Open-ended difficulty dial (tri-state): only forward an explicit choice;
+    # None → omit so the prompt generator defaults by proficiency.
+    open_ended = req.open_ended if isinstance(req.open_ended, bool) else None
+
     cmd = [sys.executable, "run_pipeline.py", "-p", prof, "--env", env, "--count", str(count),
            "--llm-provider", llm_provider]
     if instructions:
         cmd += ["--instructions", instructions]
+    if open_ended is True:
+        cmd += ["--open-ended"]
+    elif open_ended is False:
+        cmd += ["--closed"]
     for n in names:
         cmd += ["-n", n]
     try:
@@ -556,7 +565,7 @@ def api_launch(req: RunRequest) -> JSONResponse:
         raise HTTPException(status_code=500, detail=f"failed to launch pipeline: {exc}") from exc
     return JSONResponse({"ok": True, "names": names, "proficiency": prof, "env": env,
                          "count": count, "instructions_set": bool(instructions),
-                         "llm_provider": llm_provider})
+                         "llm_provider": llm_provider, "open_ended": open_ended})
 
 
 # Stages the UI can resume from (run_pipeline reuses earlier stages' artifacts).
@@ -591,6 +600,9 @@ def api_resume(run_id: str, req: ResumeRequest) -> JSONResponse:
     instructions = (summary.get("instructions") or "").strip()[:4000]
     count = summary.get("count")
     count = count if isinstance(count, int) and 1 <= count <= 20 else 2
+    # Recover the open-ended dial; missing/legacy summary → None (default by proficiency).
+    oe = summary.get("open_ended")
+    open_ended = oe if isinstance(oe, bool) else None
 
     if not names:
         raise HTTPException(status_code=400, detail="could not recover competencies for this run (no summary.json)")
@@ -605,6 +617,10 @@ def api_resume(run_id: str, req: ResumeRequest) -> JSONResponse:
         cmd += ["--resume-from", from_stage]
     if instructions:
         cmd += ["--instructions", instructions]
+    if open_ended is True:
+        cmd += ["--open-ended"]
+    elif open_ended is False:
+        cmd += ["--closed"]
     for n in names:
         cmd += ["-n", n]
     try:
@@ -617,14 +633,28 @@ def api_resume(run_id: str, req: ResumeRequest) -> JSONResponse:
 
 
 # Small bounded in-process cache so re-opening the modal for the same combo
-# doesn't re-hit the LLM. Keyed by (sorted names, proficiency).
-_SUGGEST_CACHE: dict[tuple, list[str]] = {}
+# doesn't re-hit the LLM. Keyed by (sorted names, proficiency). Each value is a
+# list of {"text", "shape"} items (shape = predicted "infra"/"non_infra"/None).
+_SUGGEST_CACHE: dict[tuple, list[dict]] = {}
 _SUGGEST_CACHE_MAX = 128
 
 
-def _parse_suggestions(text: str) -> list[str]:
-    """Best-effort: pull a JSON array of strings from the LLM reply; fall back to
-    bullet/numbered lines. Never raises."""
+def _norm_shape(v) -> str | None:
+    """Normalise a model-predicted shape label to "infra"/"non_infra"/None."""
+    s = str(v or "").strip().lower().replace("-", "_")
+    if s in ("infra", "infrastructure"):
+        return "infra"
+    if s in ("non_infra", "noninfra", "local", "pure", "runtime"):
+        return "non_infra"
+    return None
+
+
+def _parse_suggestions(text: str) -> list[dict]:
+    """Best-effort parse of the LLM reply into ``[{"text", "shape"}]`` items.
+
+    Tolerates a JSON array of objects (``{"directive","shape"}``), a JSON array
+    of plain strings (``shape`` → None), or bullet/numbered lines. Never raises.
+    """
     if not text:
         return []
     t = text.strip()
@@ -637,22 +667,32 @@ def _parse_suggestions(text: str) -> list[str]:
     if start != -1 and end > start:
         try:
             arr = json.loads(t[start:end + 1])
-            out = [str(s).strip() for s in arr if str(s).strip()]
+            out: list[dict] = []
+            for item in arr:
+                if isinstance(item, dict):
+                    txt = str(item.get("directive") or item.get("text") or "").strip()
+                    shape = _norm_shape(item.get("shape") or item.get("task_shape"))
+                else:
+                    txt, shape = str(item).strip(), None
+                if txt:
+                    out.append({"text": txt, "shape": shape})
             if out:
                 return out[:6]
         except ValueError:
             pass
-    lines = []
+    lines: list[dict] = []
     for ln in text.splitlines():
         ln = ln.strip().lstrip("-*0123456789.) ").strip().strip('"').strip()
         if len(ln) > 8:
-            lines.append(ln)
+            lines.append({"text": ln, "shape": None})
     return lines[:6]
 
 
-def _suggest_instructions(names: list[str], proficiency: str) -> list[str]:
-    """LLM-written, competency-tailored instruction directives (≤6 short ones).
-    Uses the active Claude-role provider's cheaper model (Anthropic or GLM)."""
+def _suggest_instructions(names: list[str], proficiency: str) -> list[dict]:
+    """LLM-written, competency-tailored instruction directives (≤6 short ones),
+    each tagged with the task SHAPE it would produce ("infra"/"non_infra") so the
+    author can see at a glance whether a directive yields a docker-compose task or
+    a pure-local one. Uses the active Claude-role provider's cheaper model."""
     from infra.llm_provider import make_llm_client, resolve_model
 
     combo = ", ".join(names)
@@ -666,8 +706,15 @@ def _suggest_instructions(names: list[str], proficiency: str) -> list[str]:
         f"Competency/competencies: {combo} (proficiency: {proficiency}).\n"
         "Propose 4 distinct, concrete instruction directives an author could attach to "
         "the task generator for THIS competency at THIS proficiency. Each must be ONE "
-        "sentence, specific, and immediately usable. Return ONLY a JSON array of "
-        "strings — no prose, no markdown."
+        "sentence, specific, and immediately usable.\n\n"
+        "For EACH directive also predict the resulting task SHAPE:\n"
+        "  - \"infra\": the task needs an external service via docker-compose "
+        "(database, cache, queue, broker, search engine) — e.g. a directive that adds "
+        "Postgres/Redis/Kafka, or asks to 'include deployment'.\n"
+        "  - \"non_infra\": a pure local / in-process task (algorithmic, language-level, "
+        "library-only, frontend, async/concurrency) with NO docker-compose.\n\n"
+        "Return ONLY a JSON array of objects, no prose, no markdown:\n"
+        "[{\"directive\": \"...\", \"shape\": \"infra\"|\"non_infra\"}]"
     )
     client = make_llm_client()
     resp = client.chat.completions.create(
@@ -676,7 +723,7 @@ def _suggest_instructions(names: list[str], proficiency: str) -> list[str]:
             {"role": "system", "content": sys_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        max_tokens=500,
+        max_tokens=600,
     )
     text = (resp.choices[0].message.content or "") if resp.choices else ""
     return _parse_suggestions(text)

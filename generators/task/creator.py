@@ -41,6 +41,7 @@ from infra.utils import (
     format_outcomes,
     format_pre_requisites,
     generate_task_with_code,
+    get_open_ended_for,
     get_task_shape_for,
     has_shared_infra_files,
     load_relevant_scenarios,
@@ -383,10 +384,17 @@ _RUNTIME_BOOTSTRAP = [
 # image's litellm==1.51 / anthropic==0.39 / openai==1.58). Keyed by template_id so
 # it generalises per-runtime — only the AI-agent image pre-installs an LLM stack
 # today; other templates add entries (or leave none) as needed.
+# NOTE: `litellm` is intentionally NOT listed. The live ``utkrusht-python-ai``
+# image does not actually have litellm on the python ``run.sh`` uses (readiness
+# gate failed with ``ModuleNotFoundError: No module named 'litellm'`` after the
+# pin was stripped), despite the manifest declaring it pre-installed. Stripping
+# it made run.sh skip installing it → the agent crashed on import. Keep it OUT of
+# the strip set so run.sh installs it from requirements.txt. Restore it here only
+# after the image is rebuilt to genuinely ship litellm on the gate's interpreter.
 _TEMPLATE_PREINSTALLED_PINS: Dict[str, tuple] = {
     "utkrusht-python-ai": (
         "requirements.txt",
-        {"httpx", "openai", "anthropic", "litellm", "langgraph",
+        {"httpx", "openai", "anthropic", "langgraph",
          "langchain", "langchain-core", "crewai", "mem0", "pydantic-ai", "langfuse"},
     ),
 }
@@ -745,6 +753,15 @@ def create_task(
             logger.info(f"Resolved task_shape={task_shape!r} from prompt module")
         else:
             logger.info("No TASK_SHAPE on the prompt module — E2B gate will run as usual")
+
+        # Resolve the open-ended difficulty dial the prompt-generator stamped on
+        # this combo's prompt module (OPEN_ENDED constant). None = legacy /
+        # unannotated prompt → treat as False (specified/closed = today's
+        # behaviour). Recorded on the task row (task_blob) + task.json so
+        # downstream stages (grading, solvability) can read which kind of task
+        # this is.
+        open_ended = bool(get_open_ended_for(input_data))
+        logger.info(f"Resolved open_ended={open_ended} from prompt module")
         # Retry loop gates everything downstream — GitHub repo / Gist /
         # Supabase row are only created when an attempt produces a
         # non-hollow candidate that clears both LLM eval critics AND the
@@ -885,6 +902,43 @@ def create_task(
                         "condense the README, prefer concise code over exhaustive "
                         "examples. The output MUST end with a valid closing brace "
                         "for the top-level JSON object."
+                    )
+                    continue
+                except RuntimeError as exc:
+                    # Generation / parse failure: the model returned no usable
+                    # body, or emitted JSON the parser still can't read (e.g. an
+                    # unescaped quote/backslash strict=False can't rescue). This
+                    # previously propagated and killed the ENTIRE run on the first
+                    # bad response — even though a re-roll usually succeeds. Treat
+                    # it like truncation: feed a corrective message and retry. On
+                    # the final attempt, re-raise so the true cause surfaces in the
+                    # logs instead of a generic gate error.
+                    if attempt >= max_attempts:
+                        logger.error(
+                            f"Attempt {attempt}: task generation failed "
+                            f"({type(exc).__name__}: {exc}) and no attempts remain "
+                            f"— re-raising."
+                        )
+                        raise
+                    logger.warning(
+                        f"Attempt {attempt}: task generation failed "
+                        f"({type(exc).__name__}: {exc}); retrying with corrective "
+                        f"feedback ({max_attempts - attempt} attempt(s) left)."
+                    )
+                    last_failure = {
+                        "task_eval": {"pass": False,
+                                      "issues": [f"task generation failed: {exc}"]},
+                        "code_eval": {"pass": False,
+                                      "issues": ["no parseable task JSON produced"]},
+                    }
+                    feedback = (
+                        "PREVIOUS ATTEMPT DID NOT PRODUCE PARSEABLE OUTPUT. Return "
+                        "EXACTLY ONE valid JSON object and nothing else — no prose "
+                        "before or after, no markdown fences. Every string value MUST "
+                        "be valid JSON: escape newlines as \\n, tabs as \\t, double "
+                        "quotes as \\\", and backslashes as \\\\ (critical for the "
+                        "multi-line code in code_files). The output MUST end with a "
+                        "single closing brace for the top-level object."
                     )
                     continue
             candidate.setdefault("code_files", {})
@@ -1123,6 +1177,9 @@ def create_task(
         # which flagged library-only tasks (LangChain / LlamaIndex /
         # pure-Python) as needing a sandbox they can't actually use.
         code_data = task_data.get("code_files", {})
+        # Stamp the open-ended dial onto task_data so it travels into the
+        # locally-saved task.json (save_files_locally serialises task_data).
+        task_data["open_ended"] = open_ended
         has_docker = has_shared_infra_files(code_data)
         is_shared_infra_required = bool(has_docker)
         logger.info(
@@ -1162,6 +1219,12 @@ def create_task(
                 "outcomes": format_outcomes(task_data.get("outcomes", "")),
                 "question": task_data.get("question", ""),
                 "short_overview": format_outcomes(task_data.get("short_overview", "")),
+                # Which kind of task this is — specified (closed) vs
+                # withhold-the-solution (open). Stored in the jsonb blob (no
+                # schema migration) so downstream grading/solvability can read
+                # it; promote to a top-level tasks.open_ended column when a
+                # consumer needs to query by it (Phase 2).
+                "open_ended": open_ended,
             },
             "is_shared_infra_required": is_shared_infra_required,
             "task_type": ["BUILD"],
@@ -1261,6 +1324,11 @@ def create_task(
                 "outcomes": draft_payload["task_blob"]["outcomes"],
                 "question": draft_payload["task_blob"]["question"],
                 "short_overview": draft_payload["task_blob"]["short_overview"],
+                # Carry the open-ended dial through to the READY row — this blob
+                # REPLACES the draft's task_blob in mark_task_ready, so omitting
+                # it here would silently drop the flag from the persisted task.
+                # TaskBlob validation ignores the extra key (extra="ignore").
+                "open_ended": draft_payload["task_blob"]["open_ended"],
             }
 
             # Ready-gate validation (main's task_validation, via the repository

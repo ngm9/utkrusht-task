@@ -126,6 +126,27 @@ def configure_dspy(model: Optional[str] = None, mode: str = "runtime") -> None:
 
 
 # ----------------------------------------------------------------------
+# Open-ended difficulty dial
+# ----------------------------------------------------------------------
+
+def resolve_open_ended(proficiency: str, override: Optional[bool]) -> bool:
+    """Resolve the ``open_ended`` dial — decided ONCE before generation.
+
+    An explicit ``override`` (``True``/``False``) always wins. When it is
+    ``None`` the value is defaulted from proficiency:
+
+      * BASIC / BEGINNER → ``False`` (specified / closed — today's baseline)
+      * INTERMEDIATE / ADVANCED → ``True`` (open — withhold the solution)
+
+    Pure and side-effect free so ``forward()``, the CLI, and tests all share
+    one rule. See HARD CONSTRAINT #9 in :class:`GeneratePromptSignature`.
+    """
+    if override is not None:
+        return bool(override)
+    return (proficiency or "").upper() not in ("BASIC", "BEGINNER")
+
+
+# ----------------------------------------------------------------------
 # DSPy signatures
 # ----------------------------------------------------------------------
 
@@ -522,6 +543,62 @@ class GeneratePromptSignature(dspy.Signature):
         key). It MUST NOT be generalized to the task itself.
 
     ─────────────────────────────────────────────────────────────────────────
+    HARD CONSTRAINT #9 — OPEN-ENDEDNESS comes from `open_ended` (difficulty dial)
+    ─────────────────────────────────────────────────────────────────────────
+    The `open_ended` input field is the AUTHORITATIVE decision for HOW MUCH of
+    the solution the generated task hands over. It is decided ONCE before
+    generation (defaulted from proficiency, with an explicit override) — the
+    same precedent as `task_shape` (#7). It is exactly "true" or "false". DO NOT
+    second-guess it.
+
+    GOLDEN RULE (applies to BOTH values): underspecify the SOLUTION, never the
+    PROBLEM. The Task Overview / symptom stays crisp, fair, and reproducible.
+    Only the "how" — objectives-as-steps, solution-shaped tips, the exact
+    verify cases, return shapes, enum vocabularies, thresholds — is what the
+    flag may withhold. Stripping detail off the PROBLEM makes a task ambiguous
+    and unfair, which is NOT the goal.
+
+      (a) `open_ended == "false"` → SPECIFIED / closed (good for BASIC). Today's
+          baseline: the README still obeys #2, but the task MAY hand over the
+          contract — starter-stub docstrings MAY state the expected return
+          shape / enum values, Objectives MAY read as an explicit checklist,
+          Helpful Tips MAY nudge toward the solution shape, How to Verify MAY
+          name the exact cases, and policy constants (thresholds, retry/timeout
+          budgets, state/status enums) MAY be pre-set in config. The scenario
+          MAY have a single intended solution.
+
+      (b) `open_ended == "true"` → OPEN / underspecified (good for INTERMEDIATE+
+          and for DIFFERENTIATING engineers). The generated prompt MUST instruct
+          the downstream task-gen LLM to WITHHOLD the solution on every channel,
+          STRICTER than the #2 baseline:
+
+            • Starter stubs: emit a BARE signature + a one-line purpose that
+              names the SYMPTOM only. NO "Expected shape:" block, NO dict keys,
+              NO enum vocabulary ("ok"/"stale"/"missing"), NO return-type
+              contract, NO reference to a named config constant. The candidate
+              DESIGNS the data shape.
+            • Policy constants: do NOT pre-set the decision values (confidence
+              floors, retry/timeout budgets, freshness windows, state/status
+              enums). The candidate CHOOSES and DEFENDS them. The scaffold and
+              fixtures MUST NOT bake in a single "expected shape".
+            • Objectives: state the symptom + how to reproduce it — NOT a step
+              checklist of what to build.
+            • Helpful Tips: few or none; orient to the symptom / where to look,
+              NEVER the shape of the fix.
+            • How to Verify: describe the observable end-state only, NOT the
+              exact fixtures / cases to feed.
+            • Definitions / hints: OMIT the solution's concepts; a hint may point
+              at the symptom, never name the building blocks of the fix.
+            • Problem design space: shape a scenario that admits SEVERAL
+              defensible architectures — the candidate's chosen tradeoff is the
+              signal, so do not pre-decide it for them.
+
+    Phase-1 scope note: this constraint governs ONLY whether the generated
+    prompt NARRATES the answer. It does NOT change test-shipping — grading tests
+    still ship in the candidate repo for BOTH values at this stage (withholding
+    them is a later phase). Do NOT add or remove test files based on this flag.
+
+    ─────────────────────────────────────────────────────────────────────────
     SOFT GUIDANCE — Scenario sourcing
     ─────────────────────────────────────────────────────────────────────────
     The candidate's EMPLOYER is described in `organization_background`. The
@@ -574,6 +651,14 @@ class GeneratePromptSignature(dspy.Signature):
              "docker-compose / init_database.sql / kill.sh — ship a pure local "
              "project using the runtime's native manifest + test command. "
              "See HARD CONSTRAINT #7 for the full rules."
+    )
+    open_ended: str = dspy.InputField(
+        desc='Difficulty dial: exactly "true" or "false". "true" → the generated '
+             "prompt MUST WITHHOLD the solution (bare stubs with no contract, no "
+             "pre-set policy constants, symptom-only Objectives/Tips/Verify, and a "
+             'scenario with genuine design space). "false" → today\'s specified '
+             "baseline (stubs / Objectives / constants MAY hand over the contract). "
+             "Underspecify the SOLUTION, never the PROBLEM. See HARD CONSTRAINT #9."
     )
     runtime: str = dspy.InputField(
         desc="Primary language runtime of the matched template (e.g. python, node)"
@@ -658,7 +743,20 @@ class VerifyPromptSignature(dspy.Signature):
       3. STRUCTURAL DAMAGE: missing PROMPT_REGISTRY, missing format vars
          ({organization_background}, {role_context}, {competencies},
          {real_world_task_scenarios}), or wrong registry key format.
-      4. SOLUTION LEAK: starter code or comments give away the solution.
+      4. SOLUTION LEAK (specification leakage) — gated on `open_ended`:
+           • ALWAYS reject when starter code or comments literally give away the
+             solution (the pre-existing check).
+           • WHEN `open_ended == "true"`, ALSO reject when the prompt still hands
+             over the solution on ANY channel: a starter-stub docstring that
+             states the expected return shape / dict keys / enum values / a named
+             policy constant; pre-set policy constants (thresholds, retry/timeout
+             budgets, state enums) the candidate should choose; Objectives written
+             as an explicit step checklist; Helpful Tips naming the shape of the
+             fix; or How to Verify naming the exact fixtures/cases. Say which
+             channel leaked. The PROBLEM (symptom + repro) MUST still be crisp —
+             do NOT reject a "true" task for being open, only for LEAKING.
+           • WHEN `open_ended == "false"`, do NOT flag a handed-over contract /
+             pre-set constants — that is the intended specified baseline.
       5. STRUCTURAL DRIFT FROM CURATED REFERENCES: The INSTRUCTIONS prompt
          introduces invented top-level sections that don't appear in any
          curated reference, OR misses the canonical sections, OR uses wrong
@@ -731,6 +829,14 @@ class VerifyPromptSignature(dspy.Signature):
              "docker-compose/kill.sh, infra MUST include docker-compose for the "
              "scenario's datastores."
     )
+    open_ended: str = dspy.InputField(
+        desc='Difficulty dial: "true" or "false". Gate the SOLUTION-LEAK check '
+             '(condition 4) on this: when "true", reject a prompt that still '
+             "hands over the contract via stubs / constants / Objectives / Tips / "
+             'Verify; when "false", that hand-over is the intended baseline. NEVER '
+             'reject a "true" task merely for being open — only for leaking the '
+             "solution. The PROBLEM (symptom + repro) must stay crisp regardless."
+    )
     runtime: str = dspy.InputField(
         desc="Primary language runtime of the matched template (e.g. python, node)"
     )
@@ -788,6 +894,11 @@ class GenerationResult:
     # show the decision.
     task_shape: str = "non_infra"
     task_shape_reason: str = ""
+    # Resolved open-endedness (STEP 0). True = withhold-the-solution form,
+    # False = specified/closed baseline. Defaulted from proficiency unless the
+    # caller passed an explicit override. Surfaced so the CLI banner + the
+    # downstream task pipeline can stamp which kind of task this is.
+    open_ended: bool = False
 
 
 class PromptGeneratorAgent(dspy.Module):
@@ -844,10 +955,21 @@ class PromptGeneratorAgent(dspy.Module):
         directive: str = "",
         task_shape_override: str | None = None,
         infra_kind: str | None = None,
+        open_ended: bool | None = None,
     ) -> GenerationResult:
         proficiency = proficiency.upper()
         directive = (directive or "").strip()
         comp_str = ", ".join(f"{c.name} ({proficiency})" for c in competencies)
+
+        # ─── STEP 0: resolve the open_ended difficulty dial ───────────
+        # Decided ONCE up front (mirrors task_shape). Explicit override wins;
+        # otherwise default from proficiency. Underspecify the SOLUTION, never
+        # the PROBLEM (HARD CONSTRAINT #9). The "true"/"false" string is what
+        # the DSPy signatures consume.
+        _oe_source = ("explicit override" if open_ended is not None
+                      else "default-by-proficiency")
+        open_ended = resolve_open_ended(proficiency, open_ended)
+        open_ended_str = "true" if open_ended else "false"
 
         logger.info("=" * 72)
         logger.info("AGENT START — competencies=%s  proficiency=%s  env=%s  directive=%dc",
@@ -855,6 +977,7 @@ class PromptGeneratorAgent(dspy.Module):
         if directive:
             logger.info("AGENT START — primary_directive ACTIVE: %s",
                         directive[:300].replace("\n", " "))
+        logger.info("AGENT START — open_ended=%s (%s)", open_ended, _oe_source)
         logger.info("=" * 72)
 
         # ─── STEP 1: detailed_skill_signal from input files ───────────
@@ -1006,6 +1129,7 @@ class PromptGeneratorAgent(dspy.Module):
                 competencies=comp_str,
                 proficiency=proficiency,
                 task_shape=task_shape,
+                open_ended=open_ended_str,
                 runtime=runtime,
                 frameworks=frameworks_json,
                 datastores=datastores_json,
@@ -1033,6 +1157,7 @@ class PromptGeneratorAgent(dspy.Module):
                     primary_directive=directive,
                     competencies=comp_str,
                     task_shape=task_shape,
+                    open_ended=open_ended_str,
                     runtime=runtime,
                     frameworks=frameworks_json,
                     datastores=datastores_json,
@@ -1120,6 +1245,7 @@ class PromptGeneratorAgent(dspy.Module):
             input_files_metadata=skill_meta,
             task_shape=task_shape,
             task_shape_reason=shape_decision.reason,
+            open_ended=open_ended,
         )
 
     @staticmethod

@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Open-Ended Task Flag — Problem, Solution & Pipeline Changes</title>
+<style>
+  :root{
+    --closed:#1971c2; --closed-bg:#e7f5ff; --closed-bd:#a5d8ff;
+    --open:#2f9e44;   --open-bg:#ebfbee;   --open-bd:#b2f2bb;
+    --neutral:#e8590c;--neutral-bg:#fff9db;--neutral-bd:#ffe066;
+    --prob:#e03131;  --prob-bg:#fff5f5;   --prob-bd:#ffc9c9;
+    --ink:#212529; --muted:#868e96; --line:#adb5bd;
+  }
+  *{box-sizing:border-box}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink); margin:0; padding:28px 24px 56px; background:#f8f9fa; line-height:1.5;
+  }
+  .page{max-width:940px;margin:0 auto;}
+  header{text-align:center;margin-bottom:8px}
+  h1{font-size:25px;margin:0 0 4px}
+  .sub{color:var(--muted);font-size:13px;margin:0 auto;max-width:680px}
+  .tag{display:inline-block;font-size:11px;font-weight:600;letter-spacing:.04em;
+       padding:2px 8px;border-radius:999px;background:var(--neutral-bg);
+       color:var(--neutral);border:1px solid var(--neutral-bd);text-transform:uppercase}
+  section{margin-top:30px}
+  h2.head{font-size:13px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);
+          margin:0 0 12px;padding-bottom:6px;border-bottom:1px solid #e9ecef}
+  .card{border:1px solid var(--line);border-radius:12px;padding:16px 18px;background:#fff;
+        box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .card.problem{border-color:var(--prob-bd);background:var(--prob-bg)}
+  .card.solution{border-color:var(--open-bd);background:var(--open-bg)}
+  .card h3{margin:0 0 8px;font-size:15px}
+  .card.problem h3{color:var(--prob)} .card.solution h3{color:var(--open)}
+  .card p{margin:0 0 10px;font-size:13.5px}
+  ol.leaks,ul.bul{margin:0;padding-left:20px;font-size:13.5px}
+  ol.leaks li,ul.bul li{margin:6px 0}
+  .ev{display:block;color:var(--muted);font-size:12px;margin-top:2px}
+  code{font-family:"SFMono-Regular",Consolas,Menlo,monospace;font-size:12px;
+       background:#eef0f2;padding:1px 5px;border-radius:4px}
+  .card.problem code{background:#ffe3e3} .card.solution code{background:#d3f9d8}
+  /* flow */
+  .flow{display:flex;flex-direction:column;align-items:center}
+  .box{border:1.5px solid var(--line);border-radius:12px;padding:11px 16px;background:#fff;
+       width:100%;max-width:620px;text-align:center;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .box .k{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .box .v{font-size:14px;font-weight:600;margin-top:2px}
+  .box .note{font-size:11.5px;color:var(--muted);margin-top:3px}
+  .neutral{border-color:var(--neutral-bd);background:var(--neutral-bg)}
+  .arrow{width:2px;height:24px;background:var(--line);position:relative}
+  .arrow::after{content:"";position:absolute;left:-4px;bottom:-1px;
+       border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid var(--line)}
+  .split{display:flex;gap:16px;width:100%;max-width:640px;justify-content:center}
+  .split .box{max-width:none;flex:1}
+  .closed{border-color:var(--closed-bd);background:var(--closed-bg)} .closed .v{color:var(--closed)}
+  .open{border-color:var(--open-bd);background:var(--open-bg)} .open .v{color:var(--open)}
+  .callout{font-size:12px;color:var(--muted);margin:6px 0 0;text-align:center;max-width:620px}
+  /* tables */
+  table{border-collapse:collapse;width:100%;font-size:13px;background:#fff;border:1px solid var(--line);
+        border-radius:10px;overflow:hidden}
+  th,td{padding:9px 12px;border-bottom:1px solid #e9ecef;vertical-align:top;text-align:left}
+  th{font-weight:700;font-size:12px;background:#f1f3f5}
+  tbody tr:last-child td{border-bottom:none}
+  .levers thead th:nth-child(2){color:var(--closed)} .levers thead th:nth-child(3){color:var(--open)}
+  .levers td:first-child{font-weight:600;width:22%}
+  .lever-false{background:var(--closed-bg)} .lever-true{background:var(--open-bg)}
+  .stages td:first-child{font-weight:700;width:16%;white-space:nowrap}
+  .stages td:nth-child(2){width:46%}
+  .stages td .files{display:block;margin-top:5px;color:var(--muted);font-size:11.5px}
+  .pill{display:inline-block;font-size:10.5px;font-weight:700;padding:1px 7px;border-radius:999px;
+        border:1px solid var(--line);color:var(--muted);margin-left:6px}
+  .legend{display:flex;gap:14px;justify-content:center;margin-top:12px;font-size:11.5px;color:var(--muted)}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+  .sw{width:11px;height:11px;border-radius:3px;display:inline-block}
+  .note-box{font-size:12.5px;color:var(--ink);background:#fff;border:1px dashed var(--line);
+            border-radius:10px;padding:12px 14px;margin-top:14px}
+  @media print{body{background:#fff;padding:0} .box,.card{box-shadow:none}}
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <span class="tag">Proposed · under discussion</span>
+    <h1>Open-Ended Task Flag</h1>
+    <p class="sub">Problem, proposed solution, and the change in each pipeline stage. Companion diagram: <code>docs/drawings/open-ended-task-flag.excalidraw</code>.</p>
+  </header>
+
+  <!-- ============ PROBLEM ============ -->
+  <section>
+    <h2 class="head">The problem</h2>
+    <div class="card problem">
+      <h3>Generated agent tasks are easy by construction, not by topic</h3>
+      <p>The <em>topics</em> are genuinely intermediate (partial-failure reconciliation, fail-safe degradation, audit trails, taxonomy validation, bounded retries). The <em>delivered difficulty</em> is basic because the pipeline removes every decision a candidate would actually make — it hands over the answer at three points:</p>
+      <ol class="leaks">
+        <li><b>Stub docstrings encode the exact contract</b> — return shape, enum values, the file to edit, the rule to apply.
+          <span class="ev">e.g. <code>build_diagnosis_context</code> literally lists <code>"overall_status": "complete"|"degraded"|"unknown"</code> and says freshness is judged against <code>config.READING_FRESHNESS_SECONDS</code>.</span></li>
+        <li><b>The grading tests ship inside the candidate repo</b> — <code>code_files</code> contains <code>invariants/</code>·<code>tests/</code>, and the README says “make the invariant tests pass”.
+          <span class="ev">An open-book exam with the answer key attached — the candidate reads <code>assert ctx["sensor"]["state"] == "ok"</code> and copies the expected key/value.</span></li>
+        <li><b>Objectives are an explicit checklist and policy constants are pre-set</b>
+          <span class="ev">a <em>policy constant</em> is a hard-coded threshold/budget/taxonomy that encodes a decision the candidate should make: <code>CONFIDENCE_FLOOR = 0.6</code> (config.py), <code>PER_ATTEMPT_TIMEOUT_SECONDS = 2.0</code> / <code>MAX_RETRIES = 2</code> (tools.py), <code>READING_FRESHNESS_SECONDS = 300</code> (.env), and the state/status enums — all decided for them.</span></li>
+        <li><b>The README and support fields walk them to the answer too</b> — solution-shaped <em>Helpful Tips</em>, <em>How to Verify</em> steps that name the exact test cases, and <code>definitions</code>/<code>hints</code> that pre-name the solution's concepts.
+          <span class="ev">e.g. a tip: “…if the result shape made <em>freshness</em> explicit”, and “Explore the invariant tests to understand the behavior expected”; <code>definitions</code> defines “reconciliation”, “data freshness”, “overall health signal” — i.e. the building blocks of the fix.</span></li>
+      </ol>
+      <p style="margin-top:12px"><b>The irony:</b> the generator already tries to keep the <em>README</em> open-ended (HARD CONSTRAINT #2 forbids naming the API/library/pattern). But the stubs + shipped tests leak everything the README withholds — so the openness is cosmetic. <b>Net: intermediate topic, basic difficulty — it measures transcription, not engineering judgment.</b></p>
+    </div>
+  </section>
+
+  <!-- ============ SOLUTION ============ -->
+  <section>
+    <h2 class="head">The proposed solution</h2>
+    <div class="card solution">
+      <h3>A specification dial: the <code>open_ended</code> flag</h3>
+      <p>Add one flag, decided <b>once before generation</b> (defaulted from proficiency, with an explicit override), that controls how much the task hands over. <b>One flag → one task generated in that style — we do not build both variants.</b></p>
+      <ul class="bul">
+        <li><b><code>open_ended = false</code></b> — today’s behavior: explicit objectives, contract in stubs, grading tests shipped, policy constants given. Good for BASIC, and lets the gen-time gate verify solvability by running the shipped tests.</li>
+        <li><b><code>open_ended = true</code></b> — symptom + repro README, bare stubs, no pre-set policy, and the grading tests are <b>withheld</b> from the candidate repo (only a thin readiness/RED smoke ships). Good for INTERMEDIATE+ and for <b>differentiating</b> engineers.</li>
+      </ul>
+      <p style="margin-top:12px"><b>Why hiding the tests is safe:</b> when a candidate finishes, we grade them by having an AI watch the recording of them working and read the code they wrote, then score it against a checklist — <b>it never runs the test files</b> (true for every task). So taking the tests out of the candidate's folder breaks nothing about grading; the only thing it changes is that the candidate can no longer open the tests and copy the answers. The one place we <em>do</em> run the tests is once, when <b>we build the task</b>, to confirm it can actually be solved — and for a hidden-tests task we just use our own private copy (kept in the separate answer repo the candidate never gets, see Stage 5). We also add a safety check while building: if the tests accidentally end up in the candidate's folder, the task is rejected and rebuilt.</p>
+      <p style="margin-top:12px"><b>Two layers — and don’t underspecify the <em>problem</em>:</b> open-endedness is (1) <b>hide the solution</b> (the levers below) <em>and</em> (2) <b>shape the task</b> so it genuinely has design space — a scenario with more than one defensible architecture, with no single “expected shape” baked into the scaffold/fixtures. Stripping the spec off a one-true-answer task just makes it <em>ambiguous</em>, not open. And underspecify the <b>solution</b>, never the <b>problem</b>: the Task Overview / symptom stays crisp and fair — only the “how” (objectives-as-steps, tips, verify-cases, return shapes, thresholds) is withheld.</p>
+    </div>
+  </section>
+
+  <!-- ============ FLOW ============ -->
+  <section>
+    <h2 class="head">The flow</h2>
+    <div class="flow">
+      <div class="box neutral"><div class="k">Step 1 · trigger</div><div class="v">PROFICIENCY</div><div class="note">BASIC · INTERMEDIATE · ADVANCED</div></div>
+      <div class="arrow"></div>
+      <div class="split">
+        <div class="box closed"><div class="k">Step 2 · default</div><div class="v">BASIC → open_ended = FALSE</div><div class="note">closed / specified</div></div>
+        <div class="box open"><div class="k">Step 2 · default</div><div class="v">INTERMEDIATE / ADVANCED → open_ended = TRUE</div><div class="note">open / underspecified · override allowed</div></div>
+      </div>
+      <div class="callout">Decided <b>once, before generation</b>. Same precedent as the existing <code>task_shape</code> field.</div>
+      <div class="arrow"></div>
+      <div class="box neutral"><div class="k">Step 3 · generate</div><div class="v">Generate ONE task in that style</div><div class="note"><code>agent.py</code> branches the prompt on the flag — it does NOT build both an open and a closed version</div></div>
+      <div class="arrow"></div>
+      <table class="levers">
+        <caption style="caption-side:top;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding:0 0 6px">Step 4 · what the flag changes (the levers)</caption>
+        <thead><tr><th>Lever</th><th>FALSE — closed</th><th>TRUE — open</th></tr></thead>
+        <tbody>
+          <tr><td colspan="3" style="background:#f1f3f5;font-weight:700;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)">Task framing — what we tell the candidate</td></tr>
+          <tr><td>Task Overview</td><td class="lever-false">clear symptom</td><td class="lever-true">clear symptom + repro — the <b>problem stays crisp</b>; never underspecified</td></tr>
+          <tr><td>Objectives</td><td class="lever-false">explicit checklist</td><td class="lever-true">symptom + repro only</td></tr>
+          <tr><td>Helpful Tips</td><td class="lever-false">several solution-shaped nudges (“…if the result shape made freshness explicit”)</td><td class="lever-true">few or none; orient to the symptom / where to look, never the shape of the fix</td></tr>
+          <tr><td>How to Verify</td><td class="lever-false">names the exact fixtures / test cases</td><td class="lever-true">observable outcome only, not the cases to feed</td></tr>
+          <tr><td>Definitions / hints</td><td class="lever-false">pre-name the solution's concepts (“reconciliation”, “overall health signal”)</td><td class="lever-true">omit solution concepts; hint points at the symptom only</td></tr>
+          <tr><td colspan="3" style="background:#f1f3f5;font-weight:700;font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)">Code &amp; grading — what we give or withhold</td></tr>
+          <tr><td>Starter stubs</td><td class="lever-false">docstring gives return shape + enums</td><td class="lever-true">bare signature, no answer</td></tr>
+          <tr><td>Policy constants</td><td class="lever-false">pre-set (confidence floor, retry/timeout budgets, state enums)</td><td class="lever-true">candidate chooses &amp; defends</td></tr>
+          <tr><td>Grading tests</td><td class="lever-false">shipped in candidate repo</td><td class="lever-true"><b>withheld</b> → answer / grader repo</td></tr>
+          <tr><td>Problem design space</td><td class="lever-false">one intended solution; a single “expected shape” baked into the scaffold</td><td class="lever-true">scenario admits several valid architectures; the chosen <b>tradeoff is the signal</b></td></tr>
+        </tbody>
+      </table>
+      <div class="callout"><b>“Withhold”</b> = the grader test files are kept out of the candidate repo (no answer key to copy). The task itself is fully shown; only the tests move to the grader side.</div>
+      <div class="arrow"></div>
+      <div class="box neutral"><div class="k">Step 5 · persist</div><div class="v">Store the flag on the task record</div><div class="note">Supabase row + <code>task.json</code> — the label travels with the task</div></div>
+      <div class="arrow"></div>
+      <div class="box" style="max-width:640px"><div class="k">Step 6 · grade (later · separate repo)</div><div class="v">Production grading is ALWAYS an LLM judge over video + git-diff vs the rubric</div><div class="note">identical for FALSE and TRUE — it never runs the shipped tests. The flag doesn't change grading; it changes whether the candidate had an answer key, and how the gen-time solvability gate verifies the task (Stage 5).</div></div>
+      <div class="legend">
+        <span><span class="sw" style="background:var(--closed-bg);border:1px solid var(--closed-bd)"></span> closed / specified</span>
+        <span><span class="sw" style="background:var(--open-bg);border:1px solid var(--open-bd)"></span> open / underspecified</span>
+        <span><span class="sw" style="background:var(--neutral-bg);border:1px solid var(--neutral-bd)"></span> shared step</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ WORKED EXAMPLE ============ -->
+  <section>
+    <h2 class="head">Worked example — closed → open (<code>fix-partial-telemetry</code>)</h2>
+    <p style="font-size:13.5px;margin:0 0 14px">Same task, same bug. Left = today (<code>false</code>); right = the <code>true</code> form. Notice what leaves the candidate's repo and what they now have to decide.</p>
+
+    <h3 style="font-size:13px;margin:0 0 6px;color:var(--ink)">1 · What the candidate clones (file tree)</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--closed);margin-bottom:4px">FALSE — closed</div>
+        <pre style="background:#f8f9fa;border:1px solid var(--closed-bd);border-radius:8px;padding:12px;font-size:11.5px;line-height:1.5;overflow:auto;font-family:'SFMono-Regular',Consolas,Menlo,monospace;white-space:pre;margin:0">fix-partial-telemetry/   (closed)
+├─ agent/
+│  ├─ postprocess.py   stub docstring spells out
+│  │                   the dict shape + enums
+│  ├─ orchestrator.py
+│  └─ config.py        READING_FRESHNESS_SECONDS = 300
+├─ invariants/         ← GRADING TESTS, in the repo
+│  ├─ test_diagnosis_context.py
+│  └─ test_diagnosis_log.py
+├─ fixtures/sample_trace.json
+└─ README.md           objectives checklist + tips</pre>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--open);margin-bottom:4px">TRUE — open</div>
+        <pre style="background:#f8f9fa;border:1px solid var(--open-bd);border-radius:8px;padding:12px;font-size:11.5px;line-height:1.5;overflow:auto;font-family:'SFMono-Regular',Consolas,Menlo,monospace;white-space:pre;margin:0">fix-partial-telemetry/   (open)
+├─ agent/
+│  ├─ postprocess.py   bare signatures, no answer
+│  ├─ orchestrator.py
+│  └─ config.py        no freshness constant
+├─ fixtures/sample_trace.json   ← the repro stays
+├─ tests/test_smoke.py readiness only (imports/DB)
+└─ README.md           symptom + repro only
+
+  invariants/  →  WITHHELD
+                  (answer / grader repo only)</pre>
+      </div>
+    </div>
+
+    <h3 style="font-size:13px;margin:18px 0 6px;color:var(--ink)">2 · The stub — <code>agent/postprocess.py</code></h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--closed);margin-bottom:4px">FALSE — the docstring is the answer</div>
+        <pre style="background:#f8f9fa;border:1px solid var(--closed-bd);border-radius:8px;padding:12px;font-size:11.5px;line-height:1.5;overflow:auto;font-family:'SFMono-Regular',Consolas,Menlo,monospace;white-space:pre;margin:0">def build_diagnosis_context(sensor_result,
+                            gateway_result) -> dict:
+    """...Expected shape:
+      {"sensor": {"state":
+          "ok"|"stale"|"missing", ...},
+       "overall_status":
+          "complete"|"degraded"|"unknown",
+       "data_complete": bool}
+    Freshness judged against
+    config.READING_FRESHNESS_SECONDS."""
+    raise NotImplementedError</pre>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--open);margin-bottom:4px">TRUE — just the signature + the bug</div>
+        <pre style="background:#f8f9fa;border:1px solid var(--open-bd);border-radius:8px;padding:12px;font-size:11.5px;line-height:1.5;overflow:auto;font-family:'SFMono-Regular',Consolas,Menlo,monospace;white-space:pre;margin:0">def build_diagnosis_context(sensor_result,
+                            gateway_result):
+    """Turn the raw sensor + gateway tool
+    results into whatever the model should
+    reason over. Right now the raw results
+    pass through unchanged — that's the bug."""
+    raise NotImplementedError</pre>
+      </div>
+    </div>
+
+    <h3 style="font-size:13px;margin:18px 0 6px;color:var(--ink)">3 · The four terms, made concrete in this task</h3>
+    <table>
+      <thead><tr><th style="width:20%">Term</th><th>In the open (<code>true</code>) form of this task</th></tr></thead>
+      <tbody>
+        <tr><td><b>symptom + repro</b></td><td>README says only the symptom + a way to see it: <em>“Customers are told a device is healthy when its gateway is offline or its reading is hours old.”</em> + <em>“Repro: <code>python -m agent --device dev-200</code> → ‘operating normally’ even though gw-002 is offline (trace in <code>fixtures/sample_trace.json</code>).”</em> No checklist of states to build.</td></tr>
+        <tr><td><b>bare signature</b></td><td><code>def build_diagnosis_context(sensor_result, gateway_result):</code> + a one-line purpose. No keys, no <code>"ok"/"stale"/"missing"</code>, no <code>overall_status</code> — the candidate <em>designs</em> the shape.</td></tr>
+        <tr><td><b>candidate chooses &amp; defends</b></td><td>They decide the freshness budget (was <code>300</code>), how many states (3? 2?), and whether a fresh-but-<em>offline</em> gateway is <code>degraded</code> vs <code>unknown</code> — and justify those calls in the recorded solution the judge sees.</td></tr>
+        <tr><td><b>withheld</b></td><td><code>invariants/test_diagnosis_context.py</code> (which asserts <code>ctx["sensor"]["state"] == "ok"</code>) is <b>not</b> in the candidate repo — it lives only in the answer/grader repo, so it can’t be read as an answer key.</td></tr>
+      </tbody>
+    </table>
+    <div class="note-box" style="margin-top:12px"><b>Subtlety for open tasks:</b> because the candidate designs their own data shape, the held-back grader can’t assert internal keys like <code>ctx["sensor"]["state"]</code>. It’s <b>behavioral / black-box</b> instead — e.g. “feed the offline-gateway case and assert the final diagnosis does <em>not</em> claim healthy.” (And remember: prod grading never runs it anyway — only the gen-time solvability gate does.)</div>
+  </section>
+
+  <!-- ============ WORKED EXAMPLE 2 — REAL GENERATED TASKS ============ -->
+  <section>
+    <h2 class="head">Worked example #2 — real generated tasks (open vs closed)</h2>
+    <p style="font-size:13.5px;margin:0 0 6px">
+      <span class="tag" style="background:var(--open-bg);color:var(--open);border-color:var(--open-bd)">Verified · really generated</span>
+      Phase 1 shipped. These are two tasks the pipeline actually produced on dev from
+      the <em>same</em> competency (<code>Tool Use for Agents (INTERMEDIATE)</code>) and the
+      <em>same</em> directive (a Redis-cached, PostgreSQL-backed tool-chaining agent) — the
+      only difference is the <code>open_ended</code> flag. Same bug archetype, opposite
+      difficulty by construction.</p>
+    <table style="margin:0 0 14px">
+      <thead><tr><th style="width:16%">Form</th><th>Candidate repo (click to open on GitHub)</th><th style="width:28%">task_id (dev)</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><b style="color:var(--closed)">CLOSED</b> <code>open_ended=false</code></td>
+          <td><a href="https://github.com/UtkrushtApps/delivery-ops-report-agent-tooling" style="color:var(--closed);font-weight:600;text-decoration:none">delivery-ops-report-agent-tooling ↗</a><br><span style="font-size:11px;color:var(--muted)">answer key → <a href="https://github.com/UtkrushtApps/delivery-ops-report-agent-tooling-answers" style="color:var(--muted)">delivery-ops-report-agent-tooling-answers</a></span></td>
+          <td><code>38a4f83d-0a0e-44bc-8eaa-6f785efb46ef</code></td>
+        </tr>
+        <tr>
+          <td><b style="color:var(--open)">OPEN</b> <code>open_ended=true</code></td>
+          <td><a href="https://github.com/UtkrushtApps/realty-report-cache-agent" style="color:var(--open);font-weight:600;text-decoration:none">realty-report-cache-agent ↗</a><br><span style="font-size:11px;color:var(--muted)">answer key → <a href="https://github.com/UtkrushtApps/realty-report-cache-agent-answers" style="color:var(--muted)">realty-report-cache-agent-answers</a></span></td>
+          <td><code>8279a7d7-0bdb-4e33-b071-e33d33211334</code></td>
+        </tr>
+      </tbody>
+    </table>
+    <p style="font-size:12px;color:var(--muted);margin:0 0 10px">Clone both and diff them to see the whole picture: <code>git clone https://github.com/UtkrushtApps/realty-report-cache-agent</code> (open) vs <code>…/delivery-ops-report-agent-tooling</code> (closed). The sections below pull out the parts that differ.</p>
+
+    <h3 style="font-size:13px;margin:0 0 6px;color:var(--ink)">1 · What the candidate clones (file tree)</h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--closed);margin-bottom:4px">CLOSED — delivery-ops</div>
+        <pre style="background:#f8f9fa;border:1px solid var(--closed-bd);border-radius:8px;padding:12px;font-size:11.5px;line-height:1.5;overflow:auto;font-family:'SFMono-Regular',Consolas,Menlo,monospace;white-space:pre;margin:0">delivery-ops-report-agent-tooling/
+├─ agent/
+│  ├─ orchestrator.py  3 helper stubs to a
+│  │                   spec; build_report +
+│  │                   run_with_model DONE
+│  ├─ schemas.py    ← full typed contract
+│  ├─ config.py     CACHE_SCHEMA_VERSION = …
+│  ├─ tools.py  llm_client.py
+│  └─ __main__.py
+├─ tests/test_tool_flow.py   ← tests ship
+├─ docker-compose.yml  init_database.sql
+└─ README.md   symptom + outcome objectives</pre>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--open);margin-bottom:4px">OPEN — realty</div>
+        <pre style="background:#f8f9fa;border:1px solid var(--open-bd);border-radius:8px;padding:12px;font-size:11.5px;line-height:1.5;overflow:auto;font-family:'SFMono-Regular',Consolas,Menlo,monospace;white-space:pre;margin:0">realty-report-cache-agent/
+├─ agent/
+│  ├─ orchestrator.py  2 stubs, both raise
+│  │                   NotImplementedError;
+│  │                   docstrings = SYMPTOM only
+│  ├─ config.py     (no policy constants)
+│  ├─ tools.py  cache.py  db.py
+│  ├─ llm_client.py  __main__.py
+│  └─ (no schemas.py — design it yourself)
+├─ invariants/test_agent.py  ← tests ship
+├─ docker-compose.yml  init_database.sql
+└─ README.md   symptom + outcome objectives</pre>
+      </div>
+    </div>
+
+    <h3 style="font-size:13px;margin:18px 0 6px;color:var(--ink)">2 · The stub — <code>agent/orchestrator.py</code></h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--closed);margin-bottom:4px">CLOSED — the docstring is the algorithm</div>
+        <pre style="background:#f8f9fa;border:1px solid var(--closed-bd);border-radius:8px;padding:12px;font-size:11.5px;line-height:1.5;overflow:auto;font-family:'SFMono-Regular',Consolas,Menlo,monospace;white-space:pre;margin:0">def load_cached_report(self, customer_id,
+                       report_type):
+    """Reusable only if present, parses as
+    JSON, matches CachePayload, has
+    schema_version == config
+    .CACHE_SCHEMA_VERSION, same customer_id.
+    Anything else is a cache miss."""
+    raise NotImplementedError
+
+# build_report() + run_with_model() are
+# ALREADY fully implemented above — the
+# candidate just fills 3 helpers to spec.</pre>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--open);margin-bottom:4px">OPEN — just the signature + the symptom</div>
+        <pre style="background:#f8f9fa;border:1px solid var(--open-bd);border-radius:8px;padding:12px;font-size:11.5px;line-height:1.5;overflow:auto;font-family:'SFMono-Regular',Consolas,Menlo,monospace;white-space:pre;margin:0">def generate_report(self, buyer_id):
+    """Produce a grounded buyer briefing
+    without redundant recomputation.
+    Symptom: repeated requests re-run every
+    tool & re-hit PostgreSQL; missing/invalid
+    lookups still yield a confident report
+    not grounded in a real record."""
+    raise NotImplementedError
+
+# the whole orchestration is the
+# candidate's to design.</pre>
+      </div>
+    </div>
+
+    <h3 style="font-size:13px;margin:18px 0 6px;color:var(--ink)">3 · The data contract — <code>agent/schemas.py</code></h3>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--closed);margin-bottom:4px">CLOSED — the contract is handed over</div>
+        <pre style="background:#f8f9fa;border:1px solid var(--closed-bd);border-radius:8px;padding:12px;font-size:11.5px;line-height:1.5;overflow:auto;font-family:'SFMono-Regular',Consolas,Menlo,monospace;white-space:pre;margin:0">class NormalizedCustomer(BaseModel):
+    customer_id; full_name; plan_tier;
+    account_status; support_tier; region;
+    risk_flag; total_orders; last_delivery_at
+class ReportPayload(BaseModel):
+    customer_id; headline; status_line;
+    activity_line; risk_line
+class ToolError(BaseModel):
+    code: Literal["invalid_arguments",
+      "customer_not_found","customer_inactive",
+      "cache_unavailable","lookup_failed",
+      "format_failed"]</pre>
+      </div>
+      <div>
+        <div style="font-size:11px;font-weight:700;color:var(--open);margin-bottom:4px">OPEN — there is no schemas.py</div>
+        <pre style="background:#f8f9fa;border:1px solid var(--open-bd);border-radius:8px;padding:12px;font-size:11.5px;line-height:1.5;overflow:auto;font-family:'SFMono-Regular',Consolas,Menlo,monospace;white-space:pre;margin:0">@dataclass
+class ReportOutcome:
+    status: str           # candidate picks
+    report: dict | None   #   the vocabulary
+    served_from_cache: bool
+    detail: str | None = None
+
+# no NormalizedCustomer, no ReportPayload,
+# no error-code enum — the candidate decides
+# the record shape, the status values, the
+# cache key + freshness rule themselves.</pre>
+      </div>
+    </div>
+
+    <div class="note-box" style="margin-top:12px"><b>“No <code>schemas.py</code>” does NOT mean the candidate is blind to the data.</b> Two different things get called “schema”. The <b>database schema</b> — <code>init_database.sql</code> (tables + seed rows), the complete read-only <code>agent/db.py</code> lookup tool, and <code>run.sh</code> (brings Postgres/Redis up with the seed data) — ships in <b>both</b> forms, so the candidate can always query the DB, run the agent, and reproduce the bug. What the OPEN form withholds is only the <b>application contract</b> (<code>schemas.py</code>): the shape of the agent’s <em>own</em> normalized record, report payload, and status vocabulary. So: <b>OPEN</b> = “here’s the raw data + a tool to read it — <em>you</em> design the output shapes”; <b>CLOSED</b> = “here’s the raw data <em>and</em> the exact output shapes to fill in.” The design decision is the engineering being tested — never the ability to see the data.</div>
+
+    <h3 style="font-size:13px;margin:18px 0 6px;color:var(--ink)">4 · What the flag changed, artifact by artifact</h3>
+    <table class="levers">
+      <thead><tr><th>What the candidate gets</th><th>CLOSED · delivery-ops</th><th>OPEN · realty</th></tr></thead>
+      <tbody>
+        <tr><td>Data contract</td><td class="lever-false"><code>schemas.py</code>: exact record + report fields given</td><td class="lever-true">none — <code>report</code> is <code>dict|None</code>, candidate designs it</td></tr>
+        <tr><td>Status / error vocab</td><td class="lever-false"><code>ToolError.code</code> = 6-value <code>Literal[…]</code></td><td class="lever-true"><code>status</code> is a free string — candidate invents it</td></tr>
+        <tr><td>Policy constants</td><td class="lever-false"><code>config.CACHE_SCHEMA_VERSION</code> pre-set; validity rule spelled out</td><td class="lever-true">none — candidate picks cache key, TTL, “valid record” rule</td></tr>
+        <tr><td>Stub docstrings</td><td class="lever-false">narrate the exact algorithm / numbered steps</td><td class="lever-true">state the symptom only</td></tr>
+        <tr><td>Control flow</td><td class="lever-false"><code>build_report</code> + <code>run_with_model</code> fully implemented</td><td class="lever-true">both methods <code>raise NotImplementedError</code></td></tr>
+        <tr><td>System prompt</td><td class="lever-false">pre-written tool-order policy</td><td class="lever-true">candidate writes the tool-use policy</td></tr>
+        <tr><td>What it measures</td><td class="lever-false">spec-following / correctness</td><td class="lever-true">engineering judgment &amp; defensible tradeoffs</td></tr>
+      </tbody>
+    </table>
+    <div class="note-box" style="margin-top:12px"><b>Note (Phase 1 limitation, visible in both):</b> the README rules already make <em>both</em> READMEs concise and outcome-framed — so the dial’s effect shows up in the <b>stubs, schemas, and config</b>, not the README. And the grading tests still ship in <em>both</em> candidate repos (<code>tests/</code> · <code>invariants/</code>), so the contract is also readable there. Withholding those tests behind the answer-repo oracle gate is <b>Phase 2</b>.</div>
+  </section>
+
+  <!-- ============ PIPELINE CHANGES ============ -->
+  <section>
+    <h2 class="head">What changes in each pipeline stage</h2>
+    <table class="stages">
+      <thead><tr><th>Stage</th><th>What we change</th><th>Files</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>0 · Decide flag</td>
+          <td>Resolve <code>open_ended</code> once, up front: default from proficiency (BASIC → false; INTERMEDIATE/ADVANCED → true) with an explicit override. Mirror how <code>task_shape</code> is decided.
+            <span class="files">orchestration calling <code>PromptGeneratorAgent.forward()</code> · top of <code>forward()</code></span></td>
+          <td><code>generators/prompts/agent.py</code></td>
+        </tr>
+        <tr>
+          <td>1 · Prompt&nbsp;generation</td>
+          <td>Add an <code>open_ended</code> <code>InputField</code> to <code>GeneratePromptSignature</code> + a branching <b>HARD CONSTRAINT</b> block that rewrites the README framing (objectives, Helpful Tips, How to Verify, definitions/hints) plus stubs, policy-constants and test-shipping rules per value — and, for TRUE, instructs the model to <b>shape a problem with real design space</b> (several valid architectures; no single “expected shape” baked into the scaffold), while keeping the Task Overview crisp. Add a matching hard-fail to <code>VerifyPromptSignature</code> (reject an “open” task that ships the answer key). Thread the flag into the <code>generate()</code>/<code>verify()</code> calls and onto <code>GenerationResult</code>.
+            <span class="files"><code>GeneratePromptSignature</code> · <code>VerifyPromptSignature</code> · <code>forward()</code></span></td>
+          <td><code>generators/prompts/agent.py</code></td>
+        </tr>
+        <tr>
+          <td>2 · Task&nbsp;generation</td>
+          <td>The branched prompt drives the LLM — but don’t trust it to reliably withhold. Add a deterministic post-gen <code>_split_grader_tests(code_files)</code> (next to <code>_ensure_runsh_installs_deps</code>) that pops <code>invariants/</code>·<code>tests/</code> out of the candidate <code>code_files</code> into a <code>grader_files</code> bundle when the flag is TRUE.
+            <span class="files"><code>_split_grader_tests()</code> ~ near line 374</span></td>
+          <td><code>generators/task/creator.py</code></td>
+        </tr>
+        <tr>
+          <td>3 · Eval / gate</td>
+          <td>Add a <b>specification-leakage</b> criterion: an “open” task that still ships graders or narrates the answer in stubs is rejected and regenerated (the verifier today only checks for leaks in starter <em>comments</em>, not in stubs + shipped tests).
+            <span class="files">eval critics · <code>VerifyPromptSignature</code></span></td>
+          <td><code>generators/task/evaluator.py</code> · <code>agent.py</code></td>
+        </tr>
+        <tr>
+          <td>4 · Repos</td>
+          <td>Candidate <b>template repo</b> gets <code>code_files</code> <em>minus</em> the withheld graders; the withheld graders ride to the existing <b>answer repo</b>. No new infrastructure — reuse the template-vs-answer split that already exists.
+            <span class="files"><code>create_github_template_repo</code> · <code>create_answer_github_repo</code> · <code>upload_answer_files_to_repo</code> (creator.py ~1101–1124)</span></td>
+          <td><code>generators/task/creator.py</code> · <code>infra/github_utils.py</code></td>
+        </tr>
+        <tr>
+          <td>5 · E2B build/test gate</td>
+          <td>For TRUE, the gate can’t prove correctness by “run the shipped tests to GREEN” (they’re not in the candidate repo). Run the readiness/RED smoke on the starter and prove GREEN via the <b>answer-repo oracle</b> (held-back graders), not candidate-facing tests.
+            <span class="files">build/test gate · oracle path</span></td>
+          <td><code>generators/task/gate.py</code> · <code>infra/e2b/sandbox_eval.py</code></td>
+        </tr>
+        <tr>
+          <td>6 · Persist</td>
+          <td>Stamp <code>open_ended</code> on the Supabase task row + <code>task.json</code> so downstream stages (deploy, grading, solvability) can read which kind of task it is.
+            <span class="files">task DAO + row schema</span></td>
+          <td><code>generators/task/persistence.py</code> · <code>repository.py</code> · <code>schemas.py</code></td>
+        </tr>
+        <tr>
+          <td>7 · Grade / solvability <span class="pill">runtime</span></td>
+          <td>Production grading is unchanged — a <b>separate service</b> that always LLM-judges the video + git-diff vs the rubric (never runs tests), for both flag values. The flag is read by the <em>gen-time</em> solvability check: <code>false</code> → run in-repo tests; <code>true</code> → fetch the held-back graders.
+            <span class="files">production grader (separate) · solvability skill</span></td>
+          <td><code>.claude/skills/task-solvability/</code> · prod grader</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="note-box">
+      <b>Smallest first increment.</b> Stages 0–1 (flag + branched prompt) deliver ~90% of the difficulty change — the generated task stops narrating the answer. Stage 2 (deterministic test-withholding) is the second must-have, because you can’t trust the LLM to withhold reliably. Stages 3–7 wire the grading-path + solvability change.
+    </div>
+  </section>
+</div>
+</body>
+</html>

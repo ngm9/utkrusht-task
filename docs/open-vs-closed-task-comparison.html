@@ -1,0 +1,1048 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Open vs Closed Tasks — 3 Competencies, Side-by-Side, With The Code</title>
+<style>
+  :root{
+    --closed:#1971c2; --closed-bg:#e7f5ff; --closed-bd:#a5d8ff;
+    --open:#2f9e44;   --open-bg:#ebfbee;   --open-bd:#b2f2bb;
+    --neutral:#e8590c;--neutral-bg:#fff9db;--neutral-bd:#ffe066;
+    --prob:#e03131;  --prob-bg:#fff5f5;   --prob-bd:#ffc9c9;
+    --ink:#212529; --muted:#868e96; --line:#adb5bd;
+    --bg:#f8f9fa; --bg-panel:#ffffff; --bg-elev:#f1f3f5;
+  }
+  *{box-sizing:border-box}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink); margin:0; padding:28px 24px 56px; background:var(--bg);
+    line-height:1.5;
+  }
+  .page{max-width:1080px;margin:0 auto;}
+  header{text-align:center;margin-bottom:8px}
+  h1{font-size:26px;margin:0 0 6px}
+  .sub{color:var(--muted);font-size:13px;margin:0 auto;max-width:760px}
+  nav.toc{
+    margin:18px 0 4px; padding:12px 14px;
+    background:var(--bg-panel); border:1px solid var(--line); border-radius:10px;
+    font-size:13px;
+  }
+  nav.toc b{display:block;margin-bottom:4px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  nav.toc a{color:var(--ink);text-decoration:none;margin-right:10px;display:inline-block;margin-bottom:4px}
+  nav.toc a:hover{text-decoration:underline}
+
+  .tag{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.04em;
+    padding:2px 9px;border-radius:999px;text-transform:uppercase}
+  .tag-closed{background:var(--closed-bg);color:var(--closed);border:1px solid var(--closed-bd)}
+  .tag-open{background:var(--open-bg);color:var(--open);border:1px solid var(--open-bd)}
+  .tag-phase{background:var(--neutral-bg);color:var(--neutral);border:1px solid var(--neutral-bd)}
+  .tag-leak{background:var(--prob-bg);color:var(--prob);border:1px solid var(--prob-bd)}
+
+  section{margin-top:36px}
+  h2.head{font-size:14px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);
+    margin:0 0 12px;padding-bottom:6px;border-bottom:1px solid #e9ecef}
+
+  /* Competency card */
+  .comp{
+    border:1px solid var(--line);border-radius:12px;
+    padding:18px 20px;background:var(--bg-panel);
+    box-shadow:0 1px 2px rgba(0,0,0,.04);margin:18px 0;
+  }
+  .comp h3{
+    margin:0 0 4px; font-size:18px;
+  }
+  .comp .comp-sub{
+    color:var(--muted); font-size:12.5px; margin:0 0 12px;
+  }
+  .repo-table{
+    width:100%; border-collapse:collapse; font-size:13px; margin:10px 0 6px;
+  }
+  .repo-table th, .repo-table td{
+    padding:8px 10px; border:1px solid #e9ecef; text-align:left; vertical-align:top;
+  }
+  .repo-table th{background:var(--bg-elev);font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+  .repo-table a{font-weight:600; text-decoration:none}
+  .repo-table a.closed{color:var(--closed)}
+  .repo-table a.open{color:var(--open)}
+  .repo-table a:hover{text-decoration:underline}
+  .repo-table .repo-meta{font-size:11.5px;color:var(--muted);margin-top:2px}
+
+  /* Side-by-side */
+  .split{
+    display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:10px;
+  }
+  .panel{
+    border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff;
+  }
+  .panel-head{
+    padding:8px 12px;font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+    border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;
+  }
+  .panel.closed .panel-head{background:var(--closed-bg);color:var(--closed)}
+  .panel.open   .panel-head{background:var(--open-bg);color:var(--open)}
+  .panel-body{padding:12px 14px;font-size:13px}
+  .panel-body .repo-link{font-size:12px;margin-bottom:8px}
+  .panel-body .repo-link a{font-weight:600;text-decoration:none}
+  .panel-body .repo-link a.closed{color:var(--closed)}
+  .panel-body .repo-link a.open{color:var(--open)}
+
+  /* Code blocks */
+  pre.code{
+    background:#0f1115;color:#e6edf3;border-radius:8px;padding:12px;
+    font:11.5px/1.5 "SFMono-Regular",Consolas,Menlo,monospace;
+    overflow:auto;max-height:520px;white-space:pre;
+    margin:8px 0 0;
+  }
+  pre.code .ln{color:#5e6a75;display:inline-block;width:2.4em;user-select:none}
+  pre.code .kw{color:#ff7b72}
+  pre.code .str{color:#a5d6ff}
+  pre.code .com{color:#7d8590;font-style:italic}
+  pre.code .fn{color:#d2a8ff}
+  pre.code .cls{color:#ffa657}
+  pre.code .ok{color:#7ee787}
+  pre.code .hl{background:#3a2a00;border-radius:3px;display:inline-block;width:100%}
+  pre.code .hl-line{background:#3a2a00;display:block;margin:0 -12px;padding:0 12px;border-left:3px solid #e8b54a}
+
+  /* Explanation blocks */
+  .explain{
+    background:var(--bg-elev);border:1px solid #e9ecef;border-radius:8px;
+    padding:10px 12px;margin:8px 0 0;font-size:12.5px;color:#343a40;
+  }
+  .explain b{color:var(--ink)}
+  .explain ul{margin:4px 0 0 18px;padding:0}
+  .explain li{margin:3px 0}
+
+  /* Lever table */
+  table.levers{
+    width:100%;border-collapse:collapse;font-size:13px;margin:8px 0;
+  }
+  table.levers th, table.levers td{
+    padding:7px 9px;border:1px solid #e9ecef;text-align:left;vertical-align:top;
+  }
+  table.levers th{
+    background:var(--bg-elev);font-size:11px;letter-spacing:.05em;
+    text-transform:uppercase;color:var(--muted);
+  }
+  table.levers td.lever-true{background:var(--open-bg)}
+  table.levers td.lever-false{background:var(--closed-bg)}
+  table.levers td.lever-true b, table.levers td.lever-false b{font-weight:700}
+
+  .note-box{
+    border:1px dashed var(--line);border-radius:8px;padding:11px 13px;
+    margin:14px 0 0;background:#fdfdfd;font-size:13px;
+  }
+  .note-box b{color:var(--ink)}
+
+  /* Footer */
+  footer{
+    margin-top:48px;padding-top:14px;border-top:1px solid #e9ecef;
+    text-align:center;color:var(--muted);font-size:11.5px;
+  }
+
+  @media (max-width:760px){.split{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="page">
+
+<header>
+  <h1>Open vs Closed Tasks</h1>
+  <p class="sub">
+    Four real generation runs, three agent competencies, one tunable dial.
+    Below: each task's candidate repo, the candidate's edit surface (what they
+    actually code), and what the <code>open_ended</code> flag changed line by line.
+  </p>
+</header>
+
+<nav class="toc">
+  <b>Jump to a competency</b>
+  <a href="#ci-tool-use">1 · Tool Use for Agents</a>
+  <a href="#ci-pae">2 · Production Agent Engineering</a>
+  <a href="#ci-ctx">3 · Context Engineering</a>
+  <a href="#ci-crosscut">4 · Cross-competency comparison</a>
+  <a href="#ci-phases">5 · What Phase 1 left open</a>
+</nav>
+
+<!-- ============================================================ -->
+<section>
+  <h2 class="head">How to read this page</h2>
+  <p style="font-size:13.5px;margin:0 0 8px">
+    Each competency has <b>two live tasks on dev</b> generated back-to-back:
+    an <span class="tag tag-open">Open</span> one and a
+    <span class="tag tag-closed">Closed</span> one. The candidate clones the same
+    kind of bug to fix in each — only the amount of the solution they're handed
+    differs.
+  </p>
+  <p style="font-size:13.5px;margin:0 0 8px">
+    For each pair you'll see:
+  </p>
+  <ul style="font-size:13px;margin:0 0 8px 20px">
+    <li><b>The bug</b> in plain words — what the agent is failing to do.</li>
+    <li><b>The repo table</b> with clickable GitHub links + answer repos.</li>
+    <li><b>The candidate's edit surface</b> — the file they're meant to change, exact lines.</li>
+    <li><b>The ground-truth solution</b> from the answer repo — so you can see what a complete solve looks like.</li>
+    <li><b>The leak table</b> — what gets handed over in each form (incl. Phase 2's planned change).</li>
+  </ul>
+  <div class="note-box">
+    <b>Key idea (the "two schemas" clarification).</b>
+    "<code>schemas.py</code>" in code below always means the agent's
+    <em>application-level</em> output contract (the typed report payload, the
+    status enum). It does <b>not</b> mean the database schema — that ships in
+    <b>both</b> forms (via <code>init_database.sql</code>,
+    <code>docker-compose.yml</code>, and the read-only tool layer). So an open
+    task never blinds the candidate to the data; it just stops handing them the
+    answer of how the agent should structure its own output.
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="ci-tool-use">
+  <h2 class="head">1 · Tool Use for Agents · INTERMEDIATE · Claude</h2>
+  <div class="comp">
+    <h3>What the bug actually is (same in both forms)</h3>
+    <p style="font-size:13.5px;margin:6px 0 0">
+      An AI agent that pulls a buyer's record from <b>PostgreSQL</b> and writes
+      a one-paragraph briefing. It has <b>two related defects</b>:
+    </p>
+    <ol style="font-size:13.5px;margin:6px 0 0 22px">
+      <li><b>No cache reuse.</b> Every request for the same buyer re-hits Postgres and re-runs every tool — the Redis layer is dead code.</li>
+      <li><b>No grounding.</b> When the lookup misses or returns an error, the agent emits a confident-looking report instead of a clear, honest status.</li>
+    </ol>
+    <p style="font-size:13px;margin:8px 0 0;color:var(--muted)">
+      Same fix work either way; the question is whether the candidate is told
+      the data shapes, the cache-version rule, and the status vocabulary in
+      advance.
+    </p>
+
+    <table class="repo-table">
+      <thead>
+        <tr><th style="width:18%">Form</th><th>Candidate repo (click to open)</th><th style="width:18%">Answer key</th><th style="width:18%">task_id (dev)</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="tag tag-closed">Closed</span><br><span style="font-size:11px;color:var(--muted)">open_ended=false</span></td>
+          <td>
+            <a class="closed" href="https://github.com/UtkrushtApps/delivery-ops-report-agent-tooling">delivery-ops-report-agent-tooling ↗</a>
+            <div class="repo-meta">delivery-ops domain · 733 LOC · 6 implementation files · 4 helper stubs</div>
+          </td>
+          <td><a href="https://github.com/UtkrushtApps/delivery-ops-report-agent-tooling-answers" style="color:var(--muted)">delivery-ops-…-answers ↗</a></td>
+          <td><code>38a4f83d…</code></td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-open">Open</span><br><span style="font-size:11px;color:var(--muted)">open_ended=true</span></td>
+          <td>
+            <a class="open" href="https://github.com/UtkrushtApps/realty-report-cache-agent">realty-report-cache-agent ↗</a>
+            <div class="repo-meta">realty domain · 694 LOC · 8 implementation files · 2 unblocked stubs (whole orchestrator)</div>
+          </td>
+          <td><a href="https://github.com/UtkrushtApps/realty-report-cache-agent-answers" style="color:var(--muted)">realty-report-cache-agent-answers ↗</a></td>
+          <td><code>8279a7d7…</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <!-- 1a. The candidate's edit surface -->
+    <h3 style="font-size:14px;margin:14px 0 6px">A · Where the candidate writes code</h3>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 8px">
+      The data layer (Postgres/Redis/LLM client), tools, and infra are all
+      implemented. The candidate owns the orchestration glue.
+    </p>
+
+    <div class="split">
+      <!-- CLOSED -->
+      <div class="panel closed">
+        <div class="panel-head">
+          <span>🔵 CLOSED · <code>delivery-ops</code></span>
+          <span style="font-weight:400">agent/orchestrator.py</span>
+        </div>
+        <div class="panel-body">
+<pre class="code"><span class="ln"> 55</span><span class="kw">def</span> <span class="fn">load_cached_report</span>(self, customer_id: <span class="str">str</span>, report_type: <span class="str">str</span>) -&gt; Optional[ReportPayload]:
+<span class="hl-line"><span class="ln"> 56</span>    <span class="str">"""Return a reusable ReportPayload from cache, or None on a cache miss.</span></span>
+<span class="hl-line"><span class="ln"> 57</span></span>
+<span class="hl-line"><span class="ln"> 58</span>    <span class="str">A cached value is reusable only if it is present, parses as JSON, matches</span></span>
+<span class="hl-line"><span class="ln"> 59</span>    <span class="str">the CachePayload schema, has schema_version == config.CACHE_SCHEMA_VERSION,</span></span>
+<span class="hl-line"><span class="ln"> 60</span>    <span class="str">and is for the same customer_id. Anything else is a cache miss."""</span></span>
+<span class="ln"> 65</span>    <span class="kw">raise</span> NotImplementedError(<span class="str">"load_cached_report is not implemented yet"</span>)
+
+<span class="ln"> 78</span><span class="kw">def</span> <span class="fn">run_tool_chain</span>(self, customer_id, report_type) -&gt; ToolResult:
+<span class="hl-line"><span class="ln"> 79</span>    <span class="str">"""Run lookup_customer then format_report, chaining the normalized record.</span></span>
+<span class="hl-line"><span class="ln"> 80</span></span>
+<span class="hl-line"><span class="ln"> 81</span>    <span class="str">Steps:</span></span>
+<span class="hl-line"><span class="ln"> 82</span>    <span class="str">  1. Call the lookup tool; if it returns a structured failure, return it.</span></span>
+<span class="hl-line"><span class="ln"> 83</span>    <span class="str">  2. Pass the NORMALIZED lookup data into the formatting tool as the</span></span>
+<span class="hl-line"><span class="ln"> 84</span>    <span class="str">     `customer` argument (this is the required tool-&gt;tool data flow).</span></span>
+<span class="hl-line"><span class="ln"> 85</span>    <span class="str">  3. Return the formatter's ToolResult."""</span></span>
+<span class="ln"> 90</span>    <span class="kw">raise</span> NotImplementedError(<span class="str">"run_tool_chain is not implemented yet"</span>)
+
+<span class="ln"> 92</span><span class="kw">def</span> <span class="fn">error_to_message</span>(self, result: ToolResult) -&gt; <span class="str">str</span>:
+<span class="hl-line"><span class="ln"> 93</span>    <span class="str">"""Convert a structured ToolResult failure into a safe, user-facing line.</span></span>
+<span class="hl-line"><span class="ln"> 94</span></span>
+<span class="hl-line"><span class="ln"> 95</span>    <span class="str">Map known codes to clear messages, e.g. customer_not_found /</span></span>
+<span class="hl-line"><span class="ln"> 96</span>    <span class="str">customer_inactive / invalid_arguments, without leaking stack traces or</span></span>
+<span class="hl-line"><span class="ln"> 97</span>    <span class="str">internal details."""</span></span>
+<span class="ln">101</span>    <span class="kw">raise</span> NotImplementedError(<span class="str">"error_to_message is not implemented yet"</span>)
+</pre>
+          <div class="explain">
+            <b>What the candidate writes:</b> 3 helper functions to a pre-written
+            spec. The docstrings name the contract, the cache-validity rule, the
+            exact tool-to-tool data flow, and the error-code vocabulary. The two
+            public methods (<code>build_report</code>, <code>run_with_model</code>,
+            lines 104–167) are <b>already fully implemented</b> by the model —
+            they just wire the 3 helpers together.
+            <br><br>
+            <b>Difficulty:</b> Spec-following / correctness. Score it on whether
+            the cache rule is implemented exactly, the lookup→format chain
+            passes the normalized record, and the error messages don't leak.
+          </div>
+        </div>
+      </div>
+
+      <!-- OPEN -->
+      <div class="panel open">
+        <div class="panel-head">
+          <span>🟢 OPEN · <code>realty</code></span>
+          <span style="font-weight:400">agent/orchestrator.py</span>
+        </div>
+        <div class="panel-body">
+<pre class="code"><span class="ln"> 44</span><span class="kw">def</span> <span class="fn">generate_report</span>(self, buyer_id: <span class="str">str</span>) -&gt; ReportOutcome:
+<span class="hl-line"><span class="ln"> 45</span>    <span class="str">"""Produce a grounded buyer briefing without redundant recomputation.</span></span>
+<span class="hl-line"><span class="ln"> 46</span></span>
+<span class="hl-line"><span class="ln"> 47</span>    <span class="str">    Symptom to fix: repeated requests for the same buyer re-run every tool</span></span>
+<span class="hl-line"><span class="ln"> 48</span>    <span class="str">    and re-hit PostgreSQL even when nothing changed, and missing or invalid</span></span>
+<span class="hl-line"><span class="ln"> 49</span>    <span class="str">    lookups can still yield a confident-looking report that isn't grounded</span></span>
+<span class="hl-line"><span class="ln"> 50</span>    <span class="str">    in a real record."""</span></span>
+<span class="ln"> 52</span>    <span class="kw">raise</span> NotImplementedError
+
+<span class="ln"> 54</span><span class="kw">def</span> <span class="fn">_ground_and_format</span>(self, lookup_result: Any) -&gt; ReportOutcome:
+<span class="hl-line"><span class="ln"> 55</span>    <span class="str">"""Turn a customer-lookup result into a validated, grounded report.</span></span>
+<span class="hl-line"><span class="ln"> 56</span></span>
+<span class="hl-line"><span class="ln"> 57</span>    <span class="str">    Symptom to fix: the lookup output is not reliably validated before it</span></span>
+<span class="hl-line"><span class="ln"> 58</span>    <span class="str">    reaches the formatter, so error/incomplete results can slip through."""</span></span>
+<span class="ln"> 60</span>    <span class="kw">raise</span> NotImplementedError
+</pre>
+          <div class="explain">
+            <b>What the candidate writes:</b> The entire orchestration from
+            scratch. The docstrings state the <em>symptoms</em> only — no
+            method-level spec, no contract, no enumerations, no
+            <code>CACHE_SCHEMA_VERSION</code>. They decide:
+            <ul>
+              <li>the cache key scheme + TTL + cache-hit policy</li>
+              <li>what counts as "valid / complete / partial / missing" for a record</li>
+              <li>the status vocabulary (<code>status: str</code> — free string)</li>
+              <li>how to fail safe: never invent a report when the lookup miss happens</li>
+              <li>how to debounce / dedupe duplicate requests</li>
+            </ul>
+            <br>
+            <b>Difficulty:</b> Engineering judgment. Score it on whether the
+            tradeoffs are defensible and the system is safe by construction.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1b. Data contract side -->
+    <h3 style="font-size:14px;margin:18px 0 6px">B · Data contract — <code>agent/schemas.py</code></h3>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 8px">
+      "schemas.py" = the agent's own typed output shapes (not the DB schema).
+      Closed: pre-written. Open: candidate designs it.
+    </p>
+
+    <div class="split">
+      <div class="panel closed">
+        <div class="panel-head">🔵 CLOSED · schemas.py shipped (pre-written) · 88 LOC</div>
+        <div class="panel-body">
+<pre class="code"><span class="ln"> 29</span><span class="kw">class</span> <span class="cls">NormalizedCustomer</span>(BaseModel):
+<span class="ln"> 30</span>    <span class="str">"""LLM-safe, minimal customer record. No internal notes / raw PII dumps."""</span>
+<span class="ln"> 31</span>    customer_id: <span class="str">str</span>; full_name: <span class="str">str</span>; plan_tier: <span class="str">str</span>
+<span class="hl-line"><span class="ln"> 32</span>    account_status: <span class="str">str</span>; support_tier: <span class="str">str</span>; region: <span class="str">str</span>; risk_flag: <span class="kw">bool</span></span>
+<span class="hl-line"><span class="ln"> 33</span>    total_orders: <span class="kw">int</span>; last_delivery_at: Optional[<span class="str">str</span>] = <span class="kw">None</span></span>
+
+<span class="ln"> 42</span><span class="kw">class</span> <span class="cls">ReportPayload</span>(BaseModel):
+<span class="ln"> 43</span>    <span class="str">"""Final report-ready payload produced by the formatting tool."""</span>
+<span class="ln"> 44</span>    customer_id: <span class="str">str</span>; headline: <span class="str">str</span>; status_line: <span class="str">str</span>
+<span class="hl-line"><span class="ln"> 45</span>    activity_line: <span class="str">str</span>; risk_line: <span class="str">str</span>; report_type: <span class="str">str</span> = <span class="str">"account_summary"</span></span>
+
+<span class="ln"> 52</span><span class="kw">class</span> <span class="cls">ToolError</span>(BaseModel):
+<span class="hl-line"><span class="ln"> 54</span>    code: Literal[<span class="str">"invalid_arguments"</span>, <span class="str">"customer_not_found"</span>,</span>
+<span class="hl-line"><span class="ln"> 55</span>            <span class="str">"customer_inactive"</span>, <span class="str">"cache_unavailable"</span>, <span class="str">"lookup_failed"</span>,</span>
+<span class="hl-line"><span class="ln"> 56</span>            <span class="str">"format_failed"</span>]</span>
+<span class="ln"> 63</span>    retryable: <span class="kw">bool</span> = <span class="kw">False</span>
+
+<span class="ln"> 81</span><span class="kw">class</span> <span class="cls">CachePayload</span>(BaseModel):
+<span class="hl-line"><span class="ln"> 86</span>    schema_version: <span class="kw">int</span>   <span class="com"># must match config.CACHE_SCHEMA_VERSION (2)</span></span>
+<span class="hl-line"><span class="ln"> 87</span>    customer_id: <span class="str">str</span></span>
+<span class="hl-line"><span class="ln"> 88</span>    report: ReportPayload</span>
+</pre>
+          <div class="explain">
+            <b>Every typed contract is pre-written</b> — exact record fields,
+            exact report fields, an exact 6-value error enum, and a cache
+            schema version pin. The candidate just maps data into these
+            shapes.
+          </div>
+        </div>
+      </div>
+
+      <div class="panel open">
+        <div class="panel-head">🟢 OPEN · schemas.py does not exist (candidate designs it)</div>
+        <div class="panel-body">
+<pre class="code"><span class="ln"> 24</span><span class="com"># The orchestrator gets ONLY this — a free-string status, a dict-or-None</span>
+<span class="ln"> 25</span><span class="com"># report, and a flag for "did we serve from cache". The candidate picks</span>
+<span class="ln"> 26</span><span class="com"># the vocabulary, the fields, and the meaning.</span>
+<span class="ln"> 27</span>
+<span class="hl-line"><span class="ln"> 28</span><span class="com">@dataclass</span></span>
+<span class="hl-line"><span class="ln"> 29</span><span class="com">class ReportOutcome:</span></span>
+<span class="hl-line"><span class="ln"> 30</span>    <span class="str">status: str</span>          <span class="com"># candidate picks the status values ("ok", "not_found", "stale", "partial", …)</span></span>
+<span class="hl-line"><span class="ln"> 31</span>    <span class="str">report: dict[str, Any] | None</span>   <span class="com"># candidate designs the report payload</span></span>
+<span class="hl-line"><span class="ln"> 32</span>    <span class="str">served_from_cache: bool</span></span>
+<span class="hl-line"><span class="ln"> 33</span>    <span class="str">detail: str | None = None</span></span>
+</pre>
+          <div class="explain">
+            <b>No schemas.py at all.</b> Inside <code>orchestrator.py</code> the
+            only typed surface is a free-string <code>status</code> and a
+            <code>dict | None</code> report. The candidate invents the
+            typed contract — what shape an "<code>ok</code>" report takes,
+            what "<code>partial</code>" means, whether status is a string or an
+            enum, whether failure carries a code or a free message.
+            <br><br>
+            <b>config.py</b> in realty (open) has <b>zero</b> policy constants —
+            no TTL, no version pin, no enum. Compare with delivery-ops'
+            <code>CACHE_SCHEMA_VERSION = 2</code> and
+            <code>REPORT_CACHE_TTL_SECONDS = 300</code> handed over in config.py
+            line 20–22.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1c. Answer key -->
+    <h3 style="font-size:14px;margin:18px 0 6px">C · The reference solve (answer repo)</h3>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 8px">
+      Both repos have a private <code>-answers</code> repo with a working
+      reference. That's your yardstick: how much logic does the candidate need
+      to invent vs just translate?
+    </p>
+    <div class="split">
+      <div class="panel closed">
+        <div class="panel-body">
+<pre class="code"><span class="com"># delivery-ops-…-answers: orchestrator.py (the 3 helpers filled in)</span>
+<span class="kw">def</span> <span class="fn">load_cached_report</span>(self, customer_id, report_type):
+    raw = self.cache.get(self.cache.cache_key(customer_id, report_type))
+    <span class="kw">if</span> raw <span class="kw">is None</span>: <span class="kw">return None</span>                 <span class="com"># miss</span>
+    <span class="kw">try</span>: payload = CachePayload.model_validate_json(raw)
+    <span class="kw">except</span> ValidationError: <span class="kw">return None</span>          <span class="com"># malformed → miss</span>
+    <span class="kw">if</span> payload.schema_version != config.CACHE_SCHEMA_VERSION: <span class="kw">return None</span>
+    <span class="kw">if</span> payload.customer_id != customer_id: <span class="kw">return None</span>
+    <span class="kw">return</span> payload.report
+<span class="com"># …plus run_tool_chain() and error_to_message() — each ~10 LOC</span>
+<span class="com"># Total candidate work: ~30 LOC across 3 spec'd helpers.</span>
+</pre>
+          <div class="explain">
+            <b>~30 lines of code.</b> Translation of the spec to Python. Every
+            branch is dictated by the docstring.
+          </div>
+        </div>
+      </div>
+      <div class="panel open">
+        <div class="panel-body">
+<pre class="code"><span class="com"># realty-…-answers: orchestrator.py (a candidate-shaped full solve)</span>
+<span class="com"># Includes: cache layer (TTL, key, set/get helpers), record validator,</span>
+<span class="com"># status vocabulary, grounding logic, dedupe of concurrent same-id requests.</span>
+<span class="kw">async def</span> <span class="fn">generate_report</span>(self, buyer_id):
+    <span class="com"># 1. dedupe</span>
+    <span class="com"># 2. cache check (own key scheme + TTL)</span>
+    <span class="com"># 3. cache hit → return ReportOutcome(served_from_cache=True, status=…)</span>
+    <span class="com"># 4. fetch_buyer (real, given), validate it (own validity rules),</span>
+    <span class="com">#    normalize it (own normalized shape), then format.</span>
+    <span class="com"># 5. on missing/invalid → status="partial" or "not_found",</span>
+    <span class="com">#    report=None, detail="…"; never fabricate.</span>
+    <span class="com"># 6. cache write.</span>
+<span class="com"># Total candidate work: ~100–150 LOC across 2 stubs.</span>
+</pre>
+          <div class="explain">
+            <b>~100–150 lines of design + code</b> across two methods. Every
+            decision — key scheme, TTL, "what's valid?", "what status?", "safe
+            failure mode" — is theirs.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 1d. Leak table -->
+    <h3 style="font-size:14px;margin:18px 0 6px">D · Leak table (what's handed over)</h3>
+    <table class="levers">
+      <thead><tr><th>What the candidate gets</th><th style="width:36%">🔵 CLOSED</th><th style="width:36%">🟢 OPEN</th></tr></thead>
+      <tbody>
+        <tr><td>Data contract (schemas.py)</td>
+            <td class="lever-false"><code>NormalizedCustomer</code>, <code>ReportPayload</code>, <code>ToolError</code> enum, <code>CachePayload</code> — pre-written</td>
+            <td class="lever-true">no schemas.py · candidate designs the contract</td></tr>
+        <tr><td>Status / error vocab</td>
+            <td class="lever-false">6-value <code>Literal[…]</code> enum handed over</td>
+            <td class="lever-true"><code>status: str</code> · free string</td></tr>
+        <tr><td>Policy constants</td>
+            <td class="lever-false"><code>CACHE_SCHEMA_VERSION = 2</code>, <code>REPORT_CACHE_TTL_SECONDS = 300</code></td>
+            <td class="lever-true">none pre-set</td></tr>
+        <tr><td>Stub docstrings</td>
+            <td class="lever-false">enumerate the algorithm + contract + cache rule</td>
+            <td class="lever-true">state the symptom only</td></tr>
+        <tr><td>Control flow</td>
+            <td class="lever-false"><code>build_report</code> + <code>run_with_model</code> fully implemented; candidate fills 3 helpers</td>
+            <td class="lever-true">both methods <code>raise NotImplementedError</code> · candidate writes the whole flow</td></tr>
+        <tr><td>System prompt</td>
+            <td class="lever-false">pre-written tool-order policy</td>
+            <td class="lever-true">candidate writes the tool-use policy</td></tr>
+        <tr><td>Database + tools</td>
+            <td class="lever-false">Postgres seed data + read-only lookup tool + Redis — given in both</td>
+            <td class="lever-true">identical · given in both</td></tr>
+        <tr><td>Tests <span class="tag tag-phase">Phase 1 leak</span></td>
+            <td class="lever-false"><code>tests/test_tool_flow.py</code> ships — exposes <code>customer_id</code>, <code>status_line="standard"</code>, etc. <span class="tag tag-leak">visible</span></td>
+            <td class="lever-true"><code>invariants/test_agent.py</code> ships — exposes <code>buyer_id</code> + <code>"ok"</code> status. <span class="tag tag-leak">visible</span></td></tr>
+      </tbody>
+    </table>
+    <div class="note-box">
+      <b>The Phase 2 plan for this leak.</b> Both test files move into the
+      private <code>-answers</code> repo and a behavioral oracle (a thin black-box
+      harness) replaces them in the candidate repo. The behavioral grader runs
+      <em>against</em> a model-generated "candidate solution" behind the scenes
+      to prove the task is solvable — the candidate never sees those graders.
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="ci-pae">
+  <h2 class="head">2 · Production Agent Engineering · INTERMEDIATE · Claude</h2>
+  <div class="comp">
+    <h3>What the bug is</h3>
+    <p style="font-size:13.5px;margin:6px 0 0">
+      An LLM "playback support agent" runs a plan-execute loop driven by a real
+      LLM over <b>Redis Streams</b>. Three production problems are bundled in one
+      task:
+    </p>
+    <ol style="font-size:13.5px;margin:6px 0 0 22px">
+      <li><b>No bound.</b> The run loop can iterate forever — if the LLM plans badly, it burns Redis CPU unbounded.</li>
+      <li><b>No observability.</b> Nothing in Redis-Streams records what the run is doing at each step; support has no way to look.</li>
+      <li><b>No clean stop.</b> There's no surface for a stop request, so a runaway run can only be killed by killing the process.</li>
+    </ol>
+
+    <table class="repo-table">
+      <thead>
+        <tr><th style="width:18%">Form</th><th>Candidate repo (click to open)</th><th style="width:18%">Answer key</th><th style="width:18%">task_id (dev)</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="tag tag-closed">Closed</span><br><span style="font-size:11px;color:var(--muted)">open_ended=false</span></td>
+          <td colspan="3" style="color:var(--muted);font-style:italic">
+            Not yet generated for this pairing — same competency, but we
+            didn't make a closed twin of playback-stream-monitor in this
+            session. (Tool Use and Context Engineering both got full pairs;
+            this one is open-only for now.)
+          </td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-open">Open</span><br><span style="font-size:11px;color:var(--muted)">open_ended=true</span></td>
+          <td>
+            <a class="open" href="https://github.com/UtkrushtApps/playback-agent-stream-monitor">playback-agent-stream-monitor ↗</a>
+            <div class="repo-meta">playback support · 455 LOC · Redis Streams · 3 stub modules</div>
+          </td>
+          <td><a href="https://github.com/UtkrushtApps/playback-agent-stream-monitor-answers" style="color:var(--muted)">playback-agent-stream-monitor-answers ↗</a></td>
+          <td><code>(playback-id)</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 style="font-size:14px;margin:14px 0 6px">A · Where the candidate writes code</h3>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 8px">
+      Three stubs to fill, in three different modules, all centered on
+      Redis-Streams as the seam.
+    </p>
+
+    <div class="split">
+      <div class="panel open">
+        <div class="panel-head">🟢 OPEN · agent_orchestrator/orchestrator.py:23–28</div>
+        <div class="panel-body">
+<pre class="code"><span class="str">"""The plan-execute run loop for the playback support agent.
+
+The loop calls the model for a next-step decision, optionally runs a tool, and
+repeats until resolution. Today the loop can run away without bound, its
+progress is not made observable, and it has no way to stop cleanly when a stop
+is requested.
+"""</span>
+
+<span class="kw">async def</span> <span class="fn">run_agent</span>(
+    client: redis.Redis,
+    run_id: <span class="str">str</span>,
+    request: <span class="str">dict</span>[<span class="str">str</span>, Any],
+) -&gt; <span class="str">dict</span>[<span class="str">str</span>, Any]:
+<span class="hl-line">    <span class="str">"""Drive a single ticket to resolution as an observable, cancellable run."""</span></span>
+    <span class="kw">raise</span> NotImplementedError
+</pre>
+          <div class="explain">
+            <b>The whole orchestration</b> — bound + observe + cancellable.
+            Candidate decides: max-iteration budget, end condition, where in
+            each step to emit progress events, where to check for stop.
+          </div>
+        </div>
+      </div>
+
+      <div class="panel open">
+        <div class="panel-head">🟢 OPEN · agent_orchestrator/monitor.py:13–14</div>
+        <div class="panel-body">
+<pre class="code"><span class="str">"""Separate consumer process that watches runs and stops runaway ones.
+
+Run this apart from the orchestrator. It currently has no way to observe live
+progress or to detect and stop a run that has gone runaway.
+"""</span>
+
+<span class="kw">async def</span> <span class="fn">monitor_once</span>(stop_after_idle_polls: <span class="kw">int</span> = <span class="ok">50</span>) -&gt; <span class="kw">None</span>:
+<span class="hl-line">    <span class="str">"""Observe run progress and stop any run that has gone runaway."""</span></span>
+    <span class="kw">raise</span> NotImplementedError
+</pre>
+          <div class="explain">
+            <b>The watchdog.</b> Candidate decides: what counts as "runaway"
+            (idle vs overspending vs stuck), what to do on detect (cancel,
+            alert, both), what counts as "safe to start observing".
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="split" style="margin-top:14px">
+      <div class="panel open" style="grid-column:span 2">
+        <div class="panel-head">🟢 OPEN · agent_orchestrator/streaming.py:20–31</div>
+        <div class="panel-body">
+<pre class="code"><span class="kw">async def</span> <span class="fn">publish_progress</span>(client, run_id: <span class="str">str</span>, event: <span class="str">dict</span>[<span class="str">str</span>, Any]) -&gt; <span class="kw">None</span>:
+    <span class="str">"""Surface one unit of run progress so a separate process can observe it."""</span>
+    <span class="kw">raise</span> NotImplementedError
+
+<span class="kw">async def</span> <span class="fn">request_cancel</span>(client, run_id: <span class="str">str</span>) -&gt; <span class="kw">None</span>:
+    <span class="str">"""Signal that a given run should stop."""</span>
+    <span class="kw">raise</span> NotImplementedError
+
+<span class="kw">async def</span> <span class="fn">is_cancel_requested</span>(client, run_id: <span class="str">str</span>) -&gt; <span class="kw">bool</span>:
+    <span class="str">"""Report whether a stop has been requested for a given run."""</span>
+    <span class="kw">raise</span> NotImplementedError
+</pre>
+        <div class="explain">
+          <b>The Redis-Streams surface</b> — three functions, all unimplemented.
+          No config constants: the candidate picks the stream key scheme, the
+          consumer-group model, the event payload shape (what fields go on a
+          progress event vs a cancel event), the TTL/retention policy, and
+          whether to use XADD + XREAD or pub/sub or a separate sidecar key.
+          This is genuine Redis-Streams design work — not "[fill in the
+          function]."
+        </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="note-box" style="margin-top:12px">
+      <b>Why this is the most "open" of the open tasks.</b> Three modules each
+      raise <code>NotImplementedError</code> — but the <em>seam</em> (Redis
+      Streams) is fully production-grade. It's effectively asking the
+      candidate to design and implement a small but real ops protocol over
+      Redis Streams. Few pre-defined contracts are handed over: no schema, no
+      constants, no helper functions, no entrypoint signature beyond the bare
+      <code>async def</code>.
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="ci-ctx">
+  <h2 class="head">3 · Context Engineering · INTERMEDIATE · Claude</h2>
+  <div class="comp">
+    <h3>What the bug is</h3>
+    <p style="font-size:13.5px;margin:6px 0 0">
+      A "dispatch copilot" answers carrier questions by combining a user
+      question, the asking carrier's identity, and evidence retrieved from a
+      local store (a single JSONL of operator notes + policies). It assembles
+      the chat messages that go to the model. Three context-engineering
+      problems are bundled in one task:
+    </p>
+    <ol style="font-size:13.5px;margin:6px 0 0 22px">
+      <li><b>Cross-carrier leakage.</b> Evidence about other carriers' policies can end up in the prompt sent to the asking carrier.</li>
+      <li><b>Prompt-injection obedience.</b> Untrusted notes inside the evidence can contain "instructions" that the model follows.</li>
+      <li><b>Token-budget overflow.</b> Without a budget, large evidence blocks blow past the model's context window.</li>
+    </ol>
+
+    <table class="repo-table">
+      <thead>
+        <tr><th style="width:18%">Form</th><th>Candidate repo (click to open)</th><th style="width:18%">Answer key</th><th style="width:18%">task_id (dev)</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><span class="tag tag-closed">Closed</span><br><span style="font-size:11px;color:var(--muted)">open_ended=false</span></td>
+          <td>
+            <a class="closed" href="https://github.com/UtkrushtApps/dispatch-status-freshness-context">dispatch-status-freshness-context ↗</a>
+            <div class="repo-meta">dispatch status · 316 LOC · non-infra · 1 typed contract</div>
+          </td>
+          <td><a href="https://github.com/UtkrushtApps/dispatch-status-freshness-context-answers" style="color:var(--muted)">dispatch-status-freshness-context-answers ↗</a></td>
+          <td><code>3e92484d…</code></td>
+        </tr>
+        <tr>
+          <td><span class="tag tag-open">Open</span><br><span style="font-size:11px;color:var(--muted)">open_ended=true</span></td>
+          <td>
+            <a class="open" href="https://github.com/UtkrushtApps/dispatch-agent-context-scoping">dispatch-agent-context-scoping ↗</a>
+            <div class="repo-meta">dispatch copilot · 292 LOC · non-infra · 3 unblocked concerns (isolation + injection + budget)</div>
+          </td>
+          <td><a href="https://github.com/UtkrushtApps/dispatch-agent-context-scoping-answers" style="color:var(--muted)">dispatch-agent-context-scoping-answers ↗</a></td>
+          <td><code>63fcdd9d…</code></td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h3 style="font-size:14px;margin:14px 0 6px">A · Where the candidate writes code</h3>
+    <p style="font-size:13px;color:var(--muted);margin:0 0 8px">
+      Both forms own a single function — assemble the chat messages sent to the
+      model. What changes is the surface inside that function.
+    </p>
+
+    <div class="split">
+      <div class="panel closed">
+        <div class="panel-head">🔵 CLOSED · <code>context_builder.py</code>:25–35</div>
+        <div class="panel-body">
+<pre class="code"><span class="ln"> 16</span>MAX_EVIDENCE_TOKENS = <span class="ok">600</span>   <span class="com"># cl100k_base</span>
+
+<span class="ln"> 25</span><span class="kw">def</span> <span class="fn">build_context</span>(shipment_id, question, all_events) -&gt; ContextPayload:
+<span class="hl-line"><span class="ln"> 26</span>    <span class="str">"""Build the grounded ContextPayload for one shipment.</span></span>
+<span class="hl-line"><span class="ln"> 27</span></span>
+<span class="hl-line"><span class="ln"> 28</span>    <span class="str">Requirements (see invariants/ for exact checks):</span></span>
+<span class="hl-line"><span class="ln"> 29</span>    <span class="str">      - Use only events for `shipment_id`.</span></span>
+<span class="hl-line"><span class="ln"> 30</span>    <span class="str">      - Each rendered evidence item must carry its event_id for attribution.</span></span>
+<span class="hl-line"><span class="ln"> 31</span>    <span class="str">      - The payload must mark which event is current (current_event_id) when</span></span>
+<span class="hl-line"><span class="ln"> 32</span>    <span class="str">        it can be established, else None.</span></span>
+<span class="hl-line"><span class="ln"> 33</span>    <span class="str">      - evidence_block token_count must stay within MAX_EVIDENCE_TOKENS."""</span></span>
+<span class="ln"> 35</span>    <span class="kw">raise</span> NotImplementedError(<span class="str">"build_context: assemble grounded, attributable, budgeted evidence"</span>)
+</pre>
+          <div class="explain">
+            <b>What the candidate writes:</b> ONE function
+            (<code>build_context</code>) to a precise spec — 4 numbered
+            requirements handed over, a token budget handed over
+            (<code>MAX_EVIDENCE_TOKENS = 600</code>), the output shape handed
+            over (<code>ContextPayload</code>), and the layer-separation policy
+            handed over (<code>prompts.py</code> already delimits untrusted
+            user input with <code>=== USER QUESTION ===</code> markers).
+            <br><br>
+            <b>Difficulty:</b> Spec-following / multi-constraint implementation.
+            Heavy invariants (6+ tests) check the contract was met exactly.
+          </div>
+        </div>
+      </div>
+
+      <div class="panel open">
+        <div class="panel-head">🟢 OPEN · <code>context_builder.py</code>:14–20</div>
+        <div class="panel-body">
+<pre class="code"><span class="str">"""Context assembly seam for the dispatch copilot.
+
+This turns a question + the asking carrier + retrieval results into the chat
+messages handed to the model. It is currently unimplemented: the assistant
+cannot produce a trustworthy, carrier-scoped, budget-respecting answer.
+"""</span>
+
+<span class="kw">def</span> <span class="fn">build_messages</span>(
+    question: <span class="str">str</span>,
+    asking_carrier_id: <span class="str">str</span>,
+    evidence: List[EvidenceRow],
+) -&gt; List[<span class="str">dict</span>[<span class="str">str</span>, <span class="str">str</span>]]:
+<span class="hl-line">    <span class="str">"""Assemble the chat messages sent to the model. (Symptom: leaks other carriers' rules, obeys untrusted notes, and overflows budget.)"""</span></span>
+    <span class="kw">raise</span> NotImplementedError
+</pre>
+          <div class="explain">
+            <b>What the candidate writes:</b> ONE function, but free to design
+            the whole thing — the role preamble structure, the
+            isolation-by-carrier-id scheme, the
+            untrusted-input-isolation convention (how to delimit what the
+            model should treat as instructions vs content), the budget
+            strategy (rough truncate, score-and-keep, or progressive
+            summarization). No <code>MAX_EVIDENCE_TOKENS</code>, no
+            <code>current_event_id</code>, no <code>===  USER QUESTION
+            ===</code> separator convention. They're all theirs.
+            <br><br>
+            <b>Difficulty:</b> Engineering judgment × 3 concerns bundled
+            (isolation + injection defense + budgeting). Score on whether the
+            construction is safe by construction across all three.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h3 style="font-size:14px;margin:18px 0 6px">B · The reference solve (how many lines does a real solution take?)</h3>
+    <div class="split">
+      <div class="panel closed">
+        <div class="panel-body">
+<pre class="code"><span class="com"># dispatch-status-freshness-context-answers: build_context</span>
+<span class="kw">def</span> <span class="fn">build_context</span>(shipment_id, question, all_events):
+    ship_events = [e <span class="kw">for</span> e <span class="kw">in</span> all_events <span class="kw">if</span> e[<span class="str">"shipment_id"</span>] == shipment_id]
+    sorted_ev = sorted(ship_events, key=<span class="kw">lambda</span> e: (e[<span class="str">"recorded_at"</span>], e[<span class="str">"seq"</span>]))
+    current_id = pick_current(sorted_ev)        <span class="com"># latest non-superseded</span>
+    block = render_block(sorted_ev, current_id)  <span class="com"># with [event_id] markers</span>
+    block = truncate_to_budget(block, MAX_EVIDENCE_TOKENS)
+    <span class="kw">return</span> ContextPayload(...)
+<span class="com"># ~25 LOC. Linear assemble-and-truncate, contract-mapped.</span>
+</pre>
+          <div class="explain"><b>~25 lines.</b> Fits comfortably in one screen; each step dictated by the spec.</div>
+        </div>
+      </div>
+      <div class="panel open">
+        <div class="panel-body">
+<pre class="code"><span class="com"># dispatch-agent-context-scoping-answers: build_messages</span>
+SYSTEM = ...     <span class="com"># the candidate writes this; role + policy + "answer only from EVIDENCE"</span>
+USER = ...       <span class="com"># the candidate writes this; delimited untrusted-question block</span>
+<span class="kw">def</span> <span class="fn">build_messages</span>(question, asking_carrier_id, evidence):
+    <span class="com"># 1. isolate: drop evidence that isn't owned by asking_carrier_id</span>
+    own = [e <span class="kw">for</span> e <span class="kw">in</span> evidence <span class="kw">if</span> e[<span class="str">"carrier_id"</span>] == asking_carrier_id]
+    <span class="com"># 2. untrusted-note isolation: wrap evidence bodies in a clearly-non-instructional frame</span>
+    <span class="com"># 3. budget: render, count, truncate (rough or score-based — candidate picks)</span>
+    <span class="com"># 4. policy reassertion after USER block</span>
+    <span class="kw">return</span> [{<span class="str">"role"</span>:<span class="str">"system"</span>,<span class="str">"content"</span>:SYSTEM}, {<span class="str">"role"</span>:<span class="str">"user"</span>,<span class="str">"content"</span>:USER}]
+<span class="com"># ~50–80 LOC across system-prompt design + the function.</span>
+</pre>
+          <div class="explain">
+            <b>~50–80 lines.</b> Three concerns (isolation, injection defense,
+            budget) all picked-by-the-candidate, plus the system-prompt
+            framing that goes with the chosen approach.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <h3 style="font-size:14px;margin:18px 0 6px">C · Leak table</h3>
+    <table class="levers">
+      <thead><tr><th>What the candidate gets</th><th style="width:36%">🔵 CLOSED</th><th style="width:36%">🟢 OPEN</th></tr></thead>
+      <tbody>
+        <tr><td>Output shape (ContextPayload)</td>
+            <td class="lever-false">typed contract + 8 fields pre-defined</td>
+            <td class="lever-true">return type is <code>List[dict[str,str]]</code> · candidate picks everything</td></tr>
+        <tr><td>Policy constants</td>
+            <td class="lever-false"><code>MAX_EVIDENCE_TOKENS = 600</code>, + tiktoken encoder pin</td>
+            <td class="lever-true">no budget, no tokenizer pin</td></tr>
+        <tr><td>Layered-prompt structure</td>
+            <td class="lever-false"><code>prompts.py</code> ships with <code>=== USER QUESTION ===</code> delimited framing</td>
+            <td class="lever-true">no prompts.py · candidate invents their own role/user framing</td></tr>
+        <tr><td>Stub docstring</td>
+            <td class="lever-false">enumerates 4 requirements</td>
+            <td class="lever-true">names 3 symptoms, no requirements</td></tr>
+        <tr><td>Tests <span class="tag tag-phase">Phase 1 leak</span></td>
+            <td class="lever-false"><code>invariants/test_context_grounding.py</code> ships — exposes <code>selected_event_ids</code>, <code>current_event_id</code> fields <span class="tag tag-leak">visible</span></td>
+            <td class="lever-true"><code>tests/test_context_assembly.py</code> + <code>test_grounding_traceability.py</code> ship — exposes 3 concerns + trace format <span class="tag tag-leak">visible</span></td></tr>
+      </tbody>
+    </table>
+    <div class="note-box">
+      <b>Where the candidate USUALLY differs, in practice.</b> The closed
+      candidates mostly write a single tidy <code>build_context</code> in one
+      pass and pass invariants. Open candidates diverge along two axes:
+      (1) <b>how aggressive the budget strategy is</b> (rough-truncate vs
+      score-and-keep vs progressive-summary), and (2) <b>what counts as a
+      "trusted" vs "untrusted" framing boundary</b> (XML-tag isolating vs literal
+      separators vs system-only reassertion). Both are defensible; both are real
+      engineering choices.
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="ci-crosscut">
+  <h2 class="head">4 · Cross-competency comparison (what's common, what varies)</h2>
+
+  <h3 style="font-size:14px;margin:6px 0 8px">A · The lever table — applied across all 3 pairs</h3>
+  <p style="font-size:13px;color:var(--muted);margin:0 0 8px">
+    Every pair flips the same 5 levers. The exact difference depends on the
+    competency, but the lever and direction are identical.
+  </p>
+
+  <table class="levers">
+    <thead>
+      <tr>
+        <th>Lever</th>
+        <th style="width:23%">Tool Use · closed → open</th>
+        <th style="width:23%">PAE · open only</th>
+        <th style="width:23%">Context Eng · closed → open</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Data contract</td>
+        <td>schemas.py: 6 typed contracts with Literal enums → no schemas.py, free-string status</td>
+        <td>no schemas.py; <code>event: dict[str,Any]</code> payload · candidate designs</td>
+        <td>ContextPayload dataclass + MAX_EVIDENCE_TOKENS → return type only is List[dict]</td>
+      </tr>
+      <tr>
+        <td>Status / error vocab</td>
+        <td>6-value Literal enum → free string</td>
+        <td>candidate invents (no enum, no status field at all)</td>
+        <td>candidate picks "current_event_id" semantics &amp; rules</td>
+      </tr>
+      <tr>
+        <td>Policy constants</td>
+        <td>CACHE_SCHEMA_VERSION=2 + REPORT_CACHE_TTL=300 → none</td>
+        <td>none pre-set · candidate picks stream key scheme, TTL, idle-threshold</td>
+        <td>MAX_EVIDENCE_TOKENS=600 + tiktoken → none, candidate decides budget strategy</td>
+      </tr>
+      <tr>
+        <td>Stub docstrings</td>
+        <td>enumerate algorithm + contract → symptom only</td>
+        <td>symptom only (production-readiness is the goal)</td>
+        <td>enumerate 4 requirements → name 3 symptoms</td>
+      </tr>
+      <tr>
+        <td>Control flow</td>
+        <td>build_report + run_with_model implemented → both methods raise NotImplementedError</td>
+        <td>orchestrator + monitor + streaming all raise → candidate builds it all</td>
+        <td>no entrypoint helper · one big function to fill → one big function to fill (different shape)</td>
+      </tr>
+      <tr>
+        <td>System prompt</td>
+        <td>pre-written tool-order policy → candidate writes the tool-use policy</td>
+        <td>n/a · candidate writes the role preamble inside build_messages</td>
+        <td>SYSTEM_INSTRUCTIONS + === USER QUESTION === framing → candidate invents</td>
+      </tr>
+      <tr>
+        <td>What it measures</td>
+        <td>spec-following / correctness</td>
+        <td>production design (Redis Streams ops protocol)</td>
+        <td>multi-constraint engineering judgment</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h3 style="font-size:14px;margin:18px 0 8px">B · LOC of the candidate's edit surface (per pair)</h3>
+  <p style="font-size:13px;color:var(--muted);margin:0 0 8px">
+    "Edit surface" = the lines the candidate actually writes, excluding
+    pip-install, infra YAML, plumbing, and tests. Pulled from the answer repos.
+  </p>
+
+  <table class="levers">
+    <thead>
+      <tr>
+        <th>Competency</th>
+        <th style="width:20%">🔵 CLOSED candidate work</th>
+        <th style="width:20%">🟢 OPEN candidate work</th>
+        <th style="width:14%">Ratio (open ÷ closed)</th>
+        <th>What the extra lines buy</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Tool Use · Claude</td>
+        <td class="lever-false">~30 LOC across 3 spec'd helpers</td>
+        <td class="lever-true">~100–150 LOC across 2 unblocked stubs</td>
+        <td>~3–5×</td>
+        <td>Cache layer (key+TTL+hit) + record-validation policy + status vocabulary + grounded failure mode</td>
+      </tr>
+      <tr>
+        <td>PAE · Claude</td>
+        <td>—</td>
+        <td class="lever-true">~150–200 LOC across 3 stub modules (orchestrator + monitor + streaming)</td>
+        <td>—</td>
+        <td>Bound + observe + cancellable across an actual Redis-Streams seam — design + implement a small ops protocol</td>
+      </tr>
+      <tr>
+        <td>Context Eng · Claude</td>
+        <td class="lever-false">~25 LOC across 1 spec'd function</td>
+        <td class="lever-true">~50–80 LOC across 1 function + system prompt</td>
+        <td>~2–3×</td>
+        <td>Isolation + injection-defense + budget, plus the system-prompt framing that goes with the chosen approach</td>
+      </tr>
+    </tbody>
+  </table>
+  <div class="note-box" style="margin-top:10px">
+    <b>Interpretation.</b> The ratio is a rough proxy for "how much of the
+    design is the candidate's job." 2–5× is meaningful — that's the candidate
+    being the designer, not just the implementer.
+  </div>
+
+  <h3 style="font-size:14px;margin:18px 0 8px">C · What stays the same across all pairs</h3>
+  <ul style="font-size:13px;margin:0 0 0 20px">
+    <li><b>The bug.</b> Same problem class (cache + grounding for tool-use; runaway-obs for PAE; isolation + injection + budget for CE).</li>
+    <li><b>The given infrastructure.</b> Postgres/Redis/LLM client + running tool layer + seed data + docker-compose — all shipped in both forms.</li>
+    <li><b>The README.</b> Concise, symptom-only, and length-equivalent — both ~26–29 lines (the flag does NOT change the README; the universal <code>#2</code> constraint already enforces it).</li>
+    <li><b>The grading surface (today, Phase 1).</b> Tests file in <b>both</b> forms. The Phase 1 leak is uniform across competencies; the Phase 2 fix (withholding tests + oracle gate) is the same work everywhere.</li>
+  </ul>
+</section>
+
+<!-- ============================================================ -->
+<section id="ci-phases">
+  <h2 class="head">5 · What Phase 1 left open — and what Phase 2 / Phase 3 actually do</h2>
+
+  <p style="font-size:13.5px;margin:0 0 10px">
+    The dial works. All 7 candidate repos we generated flip exactly as
+    designed. Three real leaks remain — visible in every pair's repo.
+  </p>
+
+  <div class="note-box" style="border-color:var(--prob-bd);background:var(--prob-bg)">
+    <b>Leak 1 · The grading tests ship in the candidate repo.</b>
+    Both forms include them today (e.g.
+    <code>tests/test_tool_flow.py</code> · 156 LOC of test code that asserts
+    on shape; <code>invariants/test_agent.py</code> · 110 LOC that names
+    <code>buyer_id</code>/<code>"ok"</code>/<code>served_from_cache</code>;
+    <code>tests/test_context_assembly.py</code> · reveals the multi-concern
+    shape). A candidate can read these tests to learn part of the answer.
+    <br><br>
+    <b>Phase 2 fix.</b> <code>_split_grader_tests</code> in
+    <code>generators/task/creator.py</code> deterministically pops
+    <code>tests/</code>·<code>invariants/</code> out of the candidate
+    code_files into a private <code>grader_files</code> bundle when
+    <code>open_ended=true</code>. That bundle rides to the existing
+    <code>-answers</code> repo (no new infra). The candidate repo ships only a
+    thin readiness/RED smoke.
+    <br><br>
+    <b>Why this is the tricky half.</b> Once the tests are gone, the
+    existing E2B build/test gate can't prove a task is solvable by "run the
+    shipped tests to GREEN" — that signal disappeared. The gen-time gate must
+    instead clone the answer repo, overlay the withheld graders onto a
+    reference solution, and prove GREEN behind the scenes (the new "oracle
+    gate"). This is the brand-new orchestration Phase 2 builds.
+  </div>
+
+  <div class="note-box">
+    <b>Leak 2 · Even open CLOSED forms technically leak via the tests.</b>
+    In the closed form the docstring enumerates the algorithm and the test
+    asserts the spec was followed exactly. So the spec is handed over twice
+    (once in the stub, once in the test). That's intentional for closed — but
+    when withheld tests ship in the open form, the test still exposes the
+    shape even though the stub doesn't. Phase 2's withhold removes that
+    leak entirely.
+  </div>
+
+  <div class="note-box">
+    <b>Leak 3 · "'open' vs 'unfair/ambiguous' isn't gated.</b>
+    The doc's own warning: "stripping the spec off a one-true-answer task
+    makes it ambiguous, not open." Phase 1's critic only checks for solution
+    leakage; it doesn't check the inverse — that the task has genuine design
+    space and a crisp, fair problem. <b>Phase 3 fix:</b> a new "open vs
+    ambiguous" eval critic that scores whether the task admits several
+    defensible architectures and the problem statement is unambiguous. Tighter
+    than the leak critic; central to trusting open tasks at scale.
+  </div>
+
+  <h3 style="font-size:14px;margin:22px 0 8px">Phase 1 / 2 / 3 — at a glance</h3>
+  <table class="levers">
+    <thead><tr><th style="width:14%">Phase</th><th style="width:30%">What it does</th><th>Status (this session)</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Phase 1</td>
+        <td>The <code>open_ended</code> difficulty dial: framing + flag + persist to DB; CLI / trace_ui / run_pipeline all wired; 3 task families generated to validate.</td>
+        <td>✅ Done. Code + tests + UI on <code>feat/open-ended-task-flag</code>.<br>Live-confirmed via 7 dev tasks (Tool Use o/c × 2 models, Context Eng o/c, PAE o).</td>
+      </tr>
+      <tr>
+        <td>Phase 2</td>
+        <td>Withhold the grading tests for open tasks + build the new answer-repo oracle gate (clones the answer repo, overlays withheld graders, proves GREEN behind the scenes).</td>
+        <td>Next. Closes Leak 1. Highest-risk because the oracle gate has no existing code behind it.</td>
+      </tr>
+      <tr>
+        <td>Phase 3</td>
+        <td>"Open vs ambiguous" eval critic + flag-aware grading &amp; solvability + calibration (does open_ended actually separate strong from weak?).</td>
+        <td>Polish layer. Closes Leak 3. Done after Phase 1+2 land and produce real candidate data.</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<footer>
+  Generated 2026-07-03 · Open-ended Task Flag · Phase 1 · <code>feat/open-ended-task-flag</code> (uncommitted).<br>
+  Designed + verified against live dev tasks — all GitHub links point to real repos. Refresh + scroll back to the top to navigate.
+</footer>
+
+</div>
+</body>
+</html>

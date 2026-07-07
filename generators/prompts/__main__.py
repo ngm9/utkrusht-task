@@ -85,6 +85,25 @@ def _prepend_task_shape(source: str, task_shape: str) -> str:
     return header + source.lstrip()
 
 
+def _prepend_open_ended(source: str, open_ended: bool) -> str:
+    """Prepend ``OPEN_ENDED = <bool>`` to the generated prompt source.
+
+    Mirrors :func:`_prepend_task_shape`. Consumed by ``infra.utils`` so the
+    task pipeline can stamp which kind of task — specified (closed) vs
+    withhold-the-solution (open) — this combo produces. Idempotent: skip the
+    prepend if an ``OPEN_ENDED`` assignment is already present.
+    """
+    if re.search(r"^\s*OPEN_ENDED\s*=", source, re.MULTILINE):
+        return source
+    header = (
+        f'# Set by the prompt-generator open-ended dial — do not edit.\n'
+        f'# Consumed by infra.utils so the task row records which kind of task\n'
+        f'# (specified vs withhold-the-solution) this combo produces.\n'
+        f'OPEN_ENDED = {bool(open_ended)}\n\n\n'
+    )
+    return header + source.lstrip()
+
+
 @click.command()
 @click.option(
     "--name", "-n", required=True, multiple=True,
@@ -117,11 +136,17 @@ def _prepend_task_shape(source: str, task_shape: str) -> str:
               type=click.Path(exists=True, dir_okay=False, path_type=Path),
               help="Read the directive from a file (for long text). "
                    "Mutually exclusive with --instructions.")
+@click.option("--open-ended/--closed", "open_ended", default=None,
+              help="Difficulty dial. --open-ended withholds the solution (bare "
+                   "stubs, no pre-set policy, symptom-only README); --closed is the "
+                   "specified baseline (today's behaviour). Omit to default by "
+                   "proficiency (BASIC/BEGINNER → closed, INTERMEDIATE/ADVANCED → "
+                   "open-ended).")
 @click.option("--verbose", "-v", is_flag=True, default=False,
               help="Enable detailed step-by-step logging of every internal stage "
                    "(file lookups, Supabase queries, LLM call sizes, verifier feedback).")
 def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_path,
-        instructions, instructions_file, verbose):
+        instructions, instructions_file, open_ended, verbose):
     """Generate a new task generation prompt file using the DSPy agent.
 
     Task shape is AUTO-classified. To force a shape (or any other requirement),
@@ -180,6 +205,10 @@ def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_
         if len(preview) > 120:
             preview = preview[:120] + "..."
         click.echo(f" Directive:    ON — {preview}")
+    if open_ended is None:
+        click.echo(f" Open-ended:   (default by proficiency)")
+    else:
+        click.echo(f" Open-ended:   {'ON (withhold solution)' if open_ended else 'OFF (specified)'}")
     click.echo()
 
     # Check if the file already exists
@@ -214,6 +243,7 @@ def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_
         proficiency=proficiency_upper,
         env=env,
         directive=directive,
+        open_ended=open_ended,
     )
 
     # Report
@@ -223,6 +253,7 @@ def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_
     click.echo(f" Task shape:        {result.task_shape}")
     if result.task_shape_reason:
         click.echo(f"   reason: {result.task_shape_reason}")
+    click.echo(f" Open-ended:        {result.open_ended}")
     click.echo(f" Iterations:        {result.iterations}")
     click.echo(f" Bootstrap mode:    {result.bootstrap_mode}")
     click.echo(f" Fallback level:    {result.fallback_level}")
@@ -262,6 +293,10 @@ def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_
     # task shape from the loaded prompt module via `getattr(module,
     # "TASK_SHAPE", None)` — no extra plumbing, no separate metadata file.
     final_source = _prepend_task_shape(result.new_prompt_file, result.task_shape)
+    # Stamp the resolved open-ended dial as a module constant too, so the task
+    # pipeline (infra.utils.get_open_ended_for) can record which kind of task
+    # this combo produces — same mechanism as TASK_SHAPE above.
+    final_source = _prepend_open_ended(final_source, result.open_ended)
 
     if dry_run:
         click.echo(f"\n{'-'*70}")

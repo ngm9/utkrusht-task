@@ -401,6 +401,15 @@ def main() -> int:
                          "deployment: Dockerfile + docker-compose + run.sh'). Shapes the "
                          "generated task and can force an infra-shaped task without a "
                          "separate flag. Replaces the old --task-shape/--infra-kind.")
+    oe = ap.add_mutually_exclusive_group()
+    oe.add_argument("--open-ended", dest="open_ended", action="store_true",
+                    help="Force the open-ended (withhold-the-solution) task form: "
+                         "bare stubs, no pre-set policy, symptom-only README.")
+    oe.add_argument("--closed", dest="open_ended", action="store_false",
+                    help="Force the specified/closed task form (today's baseline). "
+                         "Omit both to default by proficiency (BASIC/BEGINNER → "
+                         "closed, INTERMEDIATE/ADVANCED → open-ended).")
+    ap.set_defaults(open_ended=None)
     ap.add_argument("--llm-provider", default=os.getenv("LLM_PROVIDER", "anthropic"),
                     choices=["anthropic", "glm"],
                     help="LLM backend for the Claude-role calls (task-gen, classifier): "
@@ -431,6 +440,7 @@ def main() -> int:
         llm_provider=args.llm_provider,
         instructions=(args.instructions or ""),
         count=args.count,
+        open_ended=args.open_ended,
     )
     focus_areas: list[str] = []
     for item in args.focus_areas:
@@ -556,6 +566,12 @@ def main() -> int:
         # The authoritative free-text directive (replaces the infra/non_infra force).
         if args.instructions and args.instructions.strip():
             prompt_cmd += ["--instructions", args.instructions.strip()]
+        # Open-ended difficulty dial (tri-state): only forward an explicit
+        # choice; when None the prompt-generator defaults by proficiency.
+        if args.open_ended is True:
+            prompt_cmd += ["--open-ended"]
+        elif args.open_ended is False:
+            prompt_cmd += ["--closed"]
         rec = _run_stage(combo_dir, "03_prompt", prompt_cmd)
         stages.append(rec)
         if rec["exit_code"] != 0:
@@ -642,6 +658,9 @@ def _write_summary(combo_dir: Path, names: list[str], level: str,
         "env": _RUN_META.get("env"),
         "instructions": _RUN_META.get("instructions", ""),
         "count": _RUN_META.get("count"),
+        # tri-state: True (open) / False (closed) / None (defaulted by
+        # proficiency) — so trace_ui "↻ run from here" can rebuild the dial.
+        "open_ended": _RUN_META.get("open_ended"),
         "status": status,
         "task_outcome": task_outcome,
         "stages": [

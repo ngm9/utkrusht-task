@@ -20,12 +20,22 @@ def test_strips_llm_stack_for_python_ai_template():
     )}
     _strip_preinstalled_pins(files, "utkrusht-python-ai")
     req = files["requirements.txt"]
-    # task-specific deps kept
-    for keep in ("fastapi", "redis", "tiktoken"):
+    # task-specific deps kept — AND litellm is kept: the live image does not
+    # actually pre-install it on the gate's interpreter, so run.sh must install
+    # it (stripping it caused ModuleNotFoundError: No module named 'litellm').
+    for keep in ("fastapi", "redis", "tiktoken", "litellm"):
         assert keep in req, f"{keep} should be kept"
-    # pre-installed LLM stack stripped (image provides them)
-    for drop in ("litellm", "httpx", "openai", "anthropic"):
+    # genuinely pre-installed stack still stripped (image provides them)
+    for drop in ("httpx", "openai", "anthropic"):
         assert drop not in req, f"{drop} should be stripped"
+
+
+def test_litellm_is_not_stripped_so_runsh_installs_it():
+    # Regression guard for the readiness-gate failure: the utkrusht-python-ai
+    # image lacks litellm on the python run.sh uses, so it must NOT be stripped.
+    files = {"requirements.txt": "litellm==1.40.10\nredis==5.2.1\n"}
+    _strip_preinstalled_pins(files, "utkrusht-python-ai")
+    assert "litellm" in files["requirements.txt"]
 
 
 def test_noop_for_template_without_a_declared_set():
@@ -54,13 +64,13 @@ def test_name_match_is_case_and_separator_insensitive_and_handles_extras():
     files = {"app/requirements.txt": (
         "uvicorn[standard]==0.34\n"   # kept (not pre-installed), extras stripped from name match
         "LangChain_Core==0.3\n"        # stripped — normalizes to langchain-core
-        "LiteLLM>=1.55\n"              # stripped — case-insensitive
+        "OpenAI==1.58\n"               # stripped — case-insensitive
     )}
     _strip_preinstalled_pins(files, "utkrusht-python-ai")
     req = files["app/requirements.txt"]
     assert "uvicorn" in req
     assert "LangChain_Core" not in req
-    assert "LiteLLM" not in req
+    assert "OpenAI" not in req
 
 
 def test_noop_when_no_requirements_file():

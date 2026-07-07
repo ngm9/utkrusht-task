@@ -69,10 +69,10 @@ def _iter_filesystem_prompts():
                 yield canonical
 
 
-def _build_prompt_registry() -> tuple[dict, dict]:
-    """Walk curated + agent-generated prompt modules and build two registries.
+def _build_prompt_registry() -> tuple[dict, dict, dict]:
+    """Walk curated + agent-generated prompt modules and build three registries.
 
-    Returns ``(prompt_registry, task_shape_registry)``:
+    Returns ``(prompt_registry, task_shape_registry, open_ended_registry)``:
       * ``prompt_registry`` maps the canonical key (e.g. ``"Java (INTERMEDIATE)"``)
         to the ``[CONTEXT, INPUT_AND_ASK, INSTRUCTIONS]`` triple — same as
         before.
@@ -81,9 +81,15 @@ def _build_prompt_registry() -> tuple[dict, dict]:
         Modules without ``TASK_SHAPE`` (legacy curated prompts) get no entry —
         the downstream lookup returns ``None`` and the E2B gate runs as
         before.
+      * ``open_ended_registry`` maps the SAME key to the module's
+        ``OPEN_ENDED`` constant (``True`` / ``False``) when present — stamped by
+        the prompt-generator's open-ended dial. Modules without it get no entry;
+        the downstream lookup returns ``None`` and the task pipeline treats that
+        as ``False`` (the specified/closed baseline = today's behaviour).
     """
     registry: dict = {}
     shape_registry: dict = {}
+    open_registry: dict = {}
 
     def _absorb(module) -> None:
         if not hasattr(module, "PROMPT_REGISTRY"):
@@ -96,6 +102,13 @@ def _build_prompt_registry() -> tuple[dict, dict]:
             # this module's TASK_SHAPE — they all come from the same combo.
             for key in module.PROMPT_REGISTRY:
                 shape_registry[key] = shape
+        oe = getattr(module, "OPEN_ENDED", None)
+        if oe is not None:
+            # Same fan-out as TASK_SHAPE: every key this module owns inherits
+            # its OPEN_ENDED dial. Coerced to bool so a stray "true"/1 still
+            # records cleanly.
+            for key in module.PROMPT_REGISTRY:
+                open_registry[key] = bool(oe)
 
     # 1) Flat-style modules under <Level>/<file>.py via the existing package walk.
     for pkg in [_basic_pkg, _inter_pkg, _beginner_pkg]:
@@ -110,10 +123,10 @@ def _build_prompt_registry() -> tuple[dict, dict]:
             continue
         if module is not None:
             _absorb(module)
-    return registry, shape_registry
+    return registry, shape_registry, open_registry
 
 
-_PROMPT_REGISTRY, _TASK_SHAPE_REGISTRY = _build_prompt_registry()
+_PROMPT_REGISTRY, _TASK_SHAPE_REGISTRY, _OPEN_ENDED_REGISTRY = _build_prompt_registry()
 
 
 def get_task_shape_for(input_data: dict) -> Optional[str]:
@@ -136,6 +149,25 @@ def get_task_shape_for(input_data: dict) -> Optional[str]:
     return _TASK_SHAPE_REGISTRY.get(key)
 
 
+def get_open_ended_for(input_data: dict) -> Optional[bool]:
+    """Return the prompt module's ``OPEN_ENDED`` dial for this competency combo.
+
+    Mirrors :func:`get_task_shape_for` (same key construction, so the two
+    registries stay in lockstep). Returns ``True`` / ``False`` when the prompt
+    module declared the flag — via the ``OPEN_ENDED`` constant the
+    prompt-generator prepends — and ``None`` for legacy / unannotated prompts.
+    Callers treat ``None`` as ``False`` (specified/closed = today's behaviour).
+    """
+    competencies = input_data.get("competencies", [])
+    key = ", ".join(
+        sorted(
+            f"{c.get('name')} ({c.get('proficiency', '').upper()})"
+            for c in competencies if c.get("name")
+        )
+    ) if competencies else ""
+    return _OPEN_ENDED_REGISTRY.get(key)
+
+
 PROFICIENCY_LEVELS = ["BEGINNER", "BASIC", "INTERMEDIATE", "ADVANCED", "EXPERT"]
 
 TASK_GENERATION_SYSTEM_PROMPT = """
@@ -154,6 +186,17 @@ OUTPUT DISCIPLINE (keep generation cheap — this is a multi-turn exchange):
 # full 3-prompt generation and then correcting. Set TASK_GEN_LEAN_RETRY=0 to
 # restore the old regenerate-then-correct behavior for an A/B cost comparison.
 TASK_GEN_LEAN_RETRY = os.getenv("TASK_GEN_LEAN_RETRY", "1") != "0"
+
+# Lean-first switch (#2). On the FIRST attempt (no feedback), send the 3 task
+# prompts (CONTEXT + INPUT_AND_ASK + INSTRUCTIONS) as ONE combined user message
+# in a SINGLE call, instead of replaying them as 3 sequential turns. The staged
+# 3-turn design intends turns 1-2 to be short plans, but a strong model renders
+# the full repo in EVERY turn — and only the FINAL turn is parsed, so turns 1-2
+# are pure waste (~2/3 of first-pass task-gen cost) and also bloat the final
+# turn's input. The lean-retry path already proves single-turn generation yields
+# passing tasks. Set TASK_GEN_LEAN_FIRST=0 to restore the 3-turn staged priming
+# for an A/B comparison.
+TASK_GEN_LEAN_FIRST = os.getenv("TASK_GEN_LEAN_FIRST", "1") != "0"
 
 def read_json_file_robust(file_path: Path) -> dict:
     """
@@ -655,13 +698,29 @@ def generate_task_with_code(
         # in a SINGLE correction call. Halves retry cost on every stack with no
         # capability loss — the correction turn is what produced the passing
         # task before too. TASK_GEN_LEAN_RETRY=0 restores the old behavior.
-        _lean = bool(feedback) and TASK_GEN_LEAN_RETRY
+        # Lean RETRY (#1, feedback present) and lean FIRST attempt (#2, no
+        # feedback) both collapse the 3 staged prompts into ONE combined user
+        # message + a SINGLE call. Retry additionally appends the feedback as a
+        # correction turn. Either flag off → fall through to the legacy 3-turn
+        # path below.
+        _lean_retry = bool(feedback) and TASK_GEN_LEAN_RETRY
+        _lean_first = (not feedback) and TASK_GEN_LEAN_FIRST
+        _lean = _lean_retry or _lean_first
         if _lean:
-            logger.info(
-                "Lean retry: single correction call (skipping 3-prompt regeneration)"
-            )
+            if _lean_retry:
+                logger.info(
+                    "Lean retry: single correction call (skipping 3-prompt regeneration)"
+                )
+            else:
+                logger.info(
+                    "Lean first attempt: single combined-prompt call "
+                    "(skipping the 3-turn staged priming)"
+                )
+            # All 3 task prompts as ONE context block; feedback (retry only) as a
+            # follow-up correction turn.
             messages.append({"role": "user", "content": "\n\n".join(task_generation_prompts)})
-            messages.append({"role": "user", "content": feedback})
+            if feedback:
+                messages.append({"role": "user", "content": feedback})
             response = openai_client.chat.completions.create(
                 model=model, messages=cache_messages(messages), **_token_kwargs, **_gen_extra,
             )
@@ -673,20 +732,23 @@ def generate_task_with_code(
             if (response.choices[0].finish_reason if response.choices else None) == "length":
                 raise LLMOutputTruncated(response_text or "", attempt=-1)
             if not response_text:
-                raise RuntimeError("Empty response from LLM on lean correction turn")
+                raise RuntimeError("Empty response from LLM on lean generation turn")
             usage = response.usage
             _li = usage.prompt_tokens if usage else 0
             _lo = usage.completion_tokens if usage else 0
             total_input_tokens += _li
             total_output_tokens += _lo
+            _cached_read = getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", 0) if usage else 0
+            if _cached_read:
+                logger.info(f" Cache: {_cached_read:,} tokens served from cache (lean)")
             logger.info("=" * 70)
-            logger.info(" Lean Correction Response: ")
+            logger.info(f" Lean {'Correction' if _lean_retry else 'First-Attempt'} Response: ")
             logger.info(response_text)
             logger.info(f" Tokens - Input: {_li:,} | Output: {_lo:,}")
             logger.info("=" * 70)
 
-        # Base generation (first attempt, or old behavior when lean is off). When
-        # lean fired above, this iterates an empty list and is skipped.
+        # Legacy staged generation: the 3 prompts as sequential turns. Runs only
+        # when neither lean path fired (iterates an empty list otherwise).
         for i, prompt in enumerate([] if _lean else task_generation_prompts, 1):
             messages.append({"role": "user", "content": prompt})
             response = openai_client.chat.completions.create(
@@ -795,8 +857,12 @@ def generate_task_with_code(
         response_text = response_text.strip()
         
         try:
-            # First, try parsing the response directly as JSON
-            task_data = json.loads(response_text)
+            # First, try parsing the response directly as JSON.
+            # strict=False tolerates RAW control characters (literal newlines /
+            # tabs) inside string values — the task-gen model routinely slips an
+            # unescaped newline into a code_files entry, which strict json.loads
+            # rejects with "Invalid control character" and kills the whole run.
+            task_data = json.loads(response_text, strict=False)
         except json.JSONDecodeError:
             # If direct parsing fails, try to extract JSON from markdown code blocks
             logger.warning("Direct JSON parsing failed, attempting to extract JSON from markdown code blocks")
@@ -814,7 +880,7 @@ def generate_task_with_code(
                     try:
                         # Try to parse the matched content
                         extracted_json = match.strip()
-                        task_data = json.loads(extracted_json)
+                        task_data = json.loads(extracted_json, strict=False)
                         logger.info("Successfully extracted JSON from markdown code block")
                         break
                     except json.JSONDecodeError:
@@ -839,7 +905,7 @@ def generate_task_with_code(
                         if brace_count == 0 and start_idx != -1:
                             potential_json = response_text[start_idx:i+1]
                             try:
-                                task_data = json.loads(potential_json)
+                                task_data = json.loads(potential_json, strict=False)
                                 logger.info("Successfully extracted JSON object from text")
                                 break
                             except json.JSONDecodeError:
