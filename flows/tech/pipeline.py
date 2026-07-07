@@ -56,7 +56,7 @@ from flows._base.runner import (
 # not otherwise, so load it here.
 load_dotenv()
 
-REPO_ROOT = Path(__file__).parent.resolve()
+REPO_ROOT = Path(__file__).resolve().parents[2]
 RUNS_DIR = REPO_ROOT / ".task_agent_runs"
 INPUT_FILES_ROOT = REPO_ROOT / "data" / "generated" / "input_files"
 SCENARIOS_ROOT = REPO_ROOT / "data" / "generated" / "scenarios"

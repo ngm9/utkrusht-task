@@ -6,7 +6,7 @@ so the gate verdict and eval outcomes are easy to inspect.
 """
 from pathlib import Path
 
-import run_pipeline as rp
+import flows.tech.pipeline as rp
 
 
 _SAMPLE_STDERR = "\n".join([

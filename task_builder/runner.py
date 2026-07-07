@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from run_pipeline import (
+from flows.tech.pipeline import (
     REPO_ROOT,
     RUNS_DIR,
     _locate_input_files,

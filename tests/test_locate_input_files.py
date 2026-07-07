@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import os
 
-import run_pipeline as rp
+import flows.tech.pipeline as rp
 
 
 # ── _parse_resolved_inputs (the robust handoff) ──────────────────────────
