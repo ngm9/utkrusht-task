@@ -13,7 +13,7 @@ from infra.e2b.sandbox_eval import (
     run_sandbox_eval,
     sandbox_eval_enabled,
 )
-from generators.task.runtime_resolver import ResolvedPlan, TemplateSpec
+from flows.tech.stages.generate.runtime_resolver import ResolvedPlan, TemplateSpec
 
 
 def _python_template() -> TemplateSpec:

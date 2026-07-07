@@ -28,7 +28,7 @@ from unittest.mock import MagicMock
 
 from infra.classifier.runtime import TaskTemplateMatch
 from infra.e2b.sandbox_eval import SandboxEvalResult, run_sandbox_eval
-from generators.task.runtime_resolver import ResolvedPlan, TemplateSpec
+from flows.tech.stages.generate.runtime_resolver import ResolvedPlan, TemplateSpec
 
 
 # ---------------------------------------------------------------------------

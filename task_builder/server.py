@@ -29,7 +29,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from generators.input_files.generator import init_supabase as _init_competency_supabase
+from flows.tech.stages.input_files.generator import init_supabase as _init_competency_supabase
 from task_builder.jobs import JobStatus, enqueue_job
 from task_builder.conversation import apply_turn, build_bot_client
 from task_builder.conversation_repo import (

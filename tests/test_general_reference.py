@@ -14,12 +14,12 @@ from pathlib import Path
 import pytest
 
 from infra.classifier.classifier import Competency
-from generators.prompts.retriever import (
+from flows.tech.stages.prompts.retriever import (
     GENERAL_REFERENCE_DIR,
     _general_reference_path,
     retrieve_references,
 )
-from generators.prompts.validator import _missing_json_schema_keys, _simulate_format_call
+from flows.tech.stages.prompts.validator import _missing_json_schema_keys, _simulate_format_call
 
 
 LEVELS = ("beginner", "basic", "intermediate", "advanced")

@@ -8,7 +8,7 @@ from pathlib import Path
 import click
 
 from infra.evals import EvalGateError
-from generators.task import create_task
+from flows.tech.stages.generate import create_task
 from infra.tracing import (
     new_trace_id,
     trace_run,

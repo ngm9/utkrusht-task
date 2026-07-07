@@ -65,7 +65,7 @@ SCENARIOS_ROOT = REPO_ROOT / "data" / "generated" / "scenarios"
 def scenarios_file_for(level: str) -> Path:
     """Return the scenarios file that stage 02 actually writes for `level`.
 
-    Mirrors generators.scenarios.generator.get_target_scenario_file —
+    Mirrors flows.tech.stages.scenarios.generator.get_target_scenario_file —
     INTERMEDIATE goes to its own file, everything else lands in
     task_scenarios.json. Keep this in lockstep with the generator.
     """
@@ -88,7 +88,7 @@ def _parse_names(raw: list[str]) -> list[str]:
 
 def _combo_slug(names: list[str]) -> str:
     """Mirror the slug logic the other modules use, via prompt_generator.slugs."""
-    from generators.prompts.slugs import slugify
+    from flows.tech.stages.prompts.slugs import slugify
     return "_".join(slugify(n) for n in names)
 
 
@@ -162,7 +162,7 @@ _RESOLVED_INPUTS_MARKER = "__INPUT_FILES_RESOLVED__"
 def _parse_resolved_inputs(stdout_path: Path) -> tuple[Path, Path] | None:
     """Read the EXACT competency+background paths stage 1 reported, if present.
 
-    Stage 1 (``generators.input_files``) emits a
+    Stage 1 (``flows.tech.stages.input_files``) emits a
     ``__INPUT_FILES_RESOLVED__ {json}`` line carrying the absolute paths it
     targeted. Consuming that is exact and robust — unlike re-globbing
     ``input_files/`` by slug, which mis-resolved a 'NodeJs' selection to the
@@ -306,7 +306,7 @@ def main() -> int:
     # --- Stage 1: input files ---------------------------------------------
     t0 = time.time()
     input_cmd = [
-        py, "-m", "generators.input_files",
+        py, "-m", "flows.tech.stages.input_files",
         "--competency-name", ", ".join(names),
         "--proficiency", level, "--env", args.env,
     ]
@@ -341,11 +341,11 @@ def main() -> int:
     print(f"    background: {_rel(bg_json)}")
 
     # --- Stage 2: scenarios -----------------------------------------------
-    # `--env` MUST be threaded here too: generators.scenarios defaults to dev,
+    # `--env` MUST be threaded here too: flows.tech.stages.scenarios defaults to dev,
     # so a `--env prod` run would otherwise write scenarios to the dev DB while
     # stage 4 reads from prod — leaving stage 4 with an empty scenario pool.
     scenario_cmd = [
-        py, "-m", "generators.scenarios",
+        py, "-m", "flows.tech.stages.scenarios",
         "--competency-file", str(comp_json),
         "--background-file", str(bg_json),
         "--count", str(args.count), "--env", args.env, "--append",
@@ -369,7 +369,7 @@ def main() -> int:
 
     # --- Stage 3: prompt generator ----------------------------------------
     prompt_cmd = [
-        py, "-m", "generators.prompts",
+        py, "-m", "flows.tech.stages.prompts",
         "--name", ", ".join(names),
         "--proficiency", level, "--env", args.env, "--force", "--verbose",
         "--task-shape", args.task_shape,

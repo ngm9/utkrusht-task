@@ -4,7 +4,7 @@ The reason is fed back into the generation retry loop so a structurally-bad
 scenario (e.g. bullet overflow) is corrected on the next attempt instead of
 being silently dropped and blindly regenerated.
 """
-from generators.scenarios.generator import validate_scenario_structure
+from flows.tech.stages.scenarios.generator import validate_scenario_structure
 
 _INTRO = (
     "**Current Implementation:** A FastAPI endpoint GET /api/reports is slow "

@@ -15,8 +15,8 @@ gate the retry loop uses to re-score instead of regenerate.
 """
 from __future__ import annotations
 
-import generators.task.evaluator as ev
-from generators.task import (
+import flows.tech.stages.generate.evaluator as ev
+from flows.tech.stages.generate import (
     blockers_are_deterministic_only,
     proficiency_profile,
 )

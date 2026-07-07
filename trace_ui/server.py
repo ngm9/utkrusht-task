@@ -363,7 +363,7 @@ def _scenario_pool(run_dir: Path, combo: Path) -> list[str]:
         return []
     key = ", ".join(sorted(f"{n} ({prof})" for n in names))
     try:
-        from generators.scenarios import repository as scenario_repo
+        from flows.tech.stages.scenarios import repository as scenario_repo
         return scenario_repo.load_scenarios_for_combo(env=env, combo_key=key, proficiency=prof) or []
     except Exception:  # noqa: BLE001 — DB optional; locked scenario still shows
         return []

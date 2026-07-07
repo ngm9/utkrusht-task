@@ -10,7 +10,7 @@ from __future__ import annotations
 
 
 def test_injects_pip_install_after_cd_before_import():
-    from generators.task.creator import _ensure_runsh_installs_deps
+    from flows.tech.stages.generate.creator import _ensure_runsh_installs_deps
     cf = {
         "requirements.txt": "psycopg[binary]\nlitellm\n",
         "run.sh": "#!/usr/bin/env bash\nset -euo pipefail\ncd /root/task\n"
@@ -26,7 +26,7 @@ def test_injects_pip_install_after_cd_before_import():
 
 
 def test_no_double_inject_when_already_present():
-    from generators.task.creator import _ensure_runsh_installs_deps
+    from flows.tech.stages.generate.creator import _ensure_runsh_installs_deps
     cf = {
         "requirements.txt": "x\n",
         "run.sh": "#!/usr/bin/env bash\npip install -q -r requirements.txt\npython -m agent\n",
@@ -36,14 +36,14 @@ def test_no_double_inject_when_already_present():
 
 
 def test_skips_when_no_requirements_file():
-    from generators.task.creator import _ensure_runsh_installs_deps
+    from flows.tech.stages.generate.creator import _ensure_runsh_installs_deps
     cf = {"run.sh": "#!/usr/bin/env bash\npython -m agent\n"}
     _ensure_runsh_installs_deps(cf)
     assert "pip install" not in cf["run.sh"]
 
 
 def test_handles_subdir_runsh_key():
-    from generators.task.creator import _ensure_runsh_installs_deps
+    from flows.tech.stages.generate.creator import _ensure_runsh_installs_deps
     cf = {
         "requirements.txt": "x\n",
         "repo/run.sh": "#!/usr/bin/env bash\ncd /root/task\npython -m agent\n",
@@ -53,7 +53,7 @@ def test_handles_subdir_runsh_key():
 
 
 def test_noop_when_no_runsh():
-    from generators.task.creator import _ensure_runsh_installs_deps
+    from flows.tech.stages.generate.creator import _ensure_runsh_installs_deps
     cf = {"requirements.txt": "x\n"}
     _ensure_runsh_installs_deps(cf)  # must not raise
     assert "run.sh" not in cf
@@ -62,7 +62,7 @@ def test_noop_when_no_runsh():
 # --- broadened "already installs" detection (the #2 follow-up) ------------------
 
 def test_no_double_inject_for_python_dash_m_pip():
-    from generators.task.creator import _ensure_runsh_installs_deps
+    from flows.tech.stages.generate.creator import _ensure_runsh_installs_deps
     cf = {
         "requirements.txt": "x\n",
         "run.sh": "#!/usr/bin/env bash\ncd /root/task\npython -m pip install -r requirements.txt\n",
@@ -72,7 +72,7 @@ def test_no_double_inject_for_python_dash_m_pip():
 
 
 def test_no_double_inject_for_uv_pip():
-    from generators.task.creator import _ensure_runsh_installs_deps
+    from flows.tech.stages.generate.creator import _ensure_runsh_installs_deps
     cf = {
         "requirements.txt": "x\n",
         "run.sh": "#!/usr/bin/env bash\nuv pip install -r requirements.txt\npython -m app\n",
@@ -84,7 +84,7 @@ def test_no_double_inject_for_uv_pip():
 # --- runtime-agnostic injection (Node / Go / Rust) ------------------------------
 
 def test_injects_npm_for_node():
-    from generators.task.creator import _ensure_runsh_installs_deps
+    from flows.tech.stages.generate.creator import _ensure_runsh_installs_deps
     cf = {
         "package.json": '{"name":"x"}',
         "run.sh": "#!/usr/bin/env bash\ncd /root/task\nnode server.js\n",
@@ -95,7 +95,7 @@ def test_injects_npm_for_node():
 
 
 def test_no_double_inject_when_npm_ci_present():
-    from generators.task.creator import _ensure_runsh_installs_deps
+    from flows.tech.stages.generate.creator import _ensure_runsh_installs_deps
     cf = {
         "package.json": "{}",
         "run.sh": "#!/usr/bin/env bash\nnpm ci\nnode server.js\n",
@@ -105,7 +105,7 @@ def test_no_double_inject_when_npm_ci_present():
 
 
 def test_injects_go_mod_download():
-    from generators.task.creator import _ensure_runsh_installs_deps
+    from flows.tech.stages.generate.creator import _ensure_runsh_installs_deps
     cf = {
         "go.mod": "module x\n",
         "run.sh": "#!/usr/bin/env bash\ncd /root/task\n./bootstrap.sh\n",
@@ -115,7 +115,7 @@ def test_injects_go_mod_download():
 
 
 def test_no_double_inject_when_go_build_present():
-    from generators.task.creator import _ensure_runsh_installs_deps
+    from flows.tech.stages.generate.creator import _ensure_runsh_installs_deps
     cf = {
         "go.mod": "module x\n",
         "run.sh": "#!/usr/bin/env bash\ngo build ./...\n",
@@ -125,7 +125,7 @@ def test_no_double_inject_when_go_build_present():
 
 
 def test_injects_cargo_fetch():
-    from generators.task.creator import _ensure_runsh_installs_deps
+    from flows.tech.stages.generate.creator import _ensure_runsh_installs_deps
     cf = {
         "Cargo.toml": "[package]\nname='x'\n",
         "run.sh": "#!/usr/bin/env bash\ncd /root/task\ndocker compose up -d\n",
@@ -135,7 +135,7 @@ def test_injects_cargo_fetch():
 
 
 def test_no_double_inject_when_cargo_build_present():
-    from generators.task.creator import _ensure_runsh_installs_deps
+    from flows.tech.stages.generate.creator import _ensure_runsh_installs_deps
     cf = {
         "Cargo.toml": "[package]\n",
         "run.sh": "#!/usr/bin/env bash\ncargo build --release\n",
@@ -146,7 +146,7 @@ def test_no_double_inject_when_cargo_build_present():
 
 def test_only_present_runtime_is_bootstrapped():
     """A Python task must not get npm/go/cargo lines."""
-    from generators.task.creator import _ensure_runsh_installs_deps
+    from flows.tech.stages.generate.creator import _ensure_runsh_installs_deps
     cf = {
         "requirements.txt": "x\n",
         "run.sh": "#!/usr/bin/env bash\ncd /root/task\npython -m app\n",

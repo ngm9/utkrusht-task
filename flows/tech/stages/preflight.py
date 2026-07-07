@@ -178,7 +178,7 @@ def _check_retriever_has_references(
     """
     try:
         from infra.classifier.classifier import Competency
-        from generators.prompts.retriever import retrieve_references
+        from flows.tech.stages.prompts.retriever import retrieve_references
     except Exception as e:
         report.fail(f"could not import retriever: {e}")
         return

@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import inspect
 
-from generators.prompts.validator import (
+from flows.tech.stages.prompts.validator import (
     REQUIRED_JSON_SCHEMA_KEYS,
     TITLE_KEY_ALTERNATIVES,
     _missing_json_schema_keys,
@@ -98,7 +98,7 @@ def test_generate_task_with_code_accepts_feedback_param() -> None:
 
 
 def test_build_retry_feedback_hollow_includes_canonical_reminder() -> None:
-    from generators.task import build_retry_feedback as _build_retry_feedback
+    from flows.tech.stages.generate import build_retry_feedback as _build_retry_feedback
     fb = _build_retry_feedback(["title is empty", "code_files is empty"], None)
     assert "hollow" in fb.lower()
     # must spell out the canonical keys so the LLM corrects the synonym mistake
@@ -107,7 +107,7 @@ def test_build_retry_feedback_hollow_includes_canonical_reminder() -> None:
 
 
 def test_build_retry_feedback_eval_failure_includes_issues() -> None:
-    from generators.task import build_retry_feedback as _build_retry_feedback
+    from flows.tech.stages.generate import build_retry_feedback as _build_retry_feedback
     eval_info = {
         "task_eval": {"pass": False, "issues": ["scenario unrealistic", "too hard"]},
         "code_eval": {"pass": True},
@@ -120,7 +120,7 @@ def test_build_retry_feedback_eval_failure_includes_issues() -> None:
 
 def test_build_retry_feedback_falls_back_to_feedback_string() -> None:
     """When issues[] is empty, use the free-text feedback field."""
-    from generators.task import build_retry_feedback as _build_retry_feedback
+    from flows.tech.stages.generate import build_retry_feedback as _build_retry_feedback
     eval_info = {
         "task_eval": {"pass": False, "issues": [], "feedback": "needs more depth"},
         "code_eval": {"pass": True},
@@ -133,7 +133,7 @@ def test_build_retry_feedback_embeds_prior_candidate_json() -> None:
     """The failing candidate JSON must be embedded so the LLM patches its
     own concrete output instead of regenerating from scratch with a
     different scenario / different bugs."""
-    from generators.task import build_retry_feedback as _build_retry_feedback
+    from flows.tech.stages.generate import build_retry_feedback as _build_retry_feedback
     eval_info = {
         "task_eval": {"pass": True},
         "code_eval": {"pass": False, "issues": ["missing filtering on date range"]},
@@ -163,7 +163,7 @@ def test_build_retry_feedback_embeds_prior_candidate_json() -> None:
 def test_build_retry_feedback_no_prior_candidate_omits_block() -> None:
     """When no prior candidate is provided (hollow path), the verbatim
     block is omitted but the patch instruction still appears."""
-    from generators.task import build_retry_feedback as _build_retry_feedback
+    from flows.tech.stages.generate import build_retry_feedback as _build_retry_feedback
     fb = _build_retry_feedback(["title is empty"], None)
     assert "PRIOR FAILED CANDIDATE" not in fb
     # Patch / no-regenerate language still present so hollow retries don't
@@ -174,7 +174,7 @@ def test_build_retry_feedback_no_prior_candidate_omits_block() -> None:
 def test_build_retry_feedback_includes_sandbox_verdict_when_present() -> None:
     """Gate failures end up on candidate_eval['sandbox_eval']; build_retry_feedback
     must surface the verdict + stdout tail so the LLM sees the actual error."""
-    from generators.task import build_retry_feedback as _build_retry_feedback
+    from flows.tech.stages.generate import build_retry_feedback as _build_retry_feedback
     eval_info = {
         "task_eval": {"pass": True},
         "code_eval": {"pass": True},
@@ -195,7 +195,7 @@ def test_build_retry_feedback_includes_sandbox_verdict_when_present() -> None:
 def test_build_retry_feedback_prefers_blocking_issues_over_legacy_issues() -> None:
     """Layer B: blocking_issues (new schema) drives retry over legacy issues
     field. If both populated, blocking_issues wins (it's the authoritative one)."""
-    from generators.task import build_retry_feedback as _build_retry_feedback
+    from flows.tech.stages.generate import build_retry_feedback as _build_retry_feedback
     eval_info = {
         "task_eval": {"pass": True},
         "code_eval": {
@@ -216,7 +216,7 @@ def test_build_retry_feedback_prefers_blocking_issues_over_legacy_issues() -> No
 def test_build_retry_feedback_falls_back_to_legacy_issues_when_no_blocking() -> None:
     """Layer B back-compat: if a critic only emits the legacy `issues` field
     (e.g. mocked test or pre-migration caller), the feedback still works."""
-    from generators.task import build_retry_feedback as _build_retry_feedback
+    from flows.tech.stages.generate import build_retry_feedback as _build_retry_feedback
     eval_info = {
         "task_eval": {"pass": True},
         "code_eval": {
@@ -232,8 +232,8 @@ def test_build_retry_feedback_falls_back_to_legacy_issues_when_no_blocking() -> 
 def test_build_retry_feedback_truncates_huge_prior_candidate() -> None:
     """Prior candidates over the char cap must be truncated to keep the
     next LLM call within token budget."""
-    from generators.task import build_retry_feedback as _build_retry_feedback
-    from generators.task.evaluator import _PRIOR_CANDIDATE_CHAR_CAP
+    from flows.tech.stages.generate import build_retry_feedback as _build_retry_feedback
+    from flows.tech.stages.generate.evaluator import _PRIOR_CANDIDATE_CHAR_CAP
     huge_value = "x" * (_PRIOR_CANDIDATE_CHAR_CAP * 2)
     prior = {"name": "huge", "code_files": {"big.py": huge_value}}
     fb = _build_retry_feedback([], None, prior_candidate=prior)
