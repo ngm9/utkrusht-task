@@ -7,7 +7,7 @@ directive instead (see tests/test_instructions_flow.py). The backend below is
 kept (dead-but-valid) so a future caller could still force a shape directly."""
 from types import SimpleNamespace
 
-from generators.prompts import infra_kinds
+from infra import infra_kinds
 
 
 # ── registry ─────────────────────────────────────────────────────────────
@@ -33,7 +33,7 @@ def test_is_valid():
 
 # ── agent.forward override ────────────────────────────────────────────────
 def test_forward_override_skips_classifier_and_threads_service(monkeypatch):
-    import generators.prompts.agent as ag
+    import flows.tech.stages.prompts.agent as ag
 
     def _boom(**k):
         raise AssertionError("classify_task_shape MUST be skipped when overriding")
@@ -65,7 +65,7 @@ def test_forward_override_skips_classifier_and_threads_service(monkeypatch):
 
 
 def test_forward_non_infra_override_no_service(monkeypatch):
-    import generators.prompts.agent as ag
+    import flows.tech.stages.prompts.agent as ag
     monkeypatch.setattr(ag, "classify_task_shape", lambda **k: (_ for _ in ()).throw(AssertionError("skipped")))
     monkeypatch.setattr(ag, "build_detailed_skill_signal", lambda comps, prof, env="dev": ("", {}))
     monkeypatch.setattr(ag, "init_supabase", lambda env: None)

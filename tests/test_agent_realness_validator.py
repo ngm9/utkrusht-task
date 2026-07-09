@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from generators.prompts.validator import (
+from flows.tech.stages.prompts.validator import (
     _agent_realness_issues,
     _fake_mandate_hits,
     _is_agent_combo,

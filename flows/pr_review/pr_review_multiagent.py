@@ -347,7 +347,7 @@ def create_pr_review_task(
         scenarios_data = json.load(f)
 
     # Build scenario key and pick a scenario
-    from generators.scenarios import build_scenario_key
+    from infra.utils import build_scenario_key
     scenario_key = build_scenario_key(competencies)
     available_scenarios = scenarios_data.get(scenario_key, [])
     if not available_scenarios:

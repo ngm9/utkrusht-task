@@ -11,7 +11,7 @@ the file ever lands on disk.
 
 from __future__ import annotations
 
-from generators.prompts.validator import _simulate_format_call
+from flows.tech.stages.prompts.validator import _simulate_format_call
 
 
 GOOD_SOURCE = '''

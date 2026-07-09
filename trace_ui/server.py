@@ -364,7 +364,7 @@ def _scenario_pool(run_dir: Path, combo: Path) -> list[str]:
         return []
     key = ", ".join(sorted(f"{n} ({prof})" for n in names))
     try:
-        from generators.scenarios import repository as scenario_repo
+        from flows.tech.stages.scenarios import repository as scenario_repo
         return scenario_repo.load_scenarios_for_combo(env=env, combo_key=key, proficiency=prof) or []
     except Exception:  # noqa: BLE001 — DB optional; locked scenario still shows
         return []
@@ -544,7 +544,7 @@ def api_launch(req: RunRequest) -> JSONResponse:
     # pathological paste can't blow the argv limit; passed as argv (no shell).
     instructions = (req.instructions or "").strip()[:4000]
 
-    cmd = [sys.executable, "run_pipeline.py", "-p", prof, "--env", env, "--count", str(count),
+    cmd = [sys.executable, "-m", "flows.tech", "-p", prof, "--env", env, "--count", str(count),
            "--llm-provider", llm_provider]
     if instructions:
         cmd += ["--instructions", instructions]
@@ -599,7 +599,7 @@ def api_resume(run_id: str, req: ResumeRequest) -> JSONResponse:
     if any(any(ord(ch) < 32 for ch in n) for n in names):
         raise HTTPException(status_code=400, detail="competency name contains invalid characters")
 
-    cmd = [sys.executable, "run_pipeline.py", "-p", prof, "--env", env,
+    cmd = [sys.executable, "-m", "flows.tech", "-p", prof, "--env", env,
            "--count", str(count), "--llm-provider", provider]
     if from_stage != "input_files":   # input_files = full re-run (no skip)
         cmd += ["--resume-from", from_stage]

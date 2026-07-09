@@ -5,7 +5,7 @@ ResolutionImpossible failure: httpx>=0.28 + litellm>=1.55 don't co-resolve and
 clash with the image's litellm==1.51 / anthropic==0.39 / openai==1.58)."""
 from __future__ import annotations
 
-from generators.task.creator import _strip_preinstalled_pins
+from flows.tech.stages.generate.creator import _strip_preinstalled_pins
 
 
 def test_strips_llm_stack_for_python_ai_template():

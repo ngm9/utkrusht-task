@@ -4,7 +4,7 @@ the boot-recipe DB fetch (_get_template) while still returning the match
 """
 import types
 
-import generators.task.runtime_resolver as rr
+import flows.tech.stages.generate.runtime_resolver as rr
 from infra.classifier.runtime import Competency
 
 

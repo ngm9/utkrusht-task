@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from run_pipeline import (
+from flows.tech.pipeline import (
     REPO_ROOT,
     RUNS_DIR,
     _locate_input_files,
@@ -119,7 +119,7 @@ def run_pipeline_for_brief(brief: TaskBrief, *, run_id: str, emit: EmitFn,
     try:
         combo_dir.mkdir(parents=True, exist_ok=True)
         rec = _stage("00_preflight", [
-            py, "task_agent_preflight.py",
+            py, "-m", "flows.tech.stages.preflight",
             "--combo", f"{','.join(names)}:{level}", "--env", env,
         ])
         if rec["exit_code"] != 0:
@@ -127,7 +127,7 @@ def run_pipeline_for_brief(brief: TaskBrief, *, run_id: str, emit: EmitFn,
 
         t0 = time.time()
         input_cmd = [
-            py, "-m", "generators.input_files",
+            py, "-m", "flows.tech.stages.input_files",
             "--competency-name", ", ".join(names),
             "--proficiency", level, "--role", brief.role or "", "--env", env,
         ]
@@ -142,7 +142,7 @@ def run_pipeline_for_brief(brief: TaskBrief, *, run_id: str, emit: EmitFn,
         # Thread --env so prod runs write scenarios to the prod DB (the CLI
         # defaults to dev) — otherwise stage 4 (prod) reads an empty pool.
         scenario_cmd = [
-            py, "-m", "generators.scenarios",
+            py, "-m", "flows.tech.stages.scenarios",
             "--competency-file", str(comp_json), "--background-file", str(bg_json),
             "--count", str(brief.scenario_count), "--env", env, "--append",
         ]
@@ -155,14 +155,14 @@ def run_pipeline_for_brief(brief: TaskBrief, *, run_id: str, emit: EmitFn,
             return emit(StageEvent("done", "failed", detail="scenario stage failed"))
 
         rec = _stage("03_prompt", [
-            py, "-m", "generators.prompts", "--name", ", ".join(names),
+            py, "-m", "flows.tech.stages.prompts", "--name", ", ".join(names),
             "--proficiency", level, "--env", env, "--force", "--verbose",
         ])
         if rec["exit_code"] != 0:
             return emit(StageEvent("done", "failed", detail="prompt stage failed"))
 
         rec = _stage("04_tasks", [
-            py, "multiagent.py", "generate_tasks",
+            py, "-m", "flows.tech.stages.generate",
             "-c", str(comp_json), "-b", str(bg_json),
             "-s", str(scenarios_file_for(level)),
             "--env", env,

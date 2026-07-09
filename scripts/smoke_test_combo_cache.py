@@ -25,7 +25,7 @@ except ImportError:
     pass
 
 from infra.classifier.runtime import Competency
-from generators.task.runtime_resolver import resolve_plan
+from flows.tech.stages.generate.runtime_resolver import resolve_plan
 
 
 def _banner(text: str) -> None:

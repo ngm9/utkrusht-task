@@ -7,7 +7,7 @@ the obsolete convention can't creep back into the generator instructions.
 """
 import inspect
 
-from generators.prompts.agent import GeneratePromptSignature
+from flows.tech.stages.prompts.agent import GeneratePromptSignature
 
 
 def _instructions() -> str:

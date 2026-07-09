@@ -13,7 +13,7 @@ import datetime as _dt
 import logging
 from typing import Any
 
-from generators.task.persistence import init_supabase
+from infra.supabase import init_supabase
 from task_builder.slots import Message, SessionState, TaskBrief
 
 logger = logging.getLogger(__name__)

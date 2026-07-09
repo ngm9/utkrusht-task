@@ -7,7 +7,7 @@ now route to a dedicated, single-concern agent block via
 ``get_proficiency_guardrails`` — which both the generator and the eval critic
 call, so they stay in agreement.
 """
-from generators.scenarios.prompts import (
+from flows.tech.stages.scenarios.prompts import (
     AGENT_INTERMEDIATE_GUARDRAIL,
     PROFICIENCY_GUARDRAILS,
     get_proficiency_guardrails,

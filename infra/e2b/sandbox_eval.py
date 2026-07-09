@@ -55,9 +55,9 @@ from infra.logger_config import logger
 
 # The gate reads the template + build/test/compile commands from the
 # ResolvedPlan the caller hands in (those values live in the ``templates``
-# Supabase table; ``generators.task.runtime_resolver`` loads them and
+# Supabase table; ``flows.tech.stages.generate.runtime_resolver`` loads them and
 # stamps them onto ``plan.template``). Doing it that way means this module
-# touches no ``generators.task`` import at all — sidesteps the package-init
+# touches no ``flows.tech.stages.generate`` import at all — sidesteps the package-init
 # import cycle that bit pytest collection earlier.
 
 _TASK_DIR = "/home/user/task"

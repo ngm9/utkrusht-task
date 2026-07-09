@@ -92,7 +92,7 @@ def test_lean_retry_uses_passed_model(monkeypatch):
 
 # ── #2 cheap repair routing ──────────────────────────────────────────────────
 def test_repair_model_selection():
-    from generators.task.creator import (
+    from flows.tech.stages.generate.creator import (
         _repair_model_for, _TASK_GEN_MODEL, _TASK_GEN_REPAIR_MODEL,
     )
     # first attempt (no feedback) → default model

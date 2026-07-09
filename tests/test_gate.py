@@ -1,4 +1,4 @@
-"""Unit tests for generators.task.gate — the retry-loop policy wrapper.
+"""Unit tests for flows.tech.stages.generate.gate — the retry-loop policy wrapper.
 
 These cover the 4 outcomes returned by ``run_gate_for_attempt`` so the
 create_task loop can rely on each branch behaving as documented.
@@ -7,8 +7,8 @@ from unittest.mock import patch
 
 from infra.e2b.sandbox_eval import SandboxEvalResult
 from infra.classifier.runtime import TaskTemplateMatch
-from generators.task.gate import GateOutcome, run_gate_for_attempt
-from generators.task.runtime_resolver import ResolvedPlan, TemplateSpec
+from flows.tech.stages.generate.gate import GateOutcome, run_gate_for_attempt
+from flows.tech.stages.generate.runtime_resolver import ResolvedPlan, TemplateSpec
 
 
 def _plan(template_id: str = "utkrusht-python", primary_runtime: str = "python") -> ResolvedPlan:
@@ -26,7 +26,7 @@ def _plan(template_id: str = "utkrusht-python", primary_runtime: str = "python")
 
 
 def test_disabled_when_env_flag_off():
-    with patch("generators.task.gate.sandbox_eval_enabled", return_value=False):
+    with patch("flows.tech.stages.generate.gate.sandbox_eval_enabled", return_value=False):
         outcome, fb = run_gate_for_attempt(_plan(), {}, {}, attempt=1)
     assert outcome == GateOutcome.DISABLED
     assert fb == ""
@@ -38,8 +38,8 @@ def test_pass_outcome_proceeds_to_storage():
         detail="test suite compiled and executed",
     )
     candidate_eval: dict = {}
-    with patch("generators.task.gate.sandbox_eval_enabled", return_value=True), \
-         patch("generators.task.gate.run_sandbox_eval", return_value=sb):
+    with patch("flows.tech.stages.generate.gate.sandbox_eval_enabled", return_value=True), \
+         patch("flows.tech.stages.generate.gate.run_sandbox_eval", return_value=sb):
         outcome, fb = run_gate_for_attempt(
             _plan(), {"code_files": {"a.py": "x"}}, candidate_eval, attempt=1,
         )
@@ -55,8 +55,8 @@ def test_skipped_outcome_when_no_template():
         detail="no template for runtime='java'",
     )
     candidate_eval: dict = {}
-    with patch("generators.task.gate.sandbox_eval_enabled", return_value=True), \
-         patch("generators.task.gate.run_sandbox_eval", return_value=sb):
+    with patch("flows.tech.stages.generate.gate.sandbox_eval_enabled", return_value=True), \
+         patch("flows.tech.stages.generate.gate.run_sandbox_eval", return_value=sb):
         outcome, fb = run_gate_for_attempt(
             _plan("utkrusht-java", "java"),
             {"code_files": {"a.java": "x"}}, candidate_eval, attempt=1,
@@ -75,8 +75,8 @@ def test_retry_outcome_includes_feedback_with_verdict_and_tail():
         "task_eval": {"pass": True},
         "code_eval": {"pass": True},
     }
-    with patch("generators.task.gate.sandbox_eval_enabled", return_value=True), \
-         patch("generators.task.gate.run_sandbox_eval", return_value=sb):
+    with patch("flows.tech.stages.generate.gate.sandbox_eval_enabled", return_value=True), \
+         patch("flows.tech.stages.generate.gate.run_sandbox_eval", return_value=sb):
         outcome, fb = run_gate_for_attempt(
             _plan(), {"code_files": {"t.py": "x"}}, candidate_eval, attempt=2,
         )
@@ -91,8 +91,8 @@ def test_plan_none_passes_none_plan_to_gate():
     # If classifier failed and the plan is None, the gate still runs (with
     # plan=None) and returns no_template skip — never crashes.
     sb = SandboxEvalResult(skipped=True, verdict="no_template", detail="")
-    with patch("generators.task.gate.sandbox_eval_enabled", return_value=True), \
-         patch("generators.task.gate.run_sandbox_eval", return_value=sb) as mock:
+    with patch("flows.tech.stages.generate.gate.sandbox_eval_enabled", return_value=True), \
+         patch("flows.tech.stages.generate.gate.run_sandbox_eval", return_value=sb) as mock:
         outcome, _ = run_gate_for_attempt(None, {"code_files": {"a.py": "x"}}, {}, attempt=1)
     assert outcome == GateOutcome.SKIPPED
     # plan arg to run_sandbox_eval is None when the caller's plan is None
@@ -108,12 +108,12 @@ def test_plan_none_passes_none_plan_to_gate():
 def test_infra_error_is_retried_then_uses_real_verdict(monkeypatch):
     """A transient infra_error (e.g. sandbox StreamReset mid-run) is retried;
     once a real verdict comes back the gate uses it instead of skipping."""
-    monkeypatch.setattr("generators.task.gate._INFRA_RETRY_BACKOFF_S", 0.0)
+    monkeypatch.setattr("flows.tech.stages.generate.gate._INFRA_RETRY_BACKOFF_S", 0.0)
     flake = SandboxEvalResult(skipped=True, verdict="infra_error", detail="StreamReset")
     good = SandboxEvalResult(passed=True, skipped=False, verdict="ready", detail="run.sh exit 0")
     candidate_eval: dict = {}
-    with patch("generators.task.gate.sandbox_eval_enabled", return_value=True), \
-         patch("generators.task.gate.run_sandbox_eval",
+    with patch("flows.tech.stages.generate.gate.sandbox_eval_enabled", return_value=True), \
+         patch("flows.tech.stages.generate.gate.run_sandbox_eval",
                side_effect=[flake, flake, good]) as mock:
         outcome, fb = run_gate_for_attempt(
             _plan(), {"code_files": {"a.py": "x"}}, candidate_eval, attempt=1,
@@ -126,12 +126,12 @@ def test_infra_error_is_retried_then_uses_real_verdict(monkeypatch):
 def test_infra_error_persisting_is_skipped_after_bounded_retries(monkeypatch):
     """If every attempt flakes, the gate gives up as a SKIP (never blocks) —
     but only after the bounded number of retries, not on the first flake."""
-    monkeypatch.setattr("generators.task.gate._INFRA_RETRY_BACKOFF_S", 0.0)
-    monkeypatch.setattr("generators.task.gate._INFRA_GATE_RETRIES", 2)
+    monkeypatch.setattr("flows.tech.stages.generate.gate._INFRA_RETRY_BACKOFF_S", 0.0)
+    monkeypatch.setattr("flows.tech.stages.generate.gate._INFRA_GATE_RETRIES", 2)
     flake = SandboxEvalResult(skipped=True, verdict="infra_error", detail="StreamReset")
     candidate_eval: dict = {}
-    with patch("generators.task.gate.sandbox_eval_enabled", return_value=True), \
-         patch("generators.task.gate.run_sandbox_eval", return_value=flake) as mock:
+    with patch("flows.tech.stages.generate.gate.sandbox_eval_enabled", return_value=True), \
+         patch("flows.tech.stages.generate.gate.run_sandbox_eval", return_value=flake) as mock:
         outcome, fb = run_gate_for_attempt(
             _plan(), {"code_files": {"a.py": "x"}}, candidate_eval, attempt=1,
         )
@@ -143,10 +143,10 @@ def test_infra_error_persisting_is_skipped_after_bounded_retries(monkeypatch):
 def test_deterministic_skip_is_not_retried(monkeypatch):
     """A deterministic skip (no_template) must NOT be retried — retrying can't
     change it and would waste sandbox minutes."""
-    monkeypatch.setattr("generators.task.gate._INFRA_RETRY_BACKOFF_S", 0.0)
+    monkeypatch.setattr("flows.tech.stages.generate.gate._INFRA_RETRY_BACKOFF_S", 0.0)
     skip = SandboxEvalResult(skipped=True, verdict="no_template", detail="no template")
-    with patch("generators.task.gate.sandbox_eval_enabled", return_value=True), \
-         patch("generators.task.gate.run_sandbox_eval", return_value=skip) as mock:
+    with patch("flows.tech.stages.generate.gate.sandbox_eval_enabled", return_value=True), \
+         patch("flows.tech.stages.generate.gate.run_sandbox_eval", return_value=skip) as mock:
         outcome, _ = run_gate_for_attempt(
             _plan(), {"code_files": {"a.py": "x"}}, {}, attempt=1,
         )

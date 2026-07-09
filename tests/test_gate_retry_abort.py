@@ -9,28 +9,28 @@ from __future__ import annotations
 
 
 def test_no_progress_when_same_verdict():
-    from generators.task.creator import _gate_no_progress
+    from flows.tech.stages.generate.creator import _gate_no_progress
     ev = {"sandbox_eval": {"verdict": "runsh_failed"}}
     abort, verdict = _gate_no_progress(ev, "runsh_failed")
     assert abort is True and verdict == "runsh_failed"
 
 
 def test_progress_when_verdict_changes():
-    from generators.task.creator import _gate_no_progress
+    from flows.tech.stages.generate.creator import _gate_no_progress
     ev = {"sandbox_eval": {"verdict": "runsh_timeout"}}
     abort, verdict = _gate_no_progress(ev, "runsh_failed")
     assert abort is False and verdict == "runsh_timeout"
 
 
 def test_first_attempt_never_aborts():
-    from generators.task.creator import _gate_no_progress
+    from flows.tech.stages.generate.creator import _gate_no_progress
     ev = {"sandbox_eval": {"verdict": "runsh_failed"}}
     abort, verdict = _gate_no_progress(ev, None)  # no prior verdict
     assert abort is False and verdict == "runsh_failed"
 
 
 def test_missing_sandbox_eval_does_not_abort():
-    from generators.task.creator import _gate_no_progress
+    from flows.tech.stages.generate.creator import _gate_no_progress
     abort, verdict = _gate_no_progress({}, "runsh_failed")
     assert abort is False and verdict is None
 
@@ -38,7 +38,7 @@ def test_missing_sandbox_eval_does_not_abort():
 # Fix 3 — targeted dep-error hint in the retry feedback.
 
 def test_retry_feedback_adds_dep_hint_on_module_not_found():
-    from generators.task import build_retry_feedback
+    from flows.tech.stages.generate import build_retry_feedback
     eval_info = {
         "task_eval": {"pass": True}, "code_eval": {"pass": True},
         "sandbox_eval": {
@@ -53,7 +53,7 @@ def test_retry_feedback_adds_dep_hint_on_module_not_found():
 
 
 def test_retry_feedback_no_dep_hint_for_non_module_failure():
-    from generators.task import build_retry_feedback
+    from flows.tech.stages.generate import build_retry_feedback
     eval_info = {
         "task_eval": {"pass": True}, "code_eval": {"pass": True},
         "sandbox_eval": {

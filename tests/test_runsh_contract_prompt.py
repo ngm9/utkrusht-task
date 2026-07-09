@@ -13,7 +13,7 @@ path to mirror that same contract, so it can't silently regress.
 """
 import inspect
 
-from generators.prompts.agent import GeneratePromptSignature
+from flows.tech.stages.prompts.agent import GeneratePromptSignature
 
 
 def _instructions() -> str:

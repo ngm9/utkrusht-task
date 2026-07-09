@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from generators.task.runtime_resolver import (
+from flows.tech.stages.generate.runtime_resolver import (
     InfraTemplateMissingError,
     ResolvedPlan,
     require_infra_template,
