@@ -14,8 +14,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from infra.classifier.runtime import Competency
-from generators.prompts.retriever import _agent_baseline_path, retrieve_references
-from generators.prompts.validator import _agent_realness_issues
+from flows.tech.stages.prompts.retriever import _agent_baseline_path, retrieve_references
+from flows.tech.stages.prompts.validator import _agent_realness_issues
 
 _GENERIC = (
     Path(__file__).parent.parent

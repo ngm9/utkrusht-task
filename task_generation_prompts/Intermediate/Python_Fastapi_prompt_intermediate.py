@@ -1,4 +1,4 @@
-PROMPT_PYTHON_FASTAPI_INPUT_AND_ASK = """
+﻿PROMPT_PYTHON_FASTAPI_INPUT_AND_ASK = """
 Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Python FastAPI assessment task.
 
 INPUT COMPETENCIES:
@@ -103,7 +103,7 @@ The output should be a valid json schema:
       ...
   }},
   "outcomes": "Expected results after completion in 2-3 lines. Use simple english.",
-  "pre_requisites": "Bullet-point list of tools, libraries, and environment setup required to complete the task.Mention things like Python 3.10+, Git, Docker, pip, PostgreSQL installation, virtual environment support, etc.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach",
   "hints": " a single line hint on what a good approach to solve the task could include. These hints must NOT give away the answer, but gently nudge the candidate in the right direction.",
   "definitions": {{

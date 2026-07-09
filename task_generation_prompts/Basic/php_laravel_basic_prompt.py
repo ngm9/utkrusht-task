@@ -1,4 +1,4 @@
-PROMPT_PHP_LARAVEL_BASIC_CONTEXT = """
+﻿PROMPT_PHP_LARAVEL_BASIC_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -133,7 +133,7 @@ Based on the chosen real-world scenario, create a PHP - Laravel task that:
   }},
   "outcomes": "Bullet-point list in simple language. Must include the observable results after completion (correct HTTP status codes, correct DB writes, passing tests, no fatal errors on malformed input) and alignment with BASIC Laravel proficiency.",
   "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific Laravel implementation or fix goal, (3) the expected outcome emphasising correctness, input safety, and clean Laravel code.",
-  "pre_requisites": "Bullet-point list of tools and knowledge required. Include: PHP 8.1+, Composer 2.x, a fresh Laravel installation, an IDE or text editor, Git, basic PHP/Eloquent knowledge, basic PHPUnit knowledge.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach describing the main components and flow — which Form Request rule to add, which Eloquent method to fix, how to map exceptions to status codes, which tests to add. Do NOT paste full code.",
   "hints": "Single line suggesting the focus area without naming the fix. Example: 'Look at how the Form Request decides whether the request is authorised and what happens to the validation rules when it is not'",
   "definitions": {{

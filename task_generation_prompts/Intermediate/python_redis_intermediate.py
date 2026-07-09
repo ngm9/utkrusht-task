@@ -1,4 +1,4 @@
-PROMPT_FASTAPI_REDIS_INPUT_AND_ASK = """
+﻿PROMPT_FASTAPI_REDIS_INPUT_AND_ASK = """
 Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a Python FastAPI and Redis assessment task.
 
 INPUT COMPETENCIES:
@@ -338,7 +338,7 @@ Provide practical guidance without revealing specific implementations:
       "app/models/models.py": "Data models with poor serialization for Redis (if needed)"
   }},
   "outcomes": "Expected results after completion in 2-3 lines focusing on measurable caching performance improvements and optimized Redis usage requiring intermediate-level skills. Use simple english.",
-  "pre_requisites": "Bullet-point list of tools, libraries, and environment setup required to complete the intermediate-level Redis optimization task. Mention things like Python 3.10+, Docker, Docker Compose, Redis client tools (redis-cli/RedisInsight), Git, pip, virtual environment support, Redis monitoring tools, redis-py library knowledge, intermediate Redis concepts, etc.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach focusing on advanced Redis caching optimization strategies and intermediate-level performance tuning techniques for the given caching performance issues",
   "hints": "A single line hint on what a good intermediate-level approach to analyze and optimize the Redis caching performance could include. These hints must NOT give away the specific optimizations needed, but gently nudge the candidate toward advanced caching performance analysis practices suitable for intermediate-level skills.",
   "definitions": {{

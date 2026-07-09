@@ -499,18 +499,7 @@ SSH into the droplet, then use one of these methods:
   }},
   "outcomes": "Expected results after completion in 2-3 lines focusing on measurable basic caching improvements. Use simple english. Example: 'The application will demonstrate significantly faster response times for repeated data requests. Users will always see up-to-date information after any changes are made. Database load will be reduced through efficient temporary data storage.'",
   "short_overview": "Bullet-point list in simple language describing: (1) the high-level problem in a business context, (2) the specific goal, and (3) the expected outcome emphasizing maintainability and scalability.",
-  "pre_requisites": [
-    "Python 3.10 or higher installed",
-    "Docker and Docker Compose installed and running",
-    "Basic understanding of REST APIs and HTTP methods",
-    "Familiarity with caching concepts and when to use caching",
-    "Basic knowledge of key-value data stores",
-    "Understanding of data expiration and Time-To-Live (TTL) concepts",
-    "Basic command line proficiency",
-    "Git installed for version control",
-    "Redis inspection tools (redis-cli or RedisInsight) - optional but helpful",
-    "Basic understanding of performance optimization principles"
-  ],
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "give the high solution focusing on what optimizations are needed to improve the performance of the application",
   "hints": "A single line hint that gently guides toward the approach without giving away the solution. Example: 'Think about how you can temporarily store frequently accessed data to avoid fetching it from the source every time, and remember to refresh that stored data when the original information changes.'",
   "definitions": {{

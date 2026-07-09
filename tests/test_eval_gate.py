@@ -37,7 +37,7 @@ def test_eval_gate_error_carries_last_verdicts() -> None:
 
 def test_hollow_task_detector_catches_empty_fields() -> None:
     """A task is hollow if title/question/code are missing or empty."""
-    from generators.task import is_task_hollow
+    from flows.tech.stages.generate import is_task_hollow
     cases = [
         {},
         {"title": ""},
@@ -52,7 +52,7 @@ def test_hollow_task_detector_catches_empty_fields() -> None:
 
 
 def test_hollow_task_detector_accepts_full_task() -> None:
-    from generators.task import is_task_hollow
+    from flows.tech.stages.generate import is_task_hollow
     good = {
         "title": "Fix the broken parser",
         "question": "Implement parse_payment so that ...",
@@ -64,7 +64,7 @@ def test_hollow_task_detector_accepts_full_task() -> None:
 
 def test_hollow_task_detector_accepts_name_as_title_alias() -> None:
     """task_generation historically uses ``name`` as a fallback for ``title``."""
-    from generators.task import is_task_hollow
+    from flows.tech.stages.generate import is_task_hollow
     payload = {
         "name": "X",   # title alias
         "question": "Y",

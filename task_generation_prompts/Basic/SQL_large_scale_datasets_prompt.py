@@ -1,4 +1,4 @@
-PROMPT_SQL_LARGE_SCALE_CONTEXT = """
+﻿PROMPT_SQL_LARGE_SCALE_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -138,7 +138,7 @@ Based on real-world scenarios, create a SQL large-scale datasets task that:
   }},
   "outcomes": "Bullet-point list in simple language. Expected results after completion (e.g. faster analytics queries, correct window function results, index scans replacing sequential scans on fact table).",
   "short_overview": "Bullet-point list: (1) business context and large-scale data problem, (2) what the candidate must do in SQL, (3) expected outcome.",
-  "pre_requisites": "Bullet-point list of tools and knowledge: Docker, Docker Compose, PostgreSQL client (psql/pgAdmin/DBeaver), SQL core constructs, window functions (ROW_NUMBER/RANK/SUM OVER), CTEs, EXPLAIN, basic indexing, star schema concepts, NULL handling, and large-scale data awareness.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach (which indexes, query rewrites, CTE restructuring, or window function fixes; no full code). Include specific reasoning about why each fix improves performance or correctness at large data volumes.",
   "hints": "Single line suggesting focus area. Must NOT give away the answer, but nudge toward the right large-scale SQL analysis approach.",
   "definitions": {{

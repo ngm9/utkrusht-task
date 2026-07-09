@@ -1,4 +1,4 @@
-PROMPT_PHP_BASIC_CONTEXT = """
+﻿PROMPT_PHP_BASIC_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -128,7 +128,7 @@ Based on the chosen real-world scenario, create a PHP task that:
   }},
   "outcomes": "Bullet-point list in simple language. Must include the observable results after completion (correct HTTP status codes, correct DB writes, passing tests, no fatal errors on malformed input) and alignment with BASIC PHP proficiency.",
   "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific implementation or fix goal, (3) the expected outcome emphasising correctness, input safety, and clean code.",
-  "pre_requisites": "Bullet-point list of tools, libraries, environment setup, and knowledge required. Include PHP 8.1+, Composer 2.x, an IDE, Git, basic PDO, basic PHPUnit, and (if relevant) the framework named in the scenario.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach describing the main components and flow — what to validate, which method to refactor to use prepared statements, how to map exceptions to status codes, which tests to add. Do NOT paste full code.",
   "hints": "Single line suggesting the focus area without naming the fix. Example: 'Look at how input arrives at the repository and how it ends up in the SQL string — and what stops a missing field from breaking the request before it reaches the database'",
   "definitions": {{

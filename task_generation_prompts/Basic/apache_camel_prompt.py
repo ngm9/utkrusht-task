@@ -1,4 +1,4 @@
-PROMPT_APACHE_CAMEL_CONTEXT_BASIC = """
+﻿PROMPT_APACHE_CAMEL_CONTEXT_BASIC = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -413,7 +413,7 @@ Use bullets, action words like "Consider", "Think about", "Review", "Explore"
    }},
   "outcomes": "Bullet-point list of expected results after completion, using simple, non-technical language. Each bullet must describe ONE clear deliverable or requirement and be understandable to non-engineers (e.g. HR or recruiters). One bullet MUST explicitly state: 'Write production level clean code with best practices including proper design patterns, naming conventions, exception handling, logging and observability.'",
   "short_overview": "Bullet-point list in simple language describing: (1) the high-level business integration problem, (2) the specific Docker containerization and Camel implementation goal, and (3) the expected outcome emphasizing correctness and reliability.",
-   "pre_requisites": "Bullet points: Docker, Docker Compose, basic Apache Camel familiarity (level appropriate to scenario), understanding of relevant concepts, Git, curl/testing tools",
+   "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
    "answer": "High-level solution describing approach to scenario requirements. Focus on concepts and patterns, not specific implementations. Adapt to what scenario requires.",
    "hints": "Single line suggesting focus area(s) based on scenario. Must NOT reveal specific implementations.",
    "definitions": {{

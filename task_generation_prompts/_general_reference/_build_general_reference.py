@@ -1,4 +1,4 @@
-"""Builder for the competency-agnostic general reference prompts.
+﻿"""Builder for the competency-agnostic general reference prompts.
 
 These reference prompts are the retriever's LAST-RESORT fallback (Level 6):
 loaded only when the 5-level fallback ladder returns ZERO references — i.e.
@@ -154,7 +154,7 @@ hollow, unusable task.
   }}}},
   "outcomes": "Bullet list — expected results after completion.",
   "short_overview": "Bullet list — (1) business context, (2) implementation goal, (3) expected outcome.",
-  "pre_requisites": "Bullet list — tools, environment, and knowledge required.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach (evaluator-facing; never shown to the candidate).",
   "hints": "Single line nudging the focus area WITHOUT revealing the answer.",
   "definitions": {{{{

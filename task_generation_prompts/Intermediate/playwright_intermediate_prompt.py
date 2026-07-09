@@ -1,4 +1,4 @@
-PROMPT_PLAYWRIGHT_INTERMEDIATE_CONTEXT = """
+﻿PROMPT_PLAYWRIGHT_INTERMEDIATE_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -126,7 +126,7 @@ The output should be a valid json schema:
    }},
    "outcomes": "Bullet-point list in simple language describing the expected results after completion (e.g., the failing test now passes deterministically across N runs, no `waitForTimeout` calls remain, the spec uses a custom fixture for auth, payload assertions confirm the UI sends the correct data, downloaded file content is verified).",
    "short_overview": "Bullet-point list of exactly 3 short bullets (one sentence each, ~20-30 words). Bullet 1: the business context and the existing test problem. Bullet 2: the specific Playwright change the candidate must make and what engineering decision is involved. Bullet 3: the expected outcome. Do NOT prefix bullets with bold mini-titles like '**Business context:**' or '**Engineering decision:**' — start each bullet directly with the content.",
-   "pre_requisites": "Bullet-point list of tools, libraries, environment setup, and knowledge required. Include Node.js 18+, npm, `npx playwright install` to fetch browsers, Git, intermediate TypeScript/Playwright knowledge (fixtures, route mocking, APIRequestContext, expect.poll, downloads).",
+   "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
    "answer": "High-level solution approach — which fixture to add, what `storageState` flow to wire, what mocking strategy, what polling/wait mechanism — without giving the exact code.",
    "hints": "Single line guiding the candidate toward the engineering decision (e.g., 'Think about which Playwright primitive lets you wait on a non-locator value with retries'). Must NOT name the API by name.",
    "definitions": {{

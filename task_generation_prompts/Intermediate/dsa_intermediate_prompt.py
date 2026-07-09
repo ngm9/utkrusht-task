@@ -1,4 +1,4 @@
-PROMPT_DSA_INTERMEDIATE_CONTEXT = """
+﻿PROMPT_DSA_INTERMEDIATE_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -135,7 +135,7 @@ Based on real-world scenarios, create a DSA task that:
    }},
    "outcomes": "Bullet-point list in simple language describing the expected results after completion (e.g., shortest_path returns correct distances and path lists in O((V+E) log V), the autocomplete returns popularity-sorted top-k completions in O(prefix_len + k), the trending top-50 stays under 5ms on 200K events, the coin-change DP returns the optimal voucher count for regional denominations).",
    "short_overview": "Bullet-point list of exactly 3 short bullets (one sentence each, ~20-30 words). Bullet 1: the business context and the existing brute-force / wrong-algorithm problem. Bullet 2: the specific algorithmic primitive the candidate must introduce and what engineering decision is involved. Bullet 3: the expected outcome including the complexity / latency target. Do NOT prefix bullets with bold mini-titles like '**Business context:**' — start each bullet directly with the content.",
-   "pre_requisites": "Bullet-point list of tools, libraries, environment setup, and knowledge required for the language the scenario implies (e.g. Python 3.10+ + pip + pytest; or Node 18+ + npm + jest/vitest; or JDK 17+ + Maven/Gradle + JUnit; or Go 1.21+ with the built-in test runner). Always include Git and intermediate DSA knowledge (graph algorithms, tries, heaps, dynamic programming, big-O reasoning).",
+   "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
    "answer": "High-level solution approach — the chosen primitive (e.g. Dijkstra / Trie / heap-of-k / bottom-up DP), the target complexity, and edge cases (same-node path / unreachable / empty prefix / regional denominations / window expiry). Use language-neutral terms (priority queue, FIFO queue, sorted structure with binary search) rather than language-specific stdlib symbols. Do not give the exact code.",
    "hints": "Single line guiding the candidate toward the right algorithmic insight (e.g. 'Think about which graph algorithm gives shortest paths under non-negative weights without exploring every path' or 'Look for a way to keep only the running top-k instead of re-sorting the full counts dict'). Must NOT name the algorithm by name.",
    "definitions": {{

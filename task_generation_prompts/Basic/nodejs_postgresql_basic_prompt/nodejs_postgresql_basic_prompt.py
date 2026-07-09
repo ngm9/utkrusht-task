@@ -1,4 +1,4 @@
-PROMPT_NODEJS_POSTGRESQL_BASIC_CONTEXT = """
+﻿PROMPT_NODEJS_POSTGRESQL_BASIC_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -337,7 +337,7 @@ Candidates are allowed to use external resources, documentation, Stack Overflow,
   },
   "outcomes": "Bullet-point list in simple language. Must include: 'Build or fix a Node.js + PostgreSQL API flow by connecting Express endpoints to PostgreSQL with correct SQL queries, request handling, and consistent JSON responses' and 'Write production-level clean code with best practices including proper error handling, naming conventions, basic schema usage, and maintainable route/service structure'",
   "short_overview": "Bullet-point list in simple language describing the business problem, the backend/API task, and the expected outcome",
-  "pre_requisites": "Bullet-point list of tools and knowledge required. Include Node.js 18+, npm, Docker, Docker Compose, PostgreSQL client tools, basic SQL, Express basics, JSON APIs, and Git",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach describing how the candidate would inspect the routes, fix the SQL/database interaction, and verify correct API behavior",
   "hints": "A single line hint that gently nudges the candidate toward checking route logic, SQL joins/filters, and how request data maps to the database without giving away the exact fix",
   "definitions": {

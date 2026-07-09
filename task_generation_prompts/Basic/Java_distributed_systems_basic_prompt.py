@@ -1,4 +1,4 @@
-PROMPT_JAVA_DISTRIBUTED_CONTEXT_BASIC = """
+﻿PROMPT_JAVA_DISTRIBUTED_CONTEXT_BASIC = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -113,7 +113,7 @@ Based on the real-world scenarios provided in following conversations, create a 
   }},
   "outcomes": "Bullet-point list in simple language. Must include expected results after completion and one bullet explicitly stating: 'Write production-level clean code with best practices including proper design patterns, naming conventions, exception handling, logging and observability.'",
   "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific implementation or fix goal, and (3) the expected outcome emphasizing correctness, structure, and maintainability.",
-  "pre_requisites": "Bullet-point list of tools, libraries, environment setup, and knowledge required. Include Java 11+, Maven 3.6+/Gradle 7+, Docker and Docker Compose, IDE, Git, and Spring Boot fundamentals along with basic understanding of message brokers (Kafka/RabbitMQ) and/or Redis.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach describing main components and flow.",
   "hints": "Single line suggesting focus area. Example: 'Focus on message serialization, consumer group configuration, and ensuring idempotent message processing'",
   "definitions": {{

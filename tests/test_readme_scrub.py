@@ -2,7 +2,7 @@
 meta-instruction some prompts list as a README section) from the candidate
 README, without touching real content or ordinary bullets.
 """
-from generators.task.creator import strip_not_to_include
+from flows.tech.stages.generate.creator import strip_not_to_include
 
 
 def test_removes_trailing_section():

@@ -1,4 +1,4 @@
-PROMPT_REACT_NATIVE_FIREBASE_BASIC_CONTEXT = """
+﻿PROMPT_REACT_NATIVE_FIREBASE_BASIC_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -345,7 +345,7 @@ Practical guidance without revealing implementations:
   }},
   "outcomes": "Bullet-point list in simple language. Must include expected results and one bullet: 'Write production-level clean code with best practices including proper naming conventions, error handling, and code organization.'",
   "short_overview": "Bullet-point list: (1) business problem, (2) implementation goal, (3) expected outcome. but no need to mention in the start which point it belongs to. Just a concise 3-4 sentence overview.",
-  "pre_requisites": "Bullet-point list: Node.js 18+, npm/yarn, Expo CLI, Expo Go app, Git, JavaScript/React Native knowledge, basic Firebase concepts (Firestore, Auth).",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach",
   "hints": "Single line suggesting focus area. Must NOT give away the answer.",
   "definitions": {{

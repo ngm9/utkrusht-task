@@ -9,7 +9,7 @@ Covers the generation spec:
     supplemented from run.sh), with unique labels; DB / infra services excluded.
   - pure script tasks (no DB, no server) → terminal + editor only.
 """
-from generators.task.expected_ports import build_expected_ports
+from flows.tech.stages.generate.expected_ports import build_expected_ports
 
 
 def _by_label(ports, label):

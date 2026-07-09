@@ -6,8 +6,8 @@ from __future__ import annotations
 
 import types
 
-import generators.scenarios.repository as scenario_repo
-from generators.prompts import input_files as ifs
+import flows.tech.stages.scenarios.repository as scenario_repo
+from flows.tech.stages.prompts import input_files as ifs
 
 
 def _combo():

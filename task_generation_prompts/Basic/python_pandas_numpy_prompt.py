@@ -1,4 +1,4 @@
-PROMPT_PANDAS_NUMPY_CONTEXT_BASIC = """
+﻿PROMPT_PANDAS_NUMPY_CONTEXT_BASIC = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -109,7 +109,7 @@ Based on the real-world scenarios provided in following conversations, create a 
   }},
   "outcomes": "Bullet-point list of expected results after completion, using simple, non-technical language. Each bullet must describe ONE clear deliverable or requirement and be understandable to non-engineers (e.g. HR or recruiters). One bullet MUST explicitly state: 'Write production level clean code with best practices including proper naming conventions, error handling, efficient memory usage, and code documentation.'",
   "short_overview": "Bullet-point list in simple language describing: (1) the high-level problem in a business context, (2) the specific goal, and (3) the expected outcome emphasizing maintainability and scalability.",
-  "pre_requisites": "Bullet-point list of tools, libraries, and environment setup required to complete the task. Mention things like Python 3.8+, pandas, numpy, IDE, Git, basic data analysis knowledge, etc.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach for solving the task in few lines",
   "hints": "a single line hint on what a good approach to solve the task could include. These hints must NOT give away the answer, but gently nudge the candidate in the right direction.",
   "definitions": {{

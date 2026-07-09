@@ -1,4 +1,4 @@
-PROMPT_GOLANG_DOCKER_BASIC_CONTEXT = """
+﻿PROMPT_GOLANG_DOCKER_BASIC_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -323,7 +323,7 @@ Verification approaches without revealing implementations, using scenario-specif
   }},
   "outcomes": "Expected results in 2-3 lines: successful containerization of the scenario's application, running service, basic Docker understanding demonstrated. Simple language.",
   "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific Docker containerization goal, and (3) the expected outcome emphasizing correctness and reliability.",
-  "pre_requisites": "Bullet points: Docker, Docker Compose, basic Golang familiarity (no expertise needed), Git, curl/Postman for testing scenario-specific endpoints",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution focusing on basic Docker concepts for the scenario: using official images, proper Dockerfile structure with multi-stage builds, docker-compose basics for the scenario's services, container networking, basic debugging. Minimal mention of configuration changes.",
   "hints": "Single line suggesting focus on Docker fundamentals for containerizing the scenario's application. Must NOT reveal specific implementations.",
   "definitions": {{

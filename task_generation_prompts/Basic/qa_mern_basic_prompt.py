@@ -1,4 +1,4 @@
-PROMPT_QA_MERN_BASIC_CONTEXT = """
+﻿PROMPT_QA_MERN_BASIC_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -263,7 +263,7 @@ If you answered all 11 yes, the starter is ready. If not, fix the gap before out
   }},
   "outcomes": "Bullet-point list in simple language describing the expected results after completion (e.g., the failing test now passes deterministically across N runs, no fixed sleeps remain, the spec uses user-facing RTL queries, Mongo collections are cleaned per test, MSW handlers are scoped correctly without leaking).",
   "short_overview": "Bullet-point list of exactly 3 short bullets (one sentence each, ~15-25 words). Bullet 1: the business context and the existing test problem. Bullet 2: the specific QA change the candidate must make. Bullet 3: the expected outcome. Do NOT prefix bullets with bold mini-titles like '**Business context:**' or '**Expected outcome:**' — start each bullet directly with the content.",
-  "pre_requisites": "Bullet-point list of tools, libraries, environment setup, and knowledge required. Include Node.js 18+, npm, basic TypeScript / Jest / React Testing Library / Supertest / Mongoose knowledge as relevant to the chosen scenario.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach — the query strategy, async wait pattern, cleanup hook, MSW handler shape, etc. — without giving the exact code.",
   "hints": "Single line suggesting focus area (e.g., 'Look at how the testing library prefers queries that match what the user actually sees on screen'). Must NOT name APIs by name and must NOT give away the fix.",
   "definitions": {{

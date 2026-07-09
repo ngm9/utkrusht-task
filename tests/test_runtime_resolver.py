@@ -1,7 +1,7 @@
 """Unit tests for ``resolve_plan`` — the unified classifier ↔ template path.
 
 Exercises the ``task_template_match`` cache + ``classify_match`` LLM
-classifier wired by ``generators.task.runtime_resolver``.
+classifier wired by ``flows.tech.stages.generate.runtime_resolver``.
 
 Tests cover:
   1. Cache HIT (fresh) — no LLM call, returns the cached match + hydrated template.
@@ -19,7 +19,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from infra.classifier.runtime import Competency, TaskTemplateMatch
-from generators.task.runtime_resolver import (
+from flows.tech.stages.generate.runtime_resolver import (
     ResolvedPlan,
     TemplateSpec,
     _CLASSIFIER_MODEL,
@@ -358,7 +358,7 @@ def test_no_cache_falls_through_to_llm():
         template_id="utkrusht-python", persona="backend", confidence=0.9,
     )
     with patch(
-        "generators.task.runtime_resolver._build_supabase_client",
+        "flows.tech.stages.generate.runtime_resolver._build_supabase_client",
         side_effect=RuntimeError("no creds"),
     ), patch(
         "infra.classifier.llm_classifier.classify_match",

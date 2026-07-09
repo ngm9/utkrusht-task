@@ -1,4 +1,4 @@
-PROMPT_CONTEXT = """
+﻿PROMPT_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -163,7 +163,7 @@ Based on the provided `real_world_task_scenarios`, create a task that:
    }},
    "outcomes": "A very short description (1-2 sentences) of what tangible deliverables should exist if the task is completed well, without revealing the solution. For example: a structured evaluation framework with defined dimensions, a labeling methodology, data-backed quality thresholds, and an automation vs. human-review breakdown tied to a go/no-go recommendation.",
    "short_overview": "Bullet-point list in simple language describing: (1) the business problem (voice agent quality issues before launch), (2) the evaluation design goal (framework covering dimensions, labeling, thresholds, automation), and (3) the expected outcome (evidence-backed ship/don't-ship recommendation).",
-   "pre_requisites": "List bullet-points required for knowledge and tools for the task:\\n- Access to spreadsheet software or Python/pandas for CSV analysis\\n- Understanding of evaluation frameworks and metrics for AI systems\\n- Basic knowledge of voice AI / conversational AI concepts\\n- Documentation tools (Word/Markdown editor)\\n- Ability to identify patterns in tabular data\\n- Critical thinking for tradeoff analysis (cost vs. coverage, automation vs. human review)",
+   "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
    "answer": "Only a high-level solution approach — identify key failure patterns in data, define dimensions anchored to observed issues, propose labeling with inter-rater reliability checks, set thresholds based on agreement rates and failure frequencies, map automatable dimensions (latency, format compliance) vs. human-required (summary quality, bias detection).",
    "hints": "Start by computing the hiring manager agreement rate per failure_reason category — the dimensions where humans disagree most with the agent are where your evaluation framework needs the most attention.",
    "definitions": {{

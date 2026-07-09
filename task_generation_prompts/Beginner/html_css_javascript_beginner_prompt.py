@@ -1,4 +1,4 @@
-PROMPT_HTML_CSS_JS_BEGINNER_CONTEXT = """
+﻿PROMPT_HTML_CSS_JS_BEGINNER_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -157,7 +157,7 @@ Based on real-world scenarios, create an HTML/CSS/JavaScript task that:
   }},
   "outcomes": "Bullet-point list in simple language. Expected results after completion.",
   "short_overview": "Bullet-point list in simple language describing: (1) the business context and problem, (2) the specific implementation goal, and (3) the expected outcome.",
-  "pre_requisites": "Bullet-point list of tools, environment setup, and knowledge required. Include modern browser (Chrome/Firefox), code editor, Git, and basic knowledge of HTML5 (elements, attributes, forms), CSS3 (selectors, properties, classes), and JavaScript (variables, functions, DOM selection, event handling).",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach",
   "hints": "Single line suggesting focus area. Must NOT give away the answer, but gently nudge the candidate in the right direction.",
   "definitions": {{

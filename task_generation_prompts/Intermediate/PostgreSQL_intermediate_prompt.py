@@ -1,4 +1,4 @@
-PROMPT_POSTGRESQL_INPUT_AND_ASK = """
+﻿PROMPT_POSTGRESQL_INPUT_AND_ASK = """
 Now that you understand the company context and role requirements, let me provide you with the specific inputs for generating a PostgreSQL assessment task.
 
 INPUT COMPETENCIES:
@@ -265,7 +265,7 @@ NEVER generate empty content - always provide substantial business context that 
       "sample_queries.sql": "Sample queries that demonstrate the performance problems before optimization - these should include EXPLAIN ANALYZE output examples showing poor performance"
    }},
    "outcomes": "Expected results after completion in 2-3 lines focusing on measurable complex performance improvements and optimized database operations requiring intermediate-level skills. Use simple english.",
-   "pre_requisites": "Bullet-point list of tools, knowledge, and environment required to complete the intermediate-level optimization task. Mention things like Docker, Docker Compose, PostgreSQL client tools (pgAdmin/DBeaver/psql), basic SQL knowledge, understanding of EXPLAIN ANALYZE, intermediate PostgreSQL concepts (indexes, query optimization, normalization), etc.",
+   "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
    "answer": "High-level solution approach focusing on database optimization strategies and intermediate-level performance tuning techniques for the given complex performance issues. Include specific optimization techniques like: which indexes to create, query rewrites needed, schema changes required, configuration tuning, etc.",
    "hints": "A single line hint on what a good intermediate-level approach to analyze and optimize the database performance could include. These hints must NOT give away the specific optimizations needed, but gently nudge the candidate toward database performance analysis practices suitable for intermediate-level skills (e.g., 'Start by analyzing query execution plans to identify sequential scans and missing indexes').",
    "definitions": {{

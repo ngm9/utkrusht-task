@@ -1,4 +1,4 @@
-PROMPT_PYTHON_SQL_BASIC_CONTEXT = """
+﻿PROMPT_PYTHON_SQL_BASIC_CONTEXT = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -204,7 +204,7 @@ Based on the real-world scenarios, create a Python + SQL task that:
   },
   "outcomes": "Bullet-point list. Expected results after completion.",
   "short_overview": "Bullet-point list: (1) business context, (2) what the candidate must fix or implement, (3) expected outcome.",
-  "pre_requisites": "Bullet-point list: Python 3.10+, pip, Docker, Docker Compose, PostgreSQL client optional, basic Python and SQL knowledge, Git.",
+  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
   "answer": "High-level solution approach only. No full code.",
   "hints": "Single line suggesting focus area. Must NOT give away the answer.",
   "definitions": {

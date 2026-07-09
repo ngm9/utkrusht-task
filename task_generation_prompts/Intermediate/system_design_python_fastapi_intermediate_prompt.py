@@ -1,4 +1,4 @@
-PROMPT_SYSTEM_DESIGN_PYTHON_FASTAPI_CONTEXT_INTERMEDIATE = """
+﻿PROMPT_SYSTEM_DESIGN_PYTHON_FASTAPI_CONTEXT_INTERMEDIATE = """
 Let me provide you with some context about the company and role:
 
 Company Context:
@@ -107,7 +107,7 @@ For INTERMEDIATE level Python FastAPI System Design, the questions should test:
    }},
    "outcomes": "Expected design document components in 2-3 lines using simple language. Should mention Python/FastAPI-specific design artifacts (e.g., service architecture, async strategy, background task design, framework choices).",
    "short_overview": "Bullet-point list in simple language describing: (1) the high-level Python/FastAPI design challenge, (2) what the candidate must produce (fill in DESIGN.md), (3) key evaluation criteria (Python ecosystem knowledge, trade-off reasoning, completeness, clarity)",
-   "pre_requisites": "Bullet-point list of knowledge areas needed. Must include Python-specific items: understanding of FastAPI / Python web frameworks, experience with async/await and asyncio patterns, familiarity with SQLAlchemy or similar ORMs, knowledge of background task processing (Celery, task queues), understanding of Python concurrency (GIL, thread pools, multiprocessing), experience with caching strategies (Redis), familiarity with message brokers (Kafka/RabbitMQ), understanding of Uvicorn/Gunicorn deployment models, ability to create architecture diagrams in text or mermaid format.",
+   "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
    "answer": "Thorough reference design approach — the evaluator's answer key. Must include: recommended Python framework choices with rationale (e.g., 'FastAPI with async SQLAlchemy 2.0 for the data ingestion service because of high-concurrency non-blocking I/O needs'), specific data access strategy, async/concurrency approach, inter-service communication design, background task architecture, failure handling with Python-specific patterns (retry with tenacity, circuit breakers, dead letter queues), and deployment considerations (Uvicorn worker count, container resources, memory profiling). This should be 4-6 paragraphs covering each DESIGN.md section.",
    "hints": "A single line nudge toward the right design direction using Python/FastAPI ecosystem context. Example: 'Consider how FastAPI's dependency injection and async background tasks could decouple the write path from downstream processing without introducing Celery complexity.'",
    "definitions": {{
