@@ -300,6 +300,95 @@ def test_upload_run_traces_combo_partition(monkeypatch, tmp_path):
     assert _safe_combo("") == "adhoc"
 
 
+def test_solvability_upload_noop_without_bucket(monkeypatch, tmp_path):
+    from infra.tracing import upload_solvability_run
+
+    monkeypatch.delenv("TRACE_S3_BUCKET", raising=False)
+    assert upload_solvability_run("some-slug", run_dir=tmp_path) is None
+
+
+def test_solvability_upload_uploads_run_dir_and_legacy_diff(monkeypatch, tmp_path):
+    from infra.tracing import upload_solvability_run
+    import infra.tracing.s3 as s3mod
+
+    run_dir = tmp_path / "run"
+    (run_dir / "frames").mkdir(parents=True)
+    (run_dir / "summary.md").write_text("ok")
+    (run_dir / "frames" / "01.png").write_text("img")
+
+    legacy_dir = tmp_path / "legacy"
+    legacy_dir.mkdir()
+    (legacy_dir / "task-1.diff").write_text("diff")
+    rec_dir = legacy_dir / "recordings" / "task-1"
+    rec_dir.mkdir(parents=True)
+    (rec_dir / "solve.webm").write_text("video")
+
+    monkeypatch.setenv("TRACE_S3_BUCKET", "mybucket")
+    calls = []
+
+    class _FakeS3:
+        def upload_file(self, path, bucket, key):
+            calls.append(key)
+
+    monkeypatch.setattr(s3mod, "_s3_client", lambda: _FakeS3())
+    pref = upload_solvability_run(
+        "cargolink-pickup-context-repair",
+        task_id="task-1",
+        run_dir=run_dir,
+        legacy_dir=legacy_dir,
+        date="2026-07-08",
+    )
+
+    base = "solvability/dt=2026-07-08/task=cargolink-pickup-context-repair"
+    assert pref == f"s3://mybucket/{base}/"
+    assert sorted(calls) == sorted([
+        f"{base}/summary.md",
+        f"{base}/frames/01.png",
+        f"{base}/task-1.diff",
+        f"{base}/recordings/solve.webm",
+    ])
+
+
+def test_solvability_sync_all_noop_without_bucket(monkeypatch, tmp_path):
+    from infra.tracing import upload_all_solvability_artifacts
+
+    monkeypatch.delenv("TRACE_S3_BUCKET", raising=False)
+    assert upload_all_solvability_artifacts(runs_dir=tmp_path) is None
+
+
+def test_solvability_sync_all_uploads_ledger_and_batch_summary(monkeypatch, tmp_path):
+    from infra.tracing import upload_all_solvability_artifacts
+    import infra.tracing.s3 as s3mod
+
+    runs_dir = tmp_path / "solvability_runs"
+    (runs_dir / "some-slug").mkdir(parents=True)
+    (runs_dir / "some-slug" / "summary.md").write_text("ok")
+    (runs_dir / "_batch-2026-06-28-summary.md").write_text("batch report")  # root-level, no slug
+
+    legacy_dir = tmp_path / "legacy"
+    legacy_dir.mkdir()
+    (legacy_dir / "results.jsonl").write_text('{"task_id":"t1"}\n')  # the cumulative ledger
+    (legacy_dir / "t1.diff").write_text("diff")
+
+    monkeypatch.setenv("TRACE_S3_BUCKET", "mybucket")
+    calls = []
+
+    class _FakeS3:
+        def upload_file(self, path, bucket, key):
+            calls.append(key)
+
+    monkeypatch.setattr(s3mod, "_s3_client", lambda: _FakeS3())
+    pref = upload_all_solvability_artifacts(runs_dir=runs_dir, legacy_dir=legacy_dir)
+
+    assert pref == "s3://mybucket/solvability/backfill/"
+    assert sorted(calls) == sorted([
+        "solvability/backfill/reports/some-slug/summary.md",
+        "solvability/backfill/reports/_batch-2026-06-28-summary.md",
+        "solvability/backfill/legacy/results.jsonl",
+        "solvability/backfill/legacy/t1.diff",
+    ])
+
+
 # --------------------------------------------------------------------------
 # manifest
 # --------------------------------------------------------------------------

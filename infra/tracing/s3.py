@@ -145,3 +145,125 @@ def upload_run_logs(
     except Exception as exc:  # noqa: BLE001 — upload must never break the run
         logger.warning(f"[trace] log upload failed: {exc}")
         return None
+
+
+def upload_solvability_run(
+    slug: str,
+    *,
+    task_id: Optional[str] = None,
+    bucket: Optional[str] = None,
+    date: Optional[str] = None,
+    run_dir: Optional[Path] = None,
+    legacy_dir: Optional[Path] = None,
+) -> Optional[str]:
+    """Upload one `task-solvability` skill run to S3 — the audit-flow counterpart
+    to ``upload_run_traces``/``upload_run_logs`` above. Same env gate
+    (``TRACE_S3_BUCKET``), same failure isolation (logs a warning and returns
+    None; never raises).
+
+    Uploads, if present:
+      ``solvability_runs/<slug>/**``   (summary.md, notes.md, result.json,
+                                        solution.diff, solve.webm, frames/*.png)
+      ``.task_agent_runs/solvable/<task_id>.diff``
+      ``.task_agent_runs/solvable/recordings/<task_id>/**``
+
+    to ``s3://<bucket>/solvability/dt=<date>/task=<slug>/...``.
+    """
+    bucket = bucket or os.getenv("TRACE_S3_BUCKET")
+    if not bucket:
+        return None
+
+    if date is None:
+        date = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%d")
+    slug_safe = _safe_combo(slug)
+    prefix = f"solvability/dt={date}/task={slug_safe}"
+
+    run_dir = Path(run_dir) if run_dir else Path("solvability_runs") / slug
+    legacy_dir = Path(legacy_dir) if legacy_dir else Path(".task_agent_runs/solvable")
+    targets = [(run_dir, "")]
+    if task_id:
+        targets.append((legacy_dir / f"{task_id}.diff", ""))
+        targets.append((legacy_dir / "recordings" / task_id, "recordings"))
+
+    try:
+        s3 = _s3_client()
+        uploaded = 0
+        for src, sub in targets:
+            if not src.exists():
+                continue
+            if src.is_file():
+                key = f"{prefix}/{sub}/{src.name}" if sub else f"{prefix}/{src.name}"
+                s3.upload_file(str(src), bucket, key)
+                uploaded += 1
+                continue
+            for p in sorted(src.rglob("*")):
+                if p.is_file():
+                    rel = p.relative_to(src).as_posix()
+                    key = f"{prefix}/{sub}/{rel}" if sub else f"{prefix}/{rel}"
+                    s3.upload_file(str(p), bucket, key)
+                    uploaded += 1
+
+        if uploaded == 0:
+            logger.warning(f"[solvability] s3 upload skipped — no artifacts found for slug={slug_safe}")
+            return None
+        logger.info(
+            f"[solvability] uploaded {uploaded} file(s) to s3://{bucket}/{prefix}/"
+        )
+        return f"s3://{bucket}/{prefix}/"
+    except Exception as exc:  # noqa: BLE001 — upload must never break the run
+        logger.warning(f"[solvability] s3 upload failed: {exc}")
+        return None
+
+
+def upload_all_solvability_artifacts(
+    *,
+    bucket: Optional[str] = None,
+    runs_dir: Optional[Path] = None,
+    legacy_dir: Optional[Path] = None,
+) -> Optional[str]:
+    """Sync EVERY local task-solvability artifact to S3 in one shot — every
+    ``solvability_runs/<slug>/`` report plus any batch-level file at its root
+    (e.g. ``_batch-<date>-summary.md``), and the whole legacy
+    ``.task_agent_runs/solvable/`` tree (the ``results.jsonl`` ledger, every
+    ``<task_id>.diff``, every recording).
+
+    This is deliberately NOT a loop over ``upload_solvability_run`` per slug:
+    the two local trees don't share a reliable join key (most
+    ``solvability_runs/<slug>/result.json`` predate the ``task_id`` field, and
+    the legacy ledger is keyed by ``task_id`` alone), so most of
+    ``.task_agent_runs/solvable/`` can't be attributed back to a slug. Lands
+    under ``solvability/backfill/...`` — a separate namespace from
+    ``upload_solvability_run``'s ``solvability/dt=<date>/task=<slug>/...`` —
+    so a one-time flat dump never collides with the partitioned per-run
+    corpus. Use for backfilling runs that predate S3 wiring, or a periodic
+    full-sync cron. Same env gate (``TRACE_S3_BUCKET``) and failure isolation
+    as the rest of this module.
+    """
+    bucket = bucket or os.getenv("TRACE_S3_BUCKET")
+    if not bucket:
+        return None
+
+    runs_dir = Path(runs_dir) if runs_dir else Path("solvability_runs")
+    legacy_dir = Path(legacy_dir) if legacy_dir else Path(".task_agent_runs/solvable")
+    targets = [(runs_dir, "reports"), (legacy_dir, "legacy")]
+
+    try:
+        s3 = _s3_client()
+        uploaded = 0
+        for src, sub in targets:
+            if not src.exists():
+                continue
+            for p in sorted(src.rglob("*")):
+                if p.is_file():
+                    rel = p.relative_to(src).as_posix()
+                    s3.upload_file(str(p), bucket, f"solvability/backfill/{sub}/{rel}")
+                    uploaded += 1
+
+        if uploaded == 0:
+            logger.warning("[solvability] full sync skipped — no local artifacts found")
+            return None
+        logger.info(f"[solvability] synced {uploaded} file(s) to s3://{bucket}/solvability/backfill/")
+        return f"s3://{bucket}/solvability/backfill/"
+    except Exception as exc:  # noqa: BLE001 — upload must never break the run
+        logger.warning(f"[solvability] full sync failed: {exc}")
+        return None

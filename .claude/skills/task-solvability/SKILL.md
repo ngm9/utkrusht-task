@@ -36,6 +36,29 @@ services) — hard-fail with that explanation and fall back to the sandbox flow.
 Each run writes a clean, human-named report folder at the repo root (gitignored):
 `solvability_runs/<task-slug>/` → `summary.md`, `notes.md` (think-aloud + task-quality), `result.json`, `solution.diff`, `solve.webm`, `frames/*.png`.
 
+**S3 upload (STEP 5)** — same `TRACE_S3_BUCKET`/`S3_REGION` env used for
+task-generation traces. Set → this run's local artifacts also land at
+`s3://$TRACE_S3_BUCKET/solvability/dt=<date>/task=<slug>/`. Unset → no-op,
+local files only (nothing else about the run changes).
+
+**Full sync / backfill** — the per-run upload only pushes the one run just
+completed. The `results.jsonl` ledger and any batch-level report (e.g.
+`solvability_runs/_batch-<date>-summary.md`) aren't tied to a single slug —
+and most historical `.task_agent_runs/solvable/` entries can't be joined back
+to a `solvability_runs/<slug>/` at all (no shared key) — so they need a
+separate sweep:
+
+```bash
+.venv/bin/python $H sync-all
+```
+
+Uploads every file under `solvability_runs/` and `.task_agent_runs/solvable/`
+(ledger + all diffs + all recordings) to
+`s3://$TRACE_S3_BUCKET/solvability/backfill/` — a flat dump, deliberately
+namespaced apart from the per-run `dt=/task=` partitioned corpus above so the
+two never collide. Run it once to backfill runs that predate this wiring, or
+periodically as a full-sync safety net.
+
 ## Variables
 
 - `TASK_ID` = first token of `$ARGUMENTS` — **required** (ask if absent).
@@ -145,7 +168,16 @@ Append to `.task_agent_runs/solvable/results.jsonl` (one line):
 
 ---
 
-## STEP 5 — Teardown
+## STEP 5 — Upload + teardown
+
+Push this run's artifacts to S3 first (no-op if `TRACE_S3_BUCKET` is unset —
+nothing else about the run changes):
+
+```bash
+.venv/bin/python $H upload --slug "$SLUG" --task-id "$TASK_ID"
+```
+
+Then tear the sandbox down:
 
 ```bash
 .venv/bin/python $H kill --sandbox "$SANDBOX"
@@ -213,9 +245,10 @@ task-quality defect and rerun via the sandbox flow.
 `git -C "$WORK" add -A && git -C "$WORK" diff --cached > solvability_runs/$SLUG/solution.diff`.
 Add `"mode":"local"` to the `results.jsonl` row.
 
-**STEP 5 (teardown)** — just `rm -rf "$WORK"` (nothing to kill). No WebM in local
-mode (there's no code-server IDE to record) — local mode implies `--quick`; if the
-user wants video proof, use the sandbox flow.
+**STEP 5 (upload + teardown)** — same `upload` call as the sandbox flow, then
+`rm -rf "$WORK"` (nothing to kill). No WebM in local mode (there's no
+code-server IDE to record) — local mode implies `--quick`; if the user wants
+video proof, use the sandbox flow.
 
 ## Recorded mode (`--record`) — headless video proof
 

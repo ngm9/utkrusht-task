@@ -34,7 +34,12 @@ from infra.tracing.sink import (
     tracing_enabled,
     write_manifest,
 )
-from infra.tracing.s3 import upload_run_logs, upload_run_traces
+from infra.tracing.s3 import (
+    upload_all_solvability_artifacts,
+    upload_run_logs,
+    upload_run_traces,
+    upload_solvability_run,
+)
 from infra.tracing.litellm_hook import register_litellm_tracing
 
 __all__ = [
@@ -58,5 +63,7 @@ __all__ = [
     "redact",
     "upload_run_traces",
     "upload_run_logs",
+    "upload_solvability_run",
+    "upload_all_solvability_artifacts",
     "register_litellm_tracing",
 ]

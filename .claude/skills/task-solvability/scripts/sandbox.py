@@ -18,6 +18,8 @@ Subcommands:
     get     --sandbox SID --remote PATH              print a file from the sandbox
     diff    --sandbox SID                            git add -A && git diff (the agent's edits)
     kill    --sandbox SID                            tear the sandbox down
+    upload  --slug SLUG [--task-id ID]                push this run's artifacts to S3 (no-op if TRACE_S3_BUCKET unset)
+    sync-all                                          push EVERY local solvability_runs/ + .task_agent_runs/solvable/ file to S3 (backfill/full-sync)
 """
 from __future__ import annotations
 
@@ -197,6 +199,20 @@ def cmd_kill(a) -> int:
     return 0
 
 
+def cmd_upload(a) -> int:
+    from infra.tracing import upload_solvability_run
+    prefix = upload_solvability_run(a.slug, task_id=a.task_id)
+    print(prefix or "upload skipped (TRACE_S3_BUCKET not set, or no artifacts found)")
+    return 0
+
+
+def cmd_sync_all(a) -> int:
+    from infra.tracing import upload_all_solvability_artifacts
+    prefix = upload_all_solvability_artifacts()
+    print(prefix or "sync skipped (TRACE_S3_BUCKET not set, or no local artifacts found)")
+    return 0
+
+
 def main() -> int:
     p = argparse.ArgumentParser(description="task-solvability sandbox helper")
     sub = p.add_subparsers(dest="cmd", required=True)
@@ -213,6 +229,8 @@ def main() -> int:
     s = sub.add_parser("get"); s.add_argument("--sandbox", required=True); s.add_argument("--remote", required=True); s.set_defaults(fn=cmd_get)
     s = sub.add_parser("diff"); s.add_argument("--sandbox", required=True); s.set_defaults(fn=cmd_diff)
     s = sub.add_parser("kill"); s.add_argument("--sandbox", required=True); s.set_defaults(fn=cmd_kill)
+    s = sub.add_parser("upload"); s.add_argument("--slug", required=True); s.add_argument("--task-id"); s.set_defaults(fn=cmd_upload)
+    s = sub.add_parser("sync-all"); s.set_defaults(fn=cmd_sync_all)
 
     a = p.parse_args()
     return a.fn(a)
