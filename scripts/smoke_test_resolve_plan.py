@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from infra.classifier.runtime import Competency  # noqa: E402
-from generators.task.runtime_resolver import (  # noqa: E402
+from flows.tech.stages.generate.runtime_resolver import (  # noqa: E402
     _build_supabase_client,
     resolve_plan,
 )

@@ -17,7 +17,7 @@ from dotenv import load_dotenv
 # clients at module-load time (infra/evals.py expects OPENAI_API_KEY).
 load_dotenv()
 
-from generators.task.runtime_resolver import (  # noqa: E402
+from flows.tech.stages.generate.runtime_resolver import (  # noqa: E402
     _build_supabase_client,
     _load_active_templates,
 )

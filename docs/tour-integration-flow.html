@@ -1,0 +1,1009 @@
+<title>Task Tour Integration — How the Flow Works</title>
+<style>
+  :root {
+    --bg: #f4f6f8;
+    --surface: #ffffff;
+    --surface-2: #eef1f4;
+    --ink: #1b222b;
+    --muted: #5b6673;
+    --line: #d9dfe6;
+    --accent: #0e7a6e;
+    --accent-ink: #0a5c53;
+    --accent-soft: #e1f1ee;
+    --accent-line: #9ed0c8;
+    --amber: #a05a10;
+    --amber-soft: #faeeda;
+    --amber-line: #e3c294;
+    --code-bg: #eef1f4;
+    --shadow: 0 1px 2px rgba(20, 30, 40, 0.06), 0 4px 14px rgba(20, 30, 40, 0.05);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12161c;
+      --surface: #1a2028;
+      --surface-2: #212934;
+      --ink: #e6ebf1;
+      --muted: #94a0ae;
+      --line: #2b3441;
+      --accent: #3cc2ae;
+      --accent-ink: #6fd8c8;
+      --accent-soft: #12332e;
+      --accent-line: #2a5b53;
+      --amber: #e0a355;
+      --amber-soft: #362918;
+      --amber-line: #6b5228;
+      --code-bg: #232b36;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 14px rgba(0, 0, 0, 0.25);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #12161c;
+    --surface: #1a2028;
+    --surface-2: #212934;
+    --ink: #e6ebf1;
+    --muted: #94a0ae;
+    --line: #2b3441;
+    --accent: #3cc2ae;
+    --accent-ink: #6fd8c8;
+    --accent-soft: #12332e;
+    --accent-line: #2a5b53;
+    --amber: #e0a355;
+    --amber-soft: #362918;
+    --amber-line: #6b5228;
+    --code-bg: #232b36;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 14px rgba(0, 0, 0, 0.25);
+  }
+  :root[data-theme="light"] {
+    --bg: #f4f6f8;
+    --surface: #ffffff;
+    --surface-2: #eef1f4;
+    --ink: #1b222b;
+    --muted: #5b6673;
+    --line: #d9dfe6;
+    --accent: #0e7a6e;
+    --accent-ink: #0a5c53;
+    --accent-soft: #e1f1ee;
+    --accent-line: #9ed0c8;
+    --amber: #a05a10;
+    --amber-soft: #faeeda;
+    --amber-line: #e3c294;
+    --code-bg: #eef1f4;
+    --shadow: 0 1px 2px rgba(20, 30, 40, 0.06), 0 4px 14px rgba(20, 30, 40, 0.05);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: system-ui, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 960px; margin: 0 auto; padding: 56px 24px 96px; }
+
+  .mono {
+    font-family: ui-monospace, "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+  }
+  code {
+    font-family: ui-monospace, "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+    font-size: 0.86em;
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    padding: 0.1em 0.35em;
+    white-space: nowrap;
+  }
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 20px;
+    overflow-x: auto;
+    font-family: ui-monospace, "Cascadia Code", Consolas, "SF Mono", Menlo, monospace;
+    font-size: 13px;
+    line-height: 1.65;
+    margin: 0;
+  }
+  pre code { background: none; border: none; padding: 0; white-space: pre; }
+  pre .cm { color: var(--muted); }
+  pre .kw { color: var(--accent-ink); font-weight: 600; }
+
+  .eyebrow {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 14px;
+  }
+  h1 {
+    font-size: clamp(28px, 4.5vw, 40px);
+    line-height: 1.15;
+    font-weight: 750;
+    letter-spacing: -0.02em;
+    margin: 0 0 16px;
+    text-wrap: balance;
+  }
+  .lede {
+    font-size: 18px;
+    color: var(--muted);
+    max-width: 62ch;
+    margin: 0 0 8px;
+  }
+  h2 {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0 0 6px;
+    text-wrap: balance;
+  }
+  h3.sub { font-size: 16px; font-weight: 650; margin: 28px 0 10px; }
+  .section { margin-top: 72px; }
+  .section-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 20px; }
+  .section-num {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 13px;
+    color: var(--muted);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+    padding: 2px 10px;
+    flex: none;
+  }
+  .section p.note { color: var(--muted); max-width: 68ch; margin: 0 0 20px; }
+  .section p.note b { color: var(--ink); }
+
+  .chip {
+    display: inline-block;
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border-radius: 999px;
+    padding: 2px 9px;
+    vertical-align: 2px;
+  }
+  .chip.new { background: var(--accent-soft); color: var(--accent-ink); border: 1px solid var(--accent-line); }
+  .chip.warn { background: var(--amber-soft); color: var(--amber); border: 1px solid var(--amber-line); }
+  .chip.fixed { background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
+
+  .callout {
+    background: var(--amber-soft);
+    border: 1px solid var(--amber-line);
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin: 24px 0 0;
+    font-size: 14.5px;
+  }
+  .callout b { color: var(--amber); }
+  .callout.good { background: var(--accent-soft); border-color: var(--accent-line); }
+  .callout.good b { color: var(--accent-ink); }
+
+  /* ---------- Core logic steps ---------- */
+  .logic-steps { list-style: none; margin: 0 0 24px; padding: 0; counter-reset: logic; display: flex; flex-direction: column; gap: 10px; }
+  .logic-steps > li {
+    counter-increment: logic;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 18px 14px 56px;
+    position: relative;
+    box-shadow: var(--shadow);
+    font-size: 14.5px;
+  }
+  .logic-steps > li::before {
+    content: counter(logic);
+    position: absolute;
+    left: 16px;
+    top: 14px;
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    border: 1px solid var(--accent-line);
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .logic-steps b { font-weight: 650; }
+  .logic-steps .detail { display: block; color: var(--muted); font-size: 13.5px; margin-top: 2px; }
+
+  /* ---------- Tour anatomy strip ---------- */
+  .anatomy {
+    display: grid;
+    grid-template-columns: 1fr 1.4fr 1fr;
+    gap: 12px;
+  }
+  @media (max-width: 680px) { .anatomy { grid-template-columns: 1fr; } }
+  .anatomy .part {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 18px 14px;
+    box-shadow: var(--shadow);
+  }
+  .anatomy .part.llm { border-color: var(--accent-line); }
+  .part-label {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 11px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 10px;
+  }
+  .part.llm .part-label { color: var(--accent-ink); }
+  .part ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+  .part li {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 13px;
+    background: var(--surface-2);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 5px 10px;
+  }
+  .part.llm li { background: var(--accent-soft); border-color: var(--accent-line); }
+  .part .who { font-size: 13px; color: var(--muted); margin: 12px 0 0; }
+
+  /* ---------- Pipeline diagram ---------- */
+  .pipeline { list-style: none; margin: 0; padding: 0; }
+  .stage { position: relative; padding: 0 0 8px 42px; }
+  .stage::before {
+    content: "";
+    position: absolute;
+    left: 13px;
+    top: 26px;
+    bottom: -6px;
+    width: 2px;
+    background: var(--line);
+  }
+  .stage:last-child::before { display: none; }
+  .stage::after {
+    content: "";
+    position: absolute;
+    left: 7px;
+    top: 13px;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--surface);
+    border: 2px solid var(--muted);
+  }
+  .stage.new::after { background: var(--accent); border-color: var(--accent); }
+  .stage.terminal::after { border-color: var(--ink); background: var(--ink); }
+  .stage-card { padding: 6px 0 18px; }
+  .stage.new .stage-card {
+    background: var(--surface);
+    border: 1px solid var(--accent-line);
+    border-radius: 10px;
+    padding: 16px 18px;
+    margin: 2px 0 20px;
+    box-shadow: var(--shadow);
+  }
+  .stage-title {
+    font-weight: 650;
+    font-size: 15.5px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .stage-title .mono { font-size: 13px; color: var(--muted); font-weight: 500; }
+  .stage-desc { color: var(--muted); font-size: 14.5px; margin: 3px 0 0; max-width: 64ch; }
+  .stage-desc b { color: var(--ink); font-weight: 600; }
+  .stage-desc .produces {
+    display: inline-block;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 12px;
+    color: var(--accent-ink);
+    background: var(--accent-soft);
+    border: 1px solid var(--accent-line);
+    border-radius: 5px;
+    padding: 1px 8px;
+    margin-top: 6px;
+  }
+
+  .substeps { margin: 12px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 8px; }
+  .substeps li {
+    font-size: 14px;
+    padding-left: 22px;
+    position: relative;
+    color: var(--ink);
+  }
+  .substeps li::before {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 9px;
+    width: 8px;
+    height: 2px;
+    background: var(--accent);
+  }
+  .failnote {
+    margin-top: 14px;
+    border-top: 1px dashed var(--amber-line);
+    padding-top: 12px;
+    font-size: 13.5px;
+    color: var(--amber);
+  }
+
+  /* ---------- Kind decision flow ---------- */
+  .decision-flow { list-style: none; margin: 0 0 24px; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .decision-flow > li {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 14px 18px;
+    box-shadow: var(--shadow);
+    display: grid;
+    grid-template-columns: 28px 1fr auto;
+    gap: 14px;
+    align-items: baseline;
+  }
+  @media (max-width: 680px) { .decision-flow > li { grid-template-columns: 28px 1fr; } .decision-flow .verdict { grid-column: 2; justify-self: start; } }
+  .decision-flow .qnum {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .decision-flow .q { font-size: 14.5px; }
+  .decision-flow .q .then { color: var(--muted); font-size: 13.5px; display: block; margin-top: 2px; }
+  .verdict {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 13px;
+    font-weight: 700;
+    border-radius: 6px;
+    padding: 3px 10px;
+    white-space: nowrap;
+  }
+  .verdict.sandbox { background: var(--accent-soft); color: var(--accent-ink); border: 1px solid var(--accent-line); }
+  .verdict.skip { background: var(--amber-soft); color: var(--amber); border: 1px solid var(--amber-line); }
+  .verdict.plain { background: var(--surface-2); color: var(--ink); border: 1px solid var(--line); }
+
+  /* ---------- Tables ---------- */
+  .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: 14px; }
+  th, td { text-align: left; padding: 11px 16px; border-top: 1px solid var(--line); vertical-align: top; }
+  thead th {
+    border-top: none;
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 11.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 600;
+    background: var(--surface-2);
+  }
+  td .kind { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 13px; font-weight: 600; }
+  td .kind.sandbox { color: var(--accent-ink); }
+  td .kind.skip { color: var(--amber); }
+  td.dim { color: var(--muted); }
+
+  /* ---------- Section rules (middle selection) ---------- */
+  .rules { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
+  .rules > li {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px 18px;
+    box-shadow: var(--shadow);
+  }
+  .rules .rule-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; margin-bottom: 4px; }
+  .rules .sec-id {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 13.5px;
+    font-weight: 700;
+    color: var(--accent-ink);
+  }
+  .rules .when {
+    font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--amber);
+    background: var(--amber-soft);
+    border: 1px solid var(--amber-line);
+    border-radius: 999px;
+    padding: 2px 9px;
+  }
+  .rules .when.always { color: var(--accent-ink); background: var(--accent-soft); border-color: var(--accent-line); }
+  .rules p { margin: 0; font-size: 14px; color: var(--muted); max-width: 70ch; }
+  .rules p b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- Validation list ---------- */
+  .checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .checks li {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 11px 16px;
+    font-size: 14px;
+    display: flex;
+    gap: 12px;
+    align-items: baseline;
+  }
+  .checks li::before {
+    content: "✓";
+    font-family: ui-monospace, Consolas, monospace;
+    font-weight: 700;
+    color: var(--accent);
+    flex: none;
+  }
+  .checks li span { color: var(--muted); }
+  .checks li span b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- Decisions ---------- */
+  .decisions { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 680px) { .decisions { grid-template-columns: 1fr; } }
+  .decision {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px;
+    box-shadow: var(--shadow);
+  }
+  .decision h3 { margin: 0 0 6px; font-size: 15px; font-weight: 650; }
+  .decision p { margin: 0; font-size: 14px; color: var(--muted); }
+  .decision p b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- Files ---------- */
+  .files { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .files li {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 12px 16px;
+    display: flex;
+    gap: 14px;
+    align-items: baseline;
+    flex-wrap: wrap;
+    font-size: 14px;
+  }
+  .files li.removed { border-style: dashed; border-color: var(--amber-line); }
+  .files .path { font-family: ui-monospace, "Cascadia Code", Consolas, monospace; font-size: 13px; font-weight: 600; }
+  .files li.removed .path { text-decoration: line-through; text-decoration-color: var(--amber); color: var(--muted); }
+  .files .what { color: var(--muted); }
+
+  footer { margin-top: 80px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <p class="eyebrow">Utkrusht · Task Generation Pipeline</p>
+    <h1>Generating the candidate tour inside the pipeline</h1>
+    <p class="lede">Every task the pipeline creates lands with its candidate walkthrough (<span class="mono">tasks.tour</span>) already attached — generated inline in <span class="mono">creator.py</span>. This covers sandbox tasks <b>and</b> frontend / non-infra tasks alike.</p>
+    <div class="callout">
+      <b>Important:</b> <code>backfill_task_tours.py</code> is <b>reference only</b> — it is a one-off script and <b>will be removed</b>. Nothing may import from it. All tour logic is written fresh into a new, self-contained module: <code>generators/task/tour.py</code>. The backfill script serves only as the spec — prompt shape, boilerplate, decision logic, validation rules.
+    </div>
+    <div class="callout good">
+      <b>Every task gets a tour — not just infra.</b> Infra tasks (Docker / shared infra + template) get a <code>sandbox</code> tour; non-infra tasks — frontend (React, Next.js), library-only backend (LangChain, pure Python) — get a <code>local</code> (clone-and-run) tour. Both are first-class outputs of the same step. Tours are skipped in exactly two cases: an infra task with <b>no built template</b> (its sandbox can never boot), and <code>PR_REVIEW</code> tasks — <b>deferred for now</b> until we finalise how PR-review tours should work.
+    </div>
+  </header>
+
+  <!-- 1 · Core logic -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">01</span>
+      <h2>The whole thing in simple words — step by step</h2>
+    </div>
+
+    <h3 class="sub">First, what is a "tour"?</h3>
+    <p class="note">Imagine a candidate (a person taking a coding test) opens a task for the first time. They see a bunch of code files and have no idea what to do. A <b>tour</b> is like a little instruction card that tells them: <b>(1)</b> "Here's your code, open it here" → <b>(2)</b> "Run this command to start the app" → <b>(3)</b> "Run this command to see the tests (they fail right now — your job is to fix that)" → <b>(4)</b> "When you're done, push your code to submit". That's it. The tour is just a small step-by-step guide saved in the database next to each task (<code>tasks.tour</code>).</p>
+
+    <h3 class="sub">The problem we're solving</h3>
+    <p class="note">Every task is different — one uses Python, one uses React, one has a database, one doesn't. So we can't write one guide for all tasks; we need a <b>custom guide for each task</b>. Writing them by hand for hundreds of tasks is too slow, so we make an AI write them. But AI sometimes lies (it might say "run <code>npm test</code>" when the project has no tests). So we can't just trust it — we have to <b>check its work</b> before saving.</p>
+
+    <h3 class="sub">Step by step, what happens</h3>
+    <ol class="logic-steps">
+      <li><b>A new task gets created.</b>
+        <span class="detail">The pipeline generates a coding task — this already existed before this feature. The tour step rides along with it.</span>
+      </li>
+      <li><b>Decide what kind of guide this task needs.</b>
+        <span class="detail">Three possibilities: the task runs in a <b>cloud sandbox</b> (a computer in the browser) → write a "sandbox" guide. The task is done on the candidate's <b>own laptop</b> → write a "local" guide (clone the repo, install, run). Some tasks get <b>no guide</b> for now (PR-review tasks, or an infra task whose sandbox can never boot) → skip.</span>
+      </li>
+      <li><b>Split the guide into fixed parts and custom parts.</b>
+        <span class="detail">The <b>beginning</b> ("open your editor", "here's your repo") and the <b>end</b> ("commit and push to submit") are the <b>same for every task</b>, so they're written by us, in code, once. The AI never touches them — this way they can never be wrong. Only the <b>middle</b> ("how to run <i>this specific</i> project") is written by the AI.</span>
+      </li>
+      <li><b>Show the AI the task's files.</b>
+        <span class="detail">We give the AI the actual code files of the task (README first, then config files, then source code) and say: "Write ONLY the middle steps, based on these real files. Don't make anything up. And don't reveal the answer to the task!"</span>
+      </li>
+      <li><b>Check the AI's answer with simple rules (no AI needed).</b>
+        <span class="detail">Code checks things like: Is it valid JSON in the right shape? Is it short enough? (max 7 sections total — it's a guide, not a book.) Did it use only allowed placeholder links? Did it add useless fluff like "explore the codebase"? → rejected.</span>
+      </li>
+      <li><b>A second AI acts as a judge.</b>
+        <span class="detail">We show the tour + the code files to another AI and ask: "Is everything in this guide TRUE? Does every command, file, and port actually exist in this project? Does it accidentally reveal the solution?" If the judge says no → fail.</span>
+      </li>
+      <li><b>Actually test it for real.</b>
+        <span class="detail">The coolest part. For <b>sandbox</b> tasks: the task was just booted in a real cloud sandbox (to test that it builds). While that sandbox is still alive, we <b>literally run the tour's commands inside it</b>. If the guide says "run <code>docker-compose up</code>", we run it. If it breaks → the guide is wrong → fail. (One exception: the test command is <i>allowed</i> to fail, because tests are <i>supposed</i> to be red at the start.) For <b>local</b> tasks: we can't run it on the candidate's laptop, so instead we cross-check: if the guide says <code>npm run dev</code>, we open <code>package.json</code> and verify a <code>dev</code> script really exists. If not → fail.</span>
+      </li>
+      <li><b>If any check fails, try again.</b>
+        <span class="detail">We tell the AI exactly <i>what</i> was wrong ("you said <code>npm test</code> but there's no test script") and let it try again. Up to 3 tries (<code>MAX_TOUR_EVAL_RETRIES</code>).</span>
+      </li>
+      <li><b>Save — or give up gracefully.</b>
+        <span class="detail">If a tour passes all checks → save it to the database with the task. If all 3 tries fail → save the task <b>without</b> a tour (the tour field stays empty). Important rule: <b>a broken tour must never block a good task.</b> The task still ships; it just has no guide.</span>
+      </li>
+    </ol>
+
+    <div class="callout good">
+      <b>The one-line summary:</b> when a task is created, an AI writes a short "how to get started" guide from the task's real files, then code rules + an AI judge + actually running the commands verify it's true, and only a verified guide gets saved — if it can't be verified, the task ships without one.
+    </div>
+
+    <h3 class="sub">The same logic as pseudocode</h3>
+    <pre><code><span class="cm"># generators/task/tour.py — self-contained, no backfill import</span>
+<span class="kw">def</span> generate_tour(code_files, meta):
+    kind = decide_kind(meta)                      <span class="cm"># §05 — sandbox / local / skip (PR_REVIEW → skip for now)</span>
+    <span class="kw">if</span> kind == <span class="kw">"skip"</span>: <span class="kw">return</span> <span class="kw">None</span>
+
+    repo_text = render_code_files(code_files)     <span class="cm"># §01 step 2 — in-memory, no GitHub</span>
+    surfaces  = surfaces_block(meta[<span class="kw">"expected_ports"</span>]) <span class="kw">if</span> kind == <span class="kw">"sandbox"</span> <span class="kw">else</span> <span class="kw">""</span>
+
+    critique = <span class="kw">None</span>
+    <span class="kw">for</span> attempt <span class="kw">in</span> range(MAX_TOUR_EVAL_RETRIES):  <span class="cm"># eval-gated retry loop, like evals.py</span>
+        raw    = llm_via_portkey(build_middle_prompt(kind, meta, surfaces, repo_text, critique))
+        middle = parse_and_validate(raw, kind)    <span class="cm"># §07 layer 1 — deterministic, abort on violation</span>
+        tour   = assemble(HEAD[kind], middle, TAIL[kind])
+
+        verdict = eval_tour(tour, repo_text, kind)  <span class="cm"># §07 layer 2 — LLM judge, grounded in the repo</span>
+        <span class="kw">if</span> verdict.passed <span class="kw">and</span> kind == <span class="kw">"sandbox"</span> <span class="kw">and</span> sandbox <span class="kw">is not None</span>:
+            verdict = run_tour_in_sandbox(tour, sandbox)  <span class="cm"># §07 layer 3 — execute steps in the gate's live sandbox</span>
+        <span class="kw">elif</span> verdict.passed <span class="kw">and</span> kind == <span class="kw">"local"</span>:
+            verdict = check_against_manifests(tour, code_files)  <span class="cm"># §07 layer 3 — npm/pip/mvn vs real manifests</span>
+
+        <span class="kw">if</span> verdict.passed: <span class="kw">return</span> tour
+        critique = verdict.critique               <span class="cm"># judge critique OR the failing command's output</span>
+
+    <span class="kw">return</span> <span class="kw">None</span>                                   <span class="cm"># retries exhausted → no tour (non-fatal)</span>
+
+
+<span class="cm"># generators/task/creator.py — wired in right AFTER the E2B gate passes (code final,</span>
+<span class="cm"># gate sandbox still hot); the result is carried in memory to the ready flip</span>
+tour = <span class="kw">None</span>
+<span class="kw">try</span>:
+    tour = generate_tour(code_data, {
+        <span class="kw">"task_type"</span>: [<span class="kw">"BUILD"</span>],
+        <span class="kw">"is_shared_infra_required"</span>: has_shared_infra_files(code_data),
+        <span class="kw">"template_id"</span>: match.template_id <span class="kw">if</span> match <span class="kw">else</span> <span class="kw">None</span>,
+        <span class="kw">"expected_ports"</span>: build_expected_ports(code_data),
+        <span class="kw">"title"</span>: task_data[<span class="kw">"title"</span>], <span class="kw">"question"</span>: task_data[<span class="kw">"question"</span>],
+    }, sandbox=gate_sandbox)                      <span class="cm"># the gate's live sandbox (None for non-infra)</span>
+<span class="kw">except</span> Exception <span class="kw">as</span> e:
+    logger.warning(<span class="kw">"tour generation failed (non-fatal): %s"</span>, e)
+
+<span class="cm"># … solutions → insert_draft_task → GitHub artifacts (tour just rides along in memory) …</span>
+mark_task_ready(task_id, env=env, task_blob=…, …, tour=tour)  <span class="cm"># → UPDATE tasks SET tour = …</span></code></pre>
+  </section>
+
+  <!-- 2 · Where every value comes from -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">02</span>
+      <h2>Where every input comes from — and where the tour goes</h2>
+    </div>
+    <p class="note">Every value the tour logic needs is <b>already produced by the pipeline</b> before the tour step runs — nothing new is computed, nothing is fetched from outside. This is the exact data flow:</p>
+
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Value</th><th>Produced where in the pipeline</th><th>Used for</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>code_files</code></td>
+            <td class="dim">Task-generation LLM output — <code>task_data["code_files"]</code>, after the README scrub. The exact files pushed to GitHub.</td>
+            <td class="dim">The file blob that grounds the prompt (real services, ports, commands, seed scripts).</td>
+          </tr>
+          <tr>
+            <td><code>is_shared_infra_required</code></td>
+            <td class="dim"><code>has_shared_infra_files(code_data)</code> in creator.py — true iff the generated repo carries Docker / docker-compose files. Consistent with <code>task_shape</code>, which the pipeline fixes when generation starts.</td>
+            <td class="dim">Kind decision: infra task (<code>sandbox</code>) vs non-infra / frontend task (<code>local</code>) — same source of truth the E2B gate uses.</td>
+          </tr>
+          <tr>
+            <td><code>template_id</code></td>
+            <td class="dim">LLM classifier's pinned template match (<code>match.template_id</code>), stored on the draft row at insert.</td>
+            <td class="dim">Kind decision: with a template → <code>sandbox</code>; infra without one → <code>skip</code> (can't boot).</td>
+          </tr>
+          <tr>
+            <td><code>task_type</code></td>
+            <td class="dim">Set to <code>["BUILD"]</code> by this pipeline. (<code>PR_REVIEW</code> comes only from the separate PR-review flow.)</td>
+            <td class="dim">Kind decision: <code>PR_REVIEW</code> tasks are <b>skipped for now</b> — tour support deferred until the design is finalised.</td>
+          </tr>
+          <tr>
+            <td><code>expected_ports</code></td>
+            <td class="dim"><code>build_expected_ports(code_data)</code> at draft-insert time — derived from docker-compose.yml + run.sh.</td>
+            <td class="dim">Surfaces block: which <code>sandbox.*</code> links the model may use, with their real titles.</td>
+          </tr>
+          <tr>
+            <td><code>title</code>, <code>question</code></td>
+            <td class="dim">Task-generation LLM output, already formatted in <code>draft_payload["task_blob"]</code>.</td>
+            <td class="dim">Two-line task context in the prompt so the middle matches the scenario.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="sub">Where the tour value is passed</h3>
+    <p class="note">One direction, four hops: <b>(1)</b> <code>generate_tour(...)</code> returns the verified JSON dict right after the E2B gate passes → <b>(2)</b> creator.py holds it in memory through the solutions / draft-insert / GitHub stages (it needs nothing from them — its repo links are placeholders) → <b>(3)</b> creator passes it as the new optional <code>tour=</code> argument of <code>mark_task_ready()</code> in persistence.py, which adds it to the UPDATE dict → <b>(4)</b> Supabase stores it on the <code>tasks.tour</code> JSONB column in the same atomic UPDATE that flips <code>status='ready'</code>. Downstream, the candidate app reads <code>tasks.tour</code>, renders the sections as the walkthrough panel, and substitutes the <code>{{variables}}</code> at runtime (repo URL from the candidate's fork, sandbox URLs from the provisioned E2B sandbox). The pipeline never resolves variables — it only guarantees they're ones the runtime knows.</p>
+  </section>
+
+  <!-- 3 · What a tour is -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">03</span>
+      <h2>What a tour is — and what the LLM actually writes</h2>
+    </div>
+    <p class="note">A tour is a JSONB walkthrough stored on <code>tasks.tour</code>: an ordered list of <b>sections</b>, each holding <b>steps</b> of three types — <code>markdown</code> (a short instruction), <code>link</code> (a labelled URL, may contain a <code>{{variable}}</code>), and <code>command</code> (a shell command with an optional ≤3-line example output). Only the <b>middle</b> is generated per task.</p>
+    <div class="callout">
+      <b>Hard size cap: at most 7 sections total — fewer is fine, more is rejected.</b> A tour is orientation, not documentation; a long tour overwhelms the candidate it's meant to help. The fixed head + tail already use 4 sections for sandbox tours (3 for local), so the LLM gets a budget of <b>at most 3 middle sections</b> (4 for local) and must pick only the highest-value ones. The cap is enforced in code at validation (§07) — an over-long tour fails and regenerates, it is never trimmed silently.
+    </div>
+    <div class="anatomy">
+      <div class="part">
+        <p class="part-label">Head · fixed <span class="chip fixed">code</span></p>
+        <ul>
+          <li>explore-code-base</li>
+          <li>access-code-editor</li>
+          <li>access-terminal</li>
+        </ul>
+        <p class="who">Injected verbatim per tour kind — never trusted to the model. (The local kind gets explore + clone-repo instead.)</p>
+      </div>
+      <div class="part llm">
+        <p class="part-label">Middle · generated <span class="chip new">LLM</span></p>
+        <ul>
+          <li>build-and-run</li>
+          <li>run-tests</li>
+          <li>seed-data · inspect-database</li>
+          <li>open-redis · test-endpoints</li>
+        </ul>
+        <p class="who">Only the sections this task actually needs — grounded in its real files, ports, and service names. Selection rules in §06.</p>
+      </div>
+      <div class="part">
+        <p class="part-label">Tail · fixed <span class="chip fixed">code</span></p>
+        <ul>
+          <li>submit</li>
+        </ul>
+        <p class="who">Kind-specific: push from <code>/home/user/task</code> (sandbox) or push from the cloned folder (local).</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4 · The pipeline with the new step -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">04</span>
+      <h2>Where the new step lands in <span class="mono">creator.py</span></h2>
+    </div>
+    <p class="note">The tour step sits <b>directly after the E2B gate passes</b> — the earliest moment the code files are final (the gate can regenerate the whole task on failure) and the latest moment the gate's sandbox is still alive to verify against. Each stage below tags the values the tour step consumes; all exist in memory by then. No GitHub round-trip needed.</p>
+
+    <ol class="pipeline">
+      <li class="stage">
+        <div class="stage-card">
+          <div class="stage-title">Generate task + code files <span class="mono">LLM via Portkey</span></div>
+          <p class="stage-desc">Tech-specific prompt produces the scenario, README, and starter code.<br><span class="produces">produces: code_files · title · question</span></p>
+        </div>
+      </li>
+      <li class="stage">
+        <div class="stage-card">
+          <div class="stage-title">Eval gate <span class="mono">evals.py · retry loop</span></div>
+          <p class="stage-desc">Task eval + code eval; failing tasks are regenerated.</p>
+        </div>
+      </li>
+      <li class="stage">
+        <div class="stage-card">
+          <div class="stage-title">E2B build &amp; test gate <span class="mono">sandbox_eval · inside the retry loop</span></div>
+          <p class="stage-desc">The task must actually build and run in a sandbox. If it fails, the whole task is <b>regenerated with different code</b> — which is why the tour is not written before this point: it would go stale (or be wasted) on every failed attempt. Skipped for non-infra tasks.</p>
+        </div>
+      </li>
+      <li class="stage new">
+        <div class="stage-card">
+          <div class="stage-title">Generate + sandbox-verify the tour <span class="chip new">New step · generators/task/tour.py</span></div>
+          <ul class="substeps">
+            <li>Runs <b>immediately after the gate passes</b>, while the code files are final and — for infra tasks — <b>the gate's sandbox is still alive</b>.</li>
+            <li>Runs the core logic of §01: kind → file blob → prompt → validate → LLM eval judge.</li>
+            <li><b>Sandbox tours get a live check</b>: the tour's command steps are executed in the same hot sandbox — build commands must succeed, service names must exist, the seed script must run, linked ports must be listening, <code>run-tests</code> must run (red is the expected start state). No extra sandbox boot.</li>
+            <li><b>Local tours get a deterministic manifest check</b>: commands are cross-checked in code against package.json scripts / requirements.txt / pom.xml — no sandbox needed (§05 stack table).</li>
+            <li>A failing check → regenerate the tour with the failure as critique (bounded retries).</li>
+          </ul>
+          <p class="failnote">Non-fatal by design: if every retry fails, <code>tour</code> stays NULL and the task still ships. A task that passed the eval gate and E2B gate must never die on a tour hiccup.</p>
+        </div>
+      </li>
+      <li class="stage">
+        <div class="stage-card">
+          <div class="stage-title">Solutions + draft row <span class="mono">insert_draft_task</span></div>
+          <p class="stage-desc">Docker detection and port derivation happen here (both pure functions of the code files — the tour step computes the same values a moment earlier).<br><span class="produces">produces: is_shared_infra_required · template_id · expected_ports</span></p>
+        </div>
+      </li>
+      <li class="stage">
+        <div class="stage-card">
+          <div class="stage-title">GitHub artifacts <span class="mono">template repo · answer repo · gist</span></div>
+          <p class="stage-desc">Starter files pushed to the private template repo; solutions to the answer repo. The verified tour is simply <b>carried in memory</b> through this stage — it needs nothing from GitHub (its repo links are <code>{{placeholders}}</code>).</p>
+        </div>
+      </li>
+      <li class="stage">
+        <div class="stage-card">
+          <div class="stage-title">Validate + flip to ready <span class="mono">validate_task · mark_task_ready(…, tour=…)</span></div>
+          <p class="stage-desc"><code>mark_task_ready</code> gains an optional <b>tour</b> parameter — the tour lands in the same atomic UPDATE that flips <code>status='ready'</code>.</p>
+        </div>
+      </li>
+      <li class="stage terminal">
+        <div class="stage-card">
+          <div class="stage-title">Task is live — with its tour attached</div>
+          <p class="stage-desc">Candidates see the walkthrough from day one; no batch step, no follow-up script.</p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- 5 · How the tour kind is decided -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">05</span>
+      <h2>How the tour kind is decided</h2>
+    </div>
+    <p class="note">The kind determines the fixed head/tail, which middle sections are allowed, and which template variables the model may use. It is an <b>ordered</b> check — first match wins.</p>
+    <p class="note"><b>Important: infra vs non-infra is not re-guessed at tour time.</b> The pipeline already decides a task's shape (<code>task_shape</code>: infra / non-infra) right when generation starts — it's what the E2B gate itself uses to decide whether to run. The tour step reuses that <b>same</b> determination, so the tour kind can never disagree with how the rest of the pipeline treats the task: an infra task always gets a correct <code>sandbox</code> tour, a non-infra task always gets a correct <code>local</code> tour — both first-class, from the same source of truth, with no drift between stages.</p>
+
+    <ol class="decision-flow">
+      <li>
+        <span class="qnum">1</span>
+        <span class="q">Does <code>task_type</code> contain <code>PR_REVIEW</code>?
+          <span class="then"><b>Deferred for now</b> — how a PR-review tour should work isn't finalised yet, so no tour is written for these tasks. Support will be added once those decisions are made.</span>
+        </span>
+        <span class="verdict skip">skip — for now</span>
+      </li>
+      <li>
+        <span class="qnum">2</span>
+        <span class="q">Is <code>is_shared_infra_required = true</code> <b>and</b> a <code>template_id</code> set?
+          <span class="then">The task boots an E2B sandbox from that template — the only case that gets editor / terminal / preview / DB-console steps.</span>
+        </span>
+        <span class="verdict sandbox">sandbox</span>
+      </li>
+      <li>
+        <span class="qnum">3</span>
+        <span class="q">Is <code>is_shared_infra_required = true</code> but <b>no</b> <code>template_id</code>?
+          <span class="then">The task needs infra but cannot boot a sandbox — a tour would promise surfaces that don't exist. No tour is written.</span>
+        </span>
+        <span class="verdict skip">skip — no tour</span>
+      </li>
+      <li>
+        <span class="qnum">4</span>
+        <span class="q">Everything else (<code>is_shared_infra_required = false</code>) — <b>this is where frontend tasks land</b>.
+          <span class="then">The candidate clones the repo to their own machine, works locally, and pushes to submit. No <code>sandbox.*</code> variables allowed.</span>
+        </span>
+        <span class="verdict plain">local</span>
+      </li>
+    </ol>
+
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Kind</th><th>Head (fixed)</th><th>Middle (LLM)</th><th>Tail (fixed)</th><th>Variables allowed</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="kind sandbox">sandbox</span></td>
+            <td class="dim">explore-code-base · access-code-editor · access-terminal</td>
+            <td class="dim">build-and-run, run-tests, seed-data, inspect-database, open-redis, test-endpoints — only what the repo needs (§06)</td>
+            <td class="dim">submit — push from <code>/home/user/task</code></td>
+            <td class="dim"><code>repo.url</code>, <code>sandbox.editor_url</code>, <code>sandbox.terminal_url</code>; <code>sandbox.preview_url</code> / <code>sandbox.db_console_url</code> only if exposed</td>
+          </tr>
+          <tr>
+            <td><span class="kind">local</span></td>
+            <td class="dim">explore-code-base (with collaborator-invite note) · clone-repo</td>
+            <td class="dim">one run-project / run-tests section with the real install + run commands</td>
+            <td class="dim">submit — push from the cloned folder</td>
+            <td class="dim"><code>repo.url</code>, <code>repo.clone_url</code>, <code>candidate.github_username</code> — <b>never</b> <code>sandbox.*</code></td>
+          </tr>
+          <tr>
+            <td><span class="kind skip">pr_review</span></td>
+            <td class="dim" colspan="4"><b>Deferred</b> — no tour for now. Support returns once the PR-review tour design is finalised.</td>
+          </tr>
+          <tr>
+            <td><span class="kind skip">skip</span></td>
+            <td class="dim" colspan="4">No tour generated — <code>tour</code> stays NULL until the task gets a built template.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <h3 class="sub">Frontend &amp; non-infra tasks get tours too — the <span class="mono">local</span> kind</h3>
+    <p class="note">A React / Next.js / plain-frontend task generates no Docker files, so <code>has_shared_infra_files()</code> returns false → <code>is_shared_infra_required = false</code> → the decision above lands on <b>local</b>. The same applies to library-only backend tasks (LangChain, pure-Python). These tasks <b>do get a full tour</b> — just a different shape: no sandbox links, because there is no sandbox. The candidate accepts the GitHub collaborator invite, clones, runs locally, pushes to submit. The LLM's only job is the run section, with the <b>real</b> commands read from the repo's own files (package.json scripts, requirements.txt):</p>
+    <pre><code><span class="cm">// Example LLM-generated middle for a React (Vite) frontend task — everything else is fixed boilerplate</span>
+[{<span class="kw">"id"</span>: <span class="kw">"run-project"</span>, <span class="kw">"title"</span>: <span class="kw">"Run the project"</span>, <span class="kw">"steps"</span>: [
+  {<span class="kw">"type"</span>: <span class="kw">"markdown"</span>, <span class="kw">"body"</span>: <span class="kw">"In the cloned folder, install dependencies and start the dev server."</span>},
+  {<span class="kw">"type"</span>: <span class="kw">"command"</span>, <span class="kw">"label"</span>: <span class="kw">"Install dependencies"</span>, <span class="kw">"command"</span>: <span class="kw">"npm install"</span>},
+  {<span class="kw">"type"</span>: <span class="kw">"command"</span>, <span class="kw">"label"</span>: <span class="kw">"Start the dev server"</span>, <span class="kw">"command"</span>: <span class="kw">"npm run dev"</span>,
+   <span class="kw">"output"</span>: {<span class="kw">"type"</span>: <span class="kw">"markdown"</span>, <span class="kw">"body"</span>: <span class="kw">"VITE v5.2.0  ready in 412 ms\n➜  Local:   http://localhost:5173/"</span>}}]}]</code></pre>
+    <p class="note" style="margin-top: 16px;">Commands run <b>locally in the cloned folder</b> — never <code>/home/user/task</code>, never <code>docker-compose</code>. If the task is verified by a test suite, the section is <code>run-tests</code> (e.g. <code>npm test</code>, shown failing first) instead of, or after, <code>run-project</code>. Why <code>sandbox.*</code> is banned here: the candidate app's tour panel resolves those variables from a provisioned sandbox — with no sandbox, the panel would hang waiting for provisioning that never happens, so the assembler rejects such a tour outright.</p>
+
+    <h3 class="sub">Local commands are judged against the tech stack</h3>
+    <p class="note">The install / run / test commands are <b>not generic</b> — they must come from what the repo's own manifest files say, and the eval gate (§07) fails the tour if they don't match the stack:</p>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>Manifest in the repo</th><th>Stack</th><th>Expected tour commands</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>package.json</code></td>
+            <td class="dim">Node / React / Next.js / Vue</td>
+            <td class="dim"><code>npm install</code>, then the <b>real script names</b> from its <code>scripts</code> block — <code>npm run dev</code> vs <code>npm start</code> vs <code>npm run build</code>, whichever this repo actually defines; <code>npm test</code> only if a test script exists.</td>
+          </tr>
+          <tr>
+            <td><code>requirements.txt</code> / <code>pyproject.toml</code></td>
+            <td class="dim">Python / FastAPI / LangChain</td>
+            <td class="dim"><code>pip install -r requirements.txt</code>, then the real entrypoint (<code>uvicorn app.main:app</code>, <code>python main.py</code>); <code>pytest</code> if a tests/ dir exists.</td>
+          </tr>
+          <tr>
+            <td><code>pom.xml</code> / <code>build.gradle</code></td>
+            <td class="dim">Java / Spring</td>
+            <td class="dim"><code>mvn spring-boot:run</code> / <code>./gradlew bootRun</code>; <code>mvn test</code> / <code>./gradlew test</code>.</td>
+          </tr>
+          <tr>
+            <td><code>go.mod</code></td>
+            <td class="dim">Go</td>
+            <td class="dim"><code>go run .</code> (or the real cmd/ path); <code>go test ./...</code>.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note" style="margin-top: 16px;">The model reads these manifests in the file blob (config files are prioritised into it precisely for this), and the eval judge cross-checks: <code>npm install</code> in a Python repo, <code>npm run dev</code> when package.json has no <code>dev</code> script, or a <code>pytest</code> step with no tests in the repo — each is a failing verdict that triggers a regeneration with the critique attached.</p>
+  </section>
+
+  <!-- 6 · How the middle sections are chosen -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">06</span>
+      <h2>How the middle sections are chosen (sandbox kind)</h2>
+    </div>
+    <p class="note">The model doesn't freestyle. The prompt gives it a fixed menu of section ids with a <b>condition</b> for each — it may only emit a section if the repo actually warrants it, in this order. Two conditions depend on the <b>surfaces block</b>: the prompt lists which of <code>app_preview</code> / <code>db_console</code> exist in this task's <code>expected_ports</code>, and forbids linking anything else.</p>
+    <p class="note"><b>And it has a budget: at most 3 middle sections</b> (head + tail already take 4 of the 7-section cap). When more than 3 conditions match — say a repo with tests, a DB, Redis, <i>and</i> endpoints — the prompt tells the model to keep the ones the candidate can't succeed without, in priority order: <code>build-and-run</code> first, then <code>run-tests</code> (it defines success), then <code>seed-data</code> (no data = nothing works), and only then an inspection section (<code>inspect-database</code> / <code>open-redis</code> / <code>test-endpoints</code>). Fewer sections is always acceptable; a fourth middle section is a validation failure.</p>
+
+    <ul class="rules">
+      <li>
+        <div class="rule-head"><span class="sec-id">build-and-run</span><span class="when always">effectively always</span></div>
+        <p>Setup <b>only</b> — bring the environment up, nothing else. Docker apps get the canonical trio: <code>docker-compose up -d --build</code> → <code>docker-compose ps</code> → <code>docker-compose logs --tail=50 &lt;service&gt;</code> with the <b>real service name</b>. If the app itself isn't a compose service (only the DB/Redis is), it's also started with its real command (<code>uvicorn …</code>, <code>npm start</code>). Never <code>run.sh</code> — that's the platform's internal boot script. No tests, no seeds, no verification here.</p>
+      </li>
+      <li>
+        <div class="rule-head"><span class="sec-id">run-tests</span><span class="when">only if a test suite verifies the task</span></div>
+        <p>The real test command (<code>pytest</code> / <code>jest</code> / <code>mvn test</code> / <code>go test</code>…), shown <b>failing first</b> — the candidate sees the red state before starting — plus a one-line note to re-run after each change. Kept separate from build-and-run.</p>
+      </li>
+      <li>
+        <div class="rule-head"><span class="sec-id">seed-data</span><span class="when">only if the repo has a seed script</span></div>
+        <p>Runs the repo's real seed script (<code>seed_data.sh</code>, <code>seed.py</code>, <code>prisma db seed</code>…) <b>after</b> the services are up. Many stores start empty on a fresh <code>docker-compose up</code> (Firebase emulators, fresh DB volumes) — without this the candidate sees no data. Notes that re-running re-seeds.</p>
+      </li>
+      <li>
+        <div class="rule-head"><span class="sec-id">inspect-database</span><span class="when">only if real SQL/Mongo DB + db_console surface</span></div>
+        <p>Link-only: the <code>{{sandbox.db_console_url}}</code> (Adminer) link plus one markdown line with the real login — System / Server / Username / Password / Database, read from the docker-compose env. <b>No</b> psql / mongosh / SELECT commands. If <code>db_console</code> isn't in <code>expected_ports</code>, the section is omitted entirely.</p>
+      </li>
+      <li>
+        <div class="rule-head"><span class="sec-id">open-redis</span><span class="when">only if the repo uses Redis</span></div>
+        <p><code>docker-compose exec &lt;service&gt; redis-cli</code> with the real compose service name, then a few orienting commands — <code>DBSIZE</code>, <code>SCAN 0 MATCH &lt;real key prefix&gt;:*</code>. Redis has no web console, so unlike SQL it keeps its shell commands.</p>
+      </li>
+      <li>
+        <div class="rule-head"><span class="sec-id">test-endpoints</span><span class="when">only if HTTP routes + app_preview surface</span></div>
+        <p>Always leads with a docs link: Swagger/OpenAPI (<code>{{sandbox.preview_url}}/docs</code>) when the framework serves it (FastAPI, NestJS, springdoc…), otherwise a real route. May add one short <code>curl</code> health check after the link.</p>
+      </li>
+      <li>
+        <div class="rule-head"><span class="sec-id">write-design</span><span class="when">only if the deliverable is a design doc</span></div>
+        <p>If the task asks for <code>DESIGN.md</code> rather than running code, a single write-design section replaces the menu above.</p>
+      </li>
+    </ul>
+
+    <p class="note" style="margin-top: 20px;">Tone rules baked into the prompt: one short sentence per markdown body, few steps per section, example outputs optional and ≤3 lines grounded in the repo's real values — never invented package counts, install warnings, or log dumps, and never a DB / endpoint / service the repo doesn't have.</p>
+  </section>
+
+  <!-- 7 · Validation & assembly -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">07</span>
+      <h2>Quality gates: validation + eval + live verification</h2>
+    </div>
+    <p class="note">Three layers stand between the model's output and the database. <b>Layer 1 is deterministic code</b> — schema and rule checks that cost nothing. <b>Layer 2 is an LLM eval judge</b> — the same gate pattern the pipeline already uses for tasks and code (<code>evals.py</code>). <b>Layer 3 is empirical</b> — the tour is checked against reality: executed in the gate's sandbox (sandbox tours) or cross-checked against the repo's manifests (local tours). A tour must pass all applicable layers; any failure means <b>no tour is written</b> (never a half-valid one).</p>
+
+    <h3 class="sub">Layer 1 — deterministic validation (code, runs first)</h3>
+    <ul class="checks">
+      <li><span><b>Shape:</b> every section has <code>id</code>, <code>title</code>, and a non-empty <code>steps</code> list; every step is one of <code>markdown</code> / <code>link</code> / <code>command</code>.</span></li>
+      <li><span><b>Boilerplate ownership:</b> if the model emits a head/tail section anyway (<code>explore-code-base</code>, <code>submit</code>, …) it is silently dropped — the code-owned version always wins.</span></li>
+      <li><span><b>No filler:</b> sections like "understand-the-codebase" or "review-reference-material" are rejected — every section must be a concrete action.</span></li>
+      <li><span><b>Variable allowlist:</b> every <code>{{variable}}</code> in the assembled tour must be one of the seven the runtime can substitute — <code>repo.url</code>, <code>repo.clone_url</code>, <code>candidate.github_username</code>, <code>sandbox.editor_url</code> / <code>terminal_url</code> / <code>db_console_url</code> / <code>preview_url</code>. Go-template dots in shell commands (e.g. <code>docker ps --format '{{.Names}}'</code>) are excluded from the check.</span></li>
+      <li><span><b>Size cap:</b> total sections ≤ 7 (sandbox: 4 fixed + ≤3 middle; local: 3 fixed + ≤4 middle, typically 1–2). Fewer is fine; more is a hard fail that triggers regeneration — never a silent trim.</span></li>
+      <li><span><b>Kind guard:</b> a local tour must contain zero <code>sandbox.*</code> variables — with no sandbox to resolve them, they would hang the tour panel.</span></li>
+      <li><span><b>Final shape:</b> the assembled tour is <code>{enabled: true, version: 1, sections: [head + middle + tail], variables: […]}</code> — the variables list holds only the placeholders actually used.</span></li>
+    </ul>
+
+    <h3 class="sub">Layer 2 — the tour eval gate (LLM judge, runs on the assembled tour)</h3>
+    <p class="note">Layer 1 can only prove the tour is <b>well-formed</b>; it cannot prove the tour is <b>true</b>. The eval judge gets the assembled tour plus the same repo blob the generator saw, and returns a structured verdict (<code>passed</code> + per-check findings + a critique). It checks:</p>
+    <ul class="checks">
+      <li><span><b>Groundedness:</b> every command, service name, port, file path, DB name, and login in the tour actually exists in the repo — nothing invented. A <code>docker-compose logs app</code> when the compose service is called <code>api</code> is a fail.</span></li>
+      <li><span><b>Completeness:</b> nothing the candidate needs is missing — a test suite in the repo but no <code>run-tests</code> section, a seed script but no <code>seed-data</code>, HTTP routes + preview surface but no <code>test-endpoints</code>.</span></li>
+      <li><span><b>No over-promising:</b> no section for a capability the task lacks — no DB inspection for a repo without a DB, no endpoint testing for a worker with no HTTP surface.</span></li>
+      <li><span><b>Kind fit:</b> a local tour tells the candidate to run things in the cloned folder (never <code>/home/user/task</code> or docker-compose the repo doesn't have); a sandbox tour never tells them to clone.</span></li>
+      <li><span><b>Stack fit (local tours especially):</b> the install/run/test commands match the repo's manifest — <code>npm</code> commands only with a package.json and only its real script names, <code>pip</code>/<code>pytest</code> only for a Python repo, <code>mvn</code>/<code>gradle</code> only for Java. <code>npm run dev</code> when no <code>dev</code> script exists is a fail (§05 stack table).</span></li>
+      <li><span><b>Compactness:</b> even under the 7-section cap, every section must earn its place — a padded tour with low-value steps fails. Fewer, sharper sections beat more, thinner ones.</span></li>
+      <li><span><b>Candidate-safety:</b> the tour never leaks the solution — it orients (how to run, where to look), it does not solve (what to change).</span></li>
+    </ul>
+    <h3 class="sub">Layer 3 — empirical verification (runs where the candidate will run)</h3>
+    <p class="note"><b>Sandbox tours — executed live.</b> The tour is generated right after the E2B gate passes, while the gate's sandbox is still running with this exact task loaded. Each command step is executed there, with per-section expectations:</p>
+    <ul class="checks">
+      <li><span><b>build-and-run:</b> every command exits 0; <code>docker-compose ps</code> shows the services the tour names; the logs command targets a service that exists.</span></li>
+      <li><span><b>seed-data:</b> the seed script exists and exits 0.</span></li>
+      <li><span><b>run-tests:</b> the test command <b>runs</b> (runner found, tests collected) — a <b>red result is expected and correct</b>; only "command not found" / "no tests collected" fails.</span></li>
+      <li><span><b>open-redis:</b> <code>redis-cli</code> reaches the named service; the orienting commands return.</span></li>
+      <li><span><b>Linked surfaces:</b> every port behind a <code>{{sandbox.preview_url}}</code> / <code>{{sandbox.db_console_url}}</code> link is actually listening.</span></li>
+    </ul>
+    <p class="note" style="margin-top: 16px;"><b>Local tours — manifest cross-check in code</b> (no sandbox exists for non-infra tasks; the gate is skipped for them). Deterministic, no LLM: each command is checked against the repo's own files — <code>npm run &lt;x&gt;</code> requires an <code>&lt;x&gt;</code> script in package.json; <code>pip install -r requirements.txt</code> requires that file; <code>pytest</code> requires tests; <code>mvn</code>/<code>gradle</code>/<code>go</code> require their manifests (§05 stack table).</p>
+    <p class="note"><b>On any failing verdict</b> (judge or empirical): the failure is fed back into the generation prompt and the middle is regenerated — up to <code>MAX_TOUR_EVAL_RETRIES</code> attempts (mirroring <code>MAX_EVAL_RETRIES</code> in <code>evals.py</code>). If every attempt fails, no tour is written (<code>tour = NULL</code>) and the task still ships — the gates protect candidates from a wrong tour; they never block a good task. All LLM calls go through Portkey and verdicts are logged, so failing tours are auditable.</p>
+  </section>
+
+  <!-- 8 · Design decisions -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">08</span>
+      <h2>Design decisions</h2>
+    </div>
+    <div class="decisions">
+      <div class="decision">
+        <h3>Self-contained module — no backfill dependency</h3>
+        <p>All tour logic is written into <code>generators/task/tour.py</code>. The backfill script is <b>reference only and will be deleted</b>; nothing imports from it, so its removal breaks nothing.</p>
+      </div>
+      <div class="decision">
+        <h3>Non-fatal, always</h3>
+        <p>A task that passed the eval gate and the E2B gate must never die on a tour hiccup. Failure → warning log → <b>tour stays NULL</b> → the task still ships.</p>
+      </div>
+      <div class="decision">
+        <h3>Ground in memory, not GitHub</h3>
+        <p><code>upload_files_to_github</code> pushes exactly <code>code_data</code>, so generating from memory is <b>byte-identical</b> to re-fetching from the repo — minus the API calls, rate limits, and latency.</p>
+      </div>
+      <div class="decision">
+        <h3>Portkey, not raw Anthropic</h3>
+        <p>The repo rule is all LLM traffic goes through the Portkey gateway. The tour step reuses <code>openai_client</code> from <code>_clients.py</code> — tracing and billing for free. The reference script's direct <code>api.anthropic.com</code> call is <b>not</b> carried over.</p>
+      </div>
+      <div class="decision">
+        <h3>Boilerplate stays deterministic</h3>
+        <p>Head and tail sections are assembled in code, never generated. Every candidate sees the same setup and submit steps; the model can't drift them.</p>
+      </div>
+      <div class="decision">
+        <h3>All-or-nothing writes</h3>
+        <p>Validation runs before assembly, assembly before the eval, the eval before persistence — a tour that fails any layer is discarded whole. <code>tour</code> is either NULL or fully valid, never partial.</p>
+      </div>
+      <div class="decision">
+        <h3>Eval-gated, like tasks themselves</h3>
+        <p>The pipeline already refuses to ship an unevaluated task; it now refuses to ship an unevaluated <b>tour</b>. LLM judge + retry-with-critique (like <code>evals.py</code>), plus an empirical layer: sandbox tours are <b>executed in the gate's live sandbox</b>, local tours are cross-checked against the repo's manifests (§07).</p>
+      </div>
+      <div class="decision">
+        <h3>After the gate, not before it</h3>
+        <p>The E2B gate sits inside the task-regeneration loop — a failing gate throws the code away and regenerates. Writing the tour before the gate would waste an LLM call per failed attempt and risk a stale tour. Right <b>after</b> the gate passes is the earliest safe moment — and the sandbox is still hot for verification.</p>
+      </div>
+      <div class="decision">
+        <h3>Infra and non-infra are equal citizens</h3>
+        <p>The step runs for every task the pipeline creates. Docker/shared-infra → <code>sandbox</code> tour; frontend and library-only tasks → <code>local</code> tour, with commands judged against the repo's tech stack. Skipped only for infra-without-template (sandbox can never boot) and <code>PR_REVIEW</code> (deferred until its tour design is finalised).</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 9 · Files touched -->
+  <section class="section">
+    <div class="section-head">
+      <span class="section-num">09</span>
+      <h2>Files touched &amp; verification</h2>
+    </div>
+    <ul class="files">
+      <li><span class="path">generators/task/tour.py</span><span class="chip new">new</span><span class="what">Fully self-contained: kind detection, boilerplate, surfaces block, in-memory blob builder, prompt, parser, validator, assembler, <b>tour eval judge + retry loop</b>, Portkey LLM calls.</span></li>
+      <li><span class="path">generators/task/creator.py</span><span class="what">Best-effort tour generation right after the E2B gate passes (~line 945, gate sandbox still hot), wrapped in try/except; the result rides in memory to <code>mark_task_ready</code>.</span></li>
+      <li><span class="path">e2b_flow / gate seam</span><span class="what">Expose the gate's live sandbox handle to the tour step (or a callback hook) so tour commands can be executed before teardown — the only structural change this plan needs.</span></li>
+      <li><span class="path">generators/task/persistence.py</span><span class="what">Optional <code>tour=</code> parameter on <code>mark_task_ready</code>, added to the UPDATE dict.</span></li>
+      <li><span class="path">generators/task/tests/</span><span class="what">Unit tests: kind detection (incl. the frontend/non-infra → local path), blob builder shape/caps, surfaces block, parse/validation failure modes, assembly, eval-retry loop (pass, fail-then-pass with critique, all-retries-exhausted → None).</span></li>
+      <li class="removed"><span class="path">backfill_task_tours.py</span><span class="chip warn">reference only → delete</span><span class="what">Never imported by anything. Removed once the inline step is verified in dev.</span></li>
+    </ul>
+    <p class="note" style="margin-top: 20px;">Verification: run the unit tests, then two real <code>generate-tasks</code> runs against <b>dev</b> — one infra/docker task (expect a <code>sandbox</code> tour whose commands were <b>executed and passed in the gate's sandbox</b>) and one frontend / non-infra task (expect a <code>local</code> tour whose commands were <b>manifest-checked</b>). Confirm each row lands with a populated, well-formed <code>tour</code>: correct kind, valid variables, boilerplate head/tail intact, commands matching the repo. Check the logs show the judge verdict and the layer-3 result for each. After that, delete the backfill script.</p>
+  </section>
+
+  <footer>
+    Utkrushta task pipeline · tour integration plan · July 2026 — implemented in <span class="mono">generators/task/tour.py</span>, wired into <span class="mono">generators/task/creator.py</span>
+  </footer>
+</div>

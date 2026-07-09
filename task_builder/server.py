@@ -29,7 +29,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
-from generators.input_files.generator import init_supabase as _init_competency_supabase
+from flows.tech.stages.input_files.generator import init_supabase as _init_competency_supabase
 from task_builder.jobs import JobStatus, enqueue_job
 from task_builder.conversation import apply_turn, build_bot_client
 from task_builder.conversation_repo import (
@@ -144,7 +144,7 @@ def conversation_detail(
     When ``X-Testmaker-Id`` is present, returns 404 if the conversation
     belongs to a different testmaker (scope guard).
     """
-    from generators.task.persistence import init_supabase
+    from infra.supabase import init_supabase
     sb = init_supabase(env)
 
     rows = (
@@ -192,7 +192,7 @@ def history(
     scoped to that testmaker. Without the header (local dev / direct hit),
     returns the most recent ``limit`` conversations across all testmakers.
     """
-    from generators.task.persistence import init_supabase
+    from infra.supabase import init_supabase
     sb = init_supabase(env)
 
     conv_q = (
@@ -381,7 +381,7 @@ def run_state(
         "attempts": int,
       }
     """
-    from generators.task.persistence import init_supabase
+    from infra.supabase import init_supabase
     sb = init_supabase(env)
     rows = (
         sb.table("generation_jobs")
@@ -477,7 +477,7 @@ def _fetch_job_row(env: str, job_id: str) -> dict[str, Any] | None:
     """Read a single job row. Lives outside the async generator so we can
     run it in a thread (Supabase client is sync).
     """
-    from generators.task.persistence import init_supabase
+    from infra.supabase import init_supabase
     sb = init_supabase(env)
     result = (
         sb.table("generation_jobs")

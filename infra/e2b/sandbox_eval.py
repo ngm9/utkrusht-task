@@ -55,9 +55,9 @@ from infra.logger_config import logger
 
 # The gate reads the template + build/test/compile commands from the
 # ResolvedPlan the caller hands in (those values live in the ``templates``
-# Supabase table; ``generators.task.runtime_resolver`` loads them and
+# Supabase table; ``flows.tech.stages.generate.runtime_resolver`` loads them and
 # stamps them onto ``plan.template``). Doing it that way means this module
-# touches no ``generators.task`` import at all — sidesteps the package-init
+# touches no ``flows.tech.stages.generate`` import at all — sidesteps the package-init
 # import cycle that bit pytest collection earlier.
 
 _TASK_DIR = "/home/user/task"
@@ -446,10 +446,24 @@ def _run_runsh(
     )
 
 
+def _fire_on_pass(result: SandboxEvalResult, sb, on_pass) -> SandboxEvalResult:
+    """Invoke the ``on_pass`` hook with the still-live sandbox when (and only
+    when) the gate passed. Hook errors are logged and swallowed — the hook
+    exists for best-effort extras (tour verification) and must never flip a
+    passed gate."""
+    if on_pass is not None and result.passed:
+        try:
+            on_pass(sb)
+        except Exception as exc:  # noqa: BLE001 — hook is best-effort by contract
+            logger.warning(f"{_GATE} on_pass hook failed (ignored): {exc}")
+    return result
+
+
 def run_sandbox_eval(
     code_files: dict,
     plan: Any,
     run_sh: str | None = None,
+    on_pass=None,
 ) -> SandboxEvalResult:
     """Boot a sandbox, write the code + ``run.sh`` in, verify readiness.
 
@@ -468,6 +482,12 @@ def run_sandbox_eval(
     ``plan`` is a ``ResolvedPlan`` (or any object exposing a ``.template``
     with ``.template_id``/``.primary_runtime``/``.build_cmd``/``.test_cmd``);
     ``None`` is also accepted and treated as an explicit no-template skip.
+
+    ``on_pass`` is an optional ``callable(sandbox)`` invoked with the
+    still-live sandbox right after the gate PASSES, before teardown — the
+    tour step uses it to execute the tour's commands against the booted
+    task. It never fires on fail/skip, and an exception inside it is logged
+    and swallowed: the hook can never flip a passed gate.
     """
     template_spec = getattr(plan, "template", None)
     template = template_spec.template_id if template_spec is not None else None
@@ -555,7 +575,7 @@ def run_sandbox_eval(
 
         # Path A — new default: run.sh IS the gate.
         if run_sh:
-            return _finish(_run_runsh(sb, run_sh, template_spec))
+            return _finish(_fire_on_pass(_run_runsh(sb, run_sh, template_spec), sb, on_pass))
 
         # Path B — legacy fallback for tasks that don't yet ship run.sh.
         # Collapses to ``no_runsh`` once every task is re-generated with
@@ -569,7 +589,8 @@ def run_sandbox_eval(
         if has_legacy_recipe:
             logger.info(f"{_GATE} no run.sh — falling back to legacy "
                         f"build_cmd/test_cmd path for template={template}")
-            return _finish(_run_legacy_build_test(sb, template_spec, code_files, names))
+            return _finish(_fire_on_pass(
+                _run_legacy_build_test(sb, template_spec, code_files, names), sb, on_pass))
 
         return _finish(SandboxEvalResult(
             skipped=True, verdict="no_runsh",

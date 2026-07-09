@@ -17,7 +17,7 @@ pip install -r requirements.txt
 
 ### Generate assessment tasks (main workflow)
 ```bash
-python multiagent.py generate-tasks \
+python -m apps.cli generate_tasks \
   -c path/to/competency.json \
   -b path/to/background.json \
   -s path/to/task_scenarios.json
@@ -25,36 +25,36 @@ python multiagent.py generate-tasks \
 
 ### Deploy a task to an E2B sandbox
 ```bash
-python -m e2b_flow deploy-task --task-id <UUID> --env dev
+python -m infra.e2b deploy-task --task-id <UUID> --env dev
 ```
 
 ### Reset/undeploy a task
 ```bash
-python -m e2b_flow reset-task --task-id <UUID> --env dev
+python -m infra.e2b reset-task --task-id <UUID> --env dev
 ```
 
 > The legacy `multiagent.py deploy-task` / `reset-task` (DigitalOcean droplets
 > + SSH) were removed on 2026-05-25. E2B is the only live deploy path.
 
-### Unified pipeline (generate input files + scenarios in one step)
+### Full tech pipeline (preflight → input_files → scenarios → prompts → generate)
 ```bash
-python -m pipeline --name "Java, Kafka" --proficiency BASIC --count 6 --append
-python -m pipeline --name "React" --proficiency BASIC --dry-run
+python -m flows.tech --name "Java, Kafka" --proficiency BASIC --count 6
+python -m flows.tech --name "React" --proficiency BASIC --skip-preflight
 ```
 
-### Generate input files only
+### Generate input files only (stage 1)
 ```bash
-python -m generate_input_files --name "Java" --proficiency BASIC
+python -m flows.tech.stages.input_files --competency-name "Java" --proficiency BASIC
 ```
 
-### Generate task scenarios only
+### Generate task scenarios only (stage 2)
 ```bash
-python -m scenario_generator --competency-file path/to/competency.json --count 6 --append
+python -m flows.tech.stages.scenarios --competency-file path/to/competency.json --background-file path/to/background.json --count 6 --append
 ```
 
 ### PR Review task generation
 ```bash
-python -m pr_review_flow \
+python -m flows.pr_review \
   -c path/to/competency.json \
   -b path/to/background.json \
   -s path/to/task_scenarios_pr_review.json
@@ -78,63 +78,58 @@ python -m design_review_flow store \
 
 ### Gist management
 ```bash
-python gist_manager.py sync-prod-to-dev
-python gist_manager.py create-prod-missing-gists
-python gist_manager.py create --task-ids <ID1> <ID2> --env dev
-python gist_manager.py sync-is-enabled
+python -m apps.cli gist sync-prod-to-dev
+python -m apps.cli gist create-prod-missing-gists
+python -m apps.cli gist create --task-ids <ID1> <ID2> --env dev
+python -m apps.cli gist sync-is-enabled
 ```
 
 ## Architecture
 
-### Core Flow: `task_generation/` (called via the `multiagent.py` shim)
+> **Authoritative layout: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).** Entrypoints in
+> `apps/`, one package per flow in `flows/`, shared libs in `infra/` +
+> `task_generation_prompts/`. The old `multiagent.py` shim, top-level `cli/`, and
+> `run_pipeline.py` were replaced by `apps/cli` + `flows/tech` on 2026-07-07
+> (flows-restructure). The tables below are a summary; ARCHITECTURE.md is the source of truth.
 
-The main orchestrator lives in `task_generation/` (refactored from
-`multiagent.py` on 2026-05-25). The shim `multiagent.py` only registers
-the `generate_tasks` Click command; deploy + reset live in `e2b_flow/`.
+### Core Flow: `flows/tech/` (run via `python -m flows.tech`)
+
+The main pipeline lives in `flows/tech/`: `pipeline.py` orchestrates the stages
+under `flows/tech/stages/{preflight,input_files,scenarios,prompts,generate}`,
+driven by the manifest in `flows/_base/registry.py`. Each stage runs as its own
+`python -m` subprocess. Deploy + reset live in `infra/e2b`.
 
 **Task generation pipeline:**
 1. Read competency + background + scenario JSON inputs
 2. Select tech-specific prompt from `task_generation_prompts/{level}/`
 3. Call OpenAI (via Portkey) to generate task description + code files
-4. Run LLM evaluations (`evals.py`) — task eval + code eval with retry loop
-5. Run the E2B build/test gate (`e2b_flow/sandbox_eval.py`)
-6. Create GitHub template repo + answer repo (`github_utils.py`)
+4. Run LLM evaluations (`infra/evals.py`) — task eval + code eval with retry loop
+5. Run the E2B build/test gate (`infra/e2b/sandbox_eval.py`)
+6. Create GitHub template repo + answer repo (`infra/github_utils.py`)
 7. Create GitHub Gist for task distribution
 8. Store metadata in Supabase (dev or prod)
-9. Live deploy (separate step): `python -m e2b_flow deploy-task`
+9. Live deploy (separate step): `python -m infra.e2b deploy-task`
 
-### Module Responsibilities
+### Module map
 
-| Module | Purpose |
-|--------|---------|
-| `multiagent.py` | Thin shim — registers only the `generate_tasks` Click command (backward-compat for run_pipeline.py + docs) |
-| `task_generation/` | Task creation pipeline: creator, evaluator, gate, runtime_resolver, persistence |
-| `cli/` | Click commands (`generate_tasks` only) |
-| `e2b_flow/` | E2B deploy + reset CLI + sandbox manager + build/test gate |
-| `utils.py` | Task generation helpers: prompt formatting, JSON parsing, file I/O, gist creation |
-| `evals.py` | LLM-based evaluation of generated tasks and code quality |
-| `schemas.py` | JSON schemas for OpenAI structured outputs |
-| `github_utils.py` | GitHub repo creation, template repos, batch file uploads |
-| `gist_manager.py` | Standalone CLI for GitHub Gist lifecycle (sync, create, enable) |
-| `logger_config.py` | Centralized logging |
-
-### Sub-packages
-
-| Package | Purpose |
-|---------|---------|
-| `pipeline/` | Unified CLI chaining `generate_input_files` + `scenario_generator` |
-| `generate_input_files/` | Fetches competencies from Supabase DB, generates input JSON files |
-| `scenario_generator/` | LLM-generated real-world scenarios for competencies |
-| `pr_review_flow/` | Separate flow for PR review assessment tasks (own prompts, schemas, evals) |
-| `design_review_flow/` | UI/UX design review assessments with Figma flaw injection |
-| `non_tech_flow/` | Separate pipeline for non-technical AI/ML assessment challenges |
-| `task_generation_prompts/` | Technology-specific prompt templates organized by level (Beginner/Basic/Intermediate) |
-| `task_input_files/` | Input JSON files per technology (competencies, backgrounds, scenarios) |
-| `task_builder/` | Conversational web front-end (FastAPI) that interviews for pipeline inputs and runs the pipeline with live progress |
+| Path | Purpose |
+|------|---------|
+| `apps/cli/` | The one human CLI — `python -m apps.cli` (`generate_tasks` + `gist`) |
+| `flows/_base/` | Shared pipeline machinery: `StageSpec`, stage registry, subprocess runner |
+| `flows/tech/` | Main flow: `pipeline.py` + `stages/{preflight,input_files,scenarios,prompts,generate}` |
+| `flows/pr_review/`, `flows/non_tech/` | Secondary flows (own prompts, evals, `__main__`) |
+| `flows/design_review/` | Reserved (code removed) — see its README |
+| `infra/` | Shared libs: `supabase`, `github_utils`, `evals`, `schemas`, `utils`, `pricing`, `infra_kinds`, `logger_config`, `e2b/`, `tracing/`, `classifier/`, `storage/` |
+| `task_generation_prompts/` | Shared prompt-template reference data (by level); consumed by infra + flows |
+| `task_input_parser/`, `task_quality/`, `task_validation/` | Shared input parsing / quality / validation |
+| `task_builder/` | Conversational FastAPI front-end that runs the pipeline with live progress |
+| `trace_ui/` | Trace/log viewer over pipeline runs |
 
 ### External Services
 
 - **OpenAI API** (via Portkey gateway) — task + code generation, evaluations
+- **Anthropic / Claude** (via Portkey gateway) — default for the "Claude-role" calls (task generation, classifier, task-builder bot)
+- **OpenRouter** — alternative backend for the Claude-role calls when `LLM_PROVIDER=glm` (GLM / Z.ai). OpenAI-compatible; see `infra/llm_provider.py`
 - **Supabase** — task metadata storage (dev and prod environments)
 - **GitHub** — template repos, answer repos, gists (via PyGithub)
 - **DigitalOcean** — droplet deployment via SSH/paramiko
@@ -142,7 +137,8 @@ the `generate_tasks` Click command; deploy + reset live in `e2b_flow/`.
 ### Environment Variables
 
 Required in `.env` — see `TASK_MANAGEMENT_GUIDE.md` for full list. Key ones:
-- `OPENAI_API_KEY`, `PORTKEY_API_KEY` — LLM access
+- `OPENAI_API_KEY`, `PORTKEY_API_KEY`, `ANTHROPIC_API_KEY` — LLM access
+- `LLM_PROVIDER` (`anthropic`|`glm`), `OPENROUTER_API_KEY`, `OPENROUTER_GLM_MODEL` — optional GLM-via-OpenRouter switch for the Claude-role calls (the trace_ui "New run" modal sets it per-run; the env var is the default for CLI runs)
 - `GITHUB_UTKRUSHTAPPS_TOKEN`, `GITHUB_GIST_TOKEN`, `REPO_OWNER` — GitHub
 - `SUPABASE_URL_APTITUDETESTSDEV`, `SUPABASE_API_KEY_APTITUDETESTSDEV` — Supabase dev
 - `SUPABASE_URL_APTITUDETESTS`, `SUPABASE_API_KEY_APTITUDETESTS` — Supabase prod
@@ -150,17 +146,10 @@ Required in `.env` — see `TASK_MANAGEMENT_GUIDE.md` for full list. Key ones:
 
 ## Key Patterns
 
-- All CLI interfaces use **Click**. `multiagent.py` has top-level commands; sub-packages use `__main__.py` entry points.
+- All CLI interfaces use **Click** (gist uses argparse). `apps/cli` is the top-level CLI (`python -m apps.cli` → `generate_tasks` + `gist`); flows and stages expose `__main__.py` entry points (`python -m flows.tech`, `python -m flows.tech.stages.<stage>`).
 - OpenAI calls go through **Portkey gateway** (`PORTKEY_GATEWAY_URL`) with provider headers — never call OpenAI directly.
+- **Prompt caching**: Claude calls (task-gen, classifier, task-builder bot) cache their stable prefix via `infra/prompt_cache.cache_messages` — it adds Anthropic `cache_control` breakpoints (system + last message) in the OpenAI chat shape Portkey forwards. Anthropic-only (OpenAI models auto-cache; GLM path is a no-op). Verify with `usage.cache_read_input_tokens` / `prompt_tokens_details.cached_tokens`.
+- **LLM provider switch** lives in `infra/llm_provider.py` — one place picks the client + model for the Claude-role calls (Anthropic default, GLM via OpenRouter when `LLM_PROVIDER=glm`). Every Claude call site (`generators/task/_clients.py`, `creator.py`, `infra/utils.py`, `infra/classifier/llm_classifier.py`, `runtime_resolver.py`, `task_builder/conversation.py`) resolves through it, so they flip together. The OpenAI answer-code + eval-judge steps are NOT routed through it.
 - Task generation prompts are Python files exporting prompt strings, organized by `{level}/{tech_stack}_prompt.py`.
 - Two Supabase environments (dev/prod) controlled by `--env` flags throughout.
 - LLM evaluations have a retry loop (`MAX_EVAL_RETRIES` in `evals.py`) — tasks that fail eval are regenerated.
-
-## illuminate: required pre-write step
-
-Before writing or modifying any source file in this repository, invoke the
-`illuminate_audit` MCP tool with your plan, the files you intend to modify,
-and your rationale. Surface the response to the user before proceeding.
-
-If `status` is `block`, do not proceed without explicit user approval.
-If `status` is `warn`, surface the warnings to the user before writing.
