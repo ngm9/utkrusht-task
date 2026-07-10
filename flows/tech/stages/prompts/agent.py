@@ -57,10 +57,13 @@ load_dotenv()
 # anthropic/claude-haiku-4-5 by default, openrouter/<glm> when LLM_PROVIDER=glm.
 DEFAULT_RUNTIME_MODEL = os.getenv("PROMPT_GENERATOR_MODEL", "openai/gpt-5.5")
 DEFAULT_COMPILE_MODEL = os.getenv("PROMPT_GENERATOR_COMPILE_MODEL") or resolve_dspy_model("prompt_compile")
+# The advisory verify step is evaluative, not creative — run it on a cheap model
+# (nano) instead of the strong runtime model. Override via PROMPT_VERIFIER_MODEL.
+DEFAULT_VERIFY_MODEL = os.getenv("PROMPT_VERIFIER_MODEL", "openai/gpt-5.4-nano")
 
 
-def configure_dspy(model: Optional[str] = None, mode: str = "runtime") -> None:
-    """Wire DSPy to the right LLM provider.
+def _build_lm(model: str) -> "dspy.LM":
+    """Build a DSPy LM for ``model`` with the right provider routing.
 
     Routing logic:
       - Models prefixed `openrouter/...`  → OpenRouter direct (uses OPENROUTER_API_KEY)
@@ -68,14 +71,7 @@ def configure_dspy(model: Optional[str] = None, mode: str = "runtime") -> None:
 
     OpenRouter is for cheap/free open-source models (DeepSeek, Qwen, Gemma).
     Portkey is for OpenAI/Anthropic models routed through our existing gateway.
-
-    Args:
-        model: explicit model override; takes precedence over `mode` defaults.
-        mode:  "runtime" (default, strong model) or "compile" (cheap model).
     """
-    if model is None:
-        model = DEFAULT_COMPILE_MODEL if mode == "compile" else DEFAULT_RUNTIME_MODEL
-
     # GPT-5 family (gpt-5, gpt-5.4, gpt-5-codex, ...) only accepts
     # temperature=1 — litellm rejects any other value. Detect by substring
     # so future point-releases (gpt-5.5 etc.) are handled automatically.
@@ -91,32 +87,50 @@ def configure_dspy(model: Optional[str] = None, mode: str = "runtime") -> None:
                 "Get a key at https://openrouter.ai/keys"
             )
         bare_model = model[len("openrouter/"):]
-        lm = dspy.LM(
+        return dspy.LM(
             model=f"openrouter/{bare_model}",
             api_key=or_key,
             api_base="https://openrouter.ai/api/v1",
             max_tokens=16000,
             temperature=temperature,
         )
-    else:
-        api_key = os.getenv("OPENAI_API_KEY")
-        portkey_key = os.getenv("PORTKEY_API_KEY")
-        if not api_key:
-            raise RuntimeError("Missing OPENAI_API_KEY in environment.")
 
-        from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
+    api_key = os.getenv("OPENAI_API_KEY")
+    portkey_key = os.getenv("PORTKEY_API_KEY")
+    if not api_key:
+        raise RuntimeError("Missing OPENAI_API_KEY in environment.")
 
-        provider = "anthropic" if "anthropic/" in model or "claude" in model else "openai"
-        lm = dspy.LM(
-            model=model,
-            api_key=api_key,
-            api_base=PORTKEY_GATEWAY_URL,
-            extra_headers=createHeaders(provider=provider, api_key=portkey_key),
-            max_tokens=16000,
-            temperature=temperature,
-        )
+    from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
 
-    dspy.settings.configure(lm=lm)
+    provider = "anthropic" if "anthropic/" in model or "claude" in model else "openai"
+    return dspy.LM(
+        model=model,
+        api_key=api_key,
+        api_base=PORTKEY_GATEWAY_URL,
+        extra_headers=createHeaders(provider=provider, api_key=portkey_key),
+        max_tokens=16000,
+        temperature=temperature,
+    )
+
+
+def build_verify_lm() -> "dspy.LM":
+    """LM for the advisory prompt-VERIFY step. Verification is evaluative, not
+    creative, so it runs on a cheap model (``gpt-5.4-nano`` by default) instead
+    of the strong runtime model — override via ``PROMPT_VERIFIER_MODEL``."""
+    return _build_lm(DEFAULT_VERIFY_MODEL)
+
+
+def configure_dspy(model: Optional[str] = None, mode: str = "runtime") -> None:
+    """Wire DSPy to the right LLM provider (see :func:`_build_lm`).
+
+    Args:
+        model: explicit model override; takes precedence over `mode` defaults.
+        mode:  "runtime" (default, strong model) or "compile" (cheap model).
+    """
+    if model is None:
+        model = DEFAULT_COMPILE_MODEL if mode == "compile" else DEFAULT_RUNTIME_MODEL
+
+    dspy.settings.configure(lm=_build_lm(model))
 
     # Capture the DSPy/litellm completions into the pipeline trace sink (no-op
     # unless PIPELINE_TRACING_ENABLED). DSPy bypasses the OpenAI-SDK trace_client
@@ -285,23 +299,45 @@ class GeneratePromptSignature(dspy.Signature):
           – Task Overview: 3-4 meaningful sentences. No bullet list.
             Describes the business scenario, current state, and why the
             problem matters. NEVER empty. NO bold time-budget callouts.
-          – Objectives:    4-6 bullets max.
+          – Objectives:    BASIC/BEGINNER 4-6 bullets max; INTERMEDIATE/ADVANCED
+            3-4 bullets max (fewer, tighter is better).
           – Helpful Tips:  4-5 bullets max.
-          – How to Verify: 4-6 bullets max.
+          – How to Verify: 3-5 bullets max.
 
       • Per-section framing rules the generated prompt MUST include:
-          – Objectives: "Each objective must give the candidate enough context
-            to understand the problem and start investigating — without
-            revealing the specific fix. A good objective names: (1) what is
-            broken or missing, (2) what observable impact that has on the
-            system or user, and (3) what a resolved state looks like. It does
-            NOT name the API, library, pattern, or algorithm that solves it.
-            Objectives describe the 'what' and 'why', never the 'how'."
-            Each bullet should be a full, context-rich sentence — not a
-            two-word label. BAD: 'Improve query performance.' GOOD: 'The
-            product search endpoint returns results in 4-6 seconds under
-            normal load; after your changes it should respond in under 500ms
-            for typical query patterns.'
+          – Objectives (PROFICIENCY-CONDITIONAL — branch on the `proficiency`
+            input; the two levels are deliberately different):
+
+              · BASIC / BEGINNER — objectives MAY be explicit and directive.
+                Each is a full, context-rich sentence stating what is broken or
+                missing, its observable impact, and what a resolved state looks
+                like. Being concrete about WHAT to achieve is fine and expected
+                at this level (still don't paste the literal answer). This is
+                the correct style for BASIC — do not make BASIC open-ended.
+                GOOD (basic): 'The product search endpoint returns results in
+                4-6 seconds under normal load; after your changes it should
+                respond in under 500ms for typical query patterns.'
+
+              · INTERMEDIATE / ADVANCED — objectives MUST be concise and
+                OPEN-ENDED. Each states ONE desired outcome in a single short
+                line (roughly 8-16 words), one deliverable each. Describe the
+                'what' and 'why', NEVER the 'how': do NOT name the API, library,
+                framework, pattern, algorithm, or config knob — and do NOT name
+                any file, file path, directory, function, method, class,
+                variable, table, or ANY other direct code reference. The
+                candidate must discover both the mechanism AND where to change
+                it. Do NOT pad into two-clause 'after your changes…' sentences,
+                and do NOT collapse into a bare two-word label.
+                BAD (too terse, no context): 'Improve query performance.'
+                BAD (too wordy / two clauses): 'The product search endpoint
+                returns results in 4-6 seconds under normal load; after your
+                changes it should respond in under 500ms for typical queries.'
+                BAD (names a file / code): 'Fix the lifecycle rule in main.tf so
+                transitions apply to closed objects.'
+                GOOD (concise, open-ended): 'Bring product-search latency down
+                to a responsive level under normal load.'
+                GOOD (concise, open-ended): 'Ensure duplicate messages do not
+                trigger duplicate downstream side effects.'
           – Helpful Tips: "Provide practical guidance without revealing
             specific implementations." Each bullet starts with an action
             word: "Consider", "Think about", "Explore", "Review",
@@ -399,6 +435,23 @@ class GeneratePromptSignature(dspy.Signature):
     Bake proficiency calibration INLINE inside `### Nature of the Task`
     (e.g. "(3-5 years experience)", "intermediate-level optimization") —
     do NOT add a separate `## PROFICIENCY BOUNDARY` section.
+
+    Code complexity + starter-code VOLUME MUST scale with proficiency. The
+    generated prompt MUST instruct the task-gen LLM accordingly (branch on the
+    `proficiency` input):
+      - BASIC / BEGINNER — a small, focused starter codebase is appropriate:
+        a handful of files with one clear area to fix. Keep the surface area
+        small and the reasoning shallow.
+      - INTERMEDIATE / ADVANCED — the starter codebase MUST be substantial and
+        realistic, NOT a toy snippet. Require MULTIPLE interacting modules /
+        files in a real project layout, with non-trivial existing logic the
+        candidate must read and reason about before changing, and changes that
+        span MORE THAN ONE file. Do NOT ship only a small set of code or a
+        single short file at these levels — the volume and intricacy of the
+        starter code should reflect 3-5+ years of experience. Higher
+        proficiency means a LARGER, more interconnected codebase and deeper
+        reasoning, never merely a trickier one-liner. The candidate should have
+        to navigate a meaningful codebase, not just edit one obvious spot.
 
     ─────────────────────────────────────────────────────────────────────────
     HARD CONSTRAINT #5 — Python module structure
@@ -822,6 +875,11 @@ class PromptGeneratorAgent(dspy.Module):
                 "PROMPT_VERIFIER_ENABLED", "true"
             ).strip().lower() not in ("false", "0", "no", "off")
         self.verifier_enabled = verifier_enabled
+        # The verify step runs on a cheap model (nano) via a per-call
+        # dspy.context override, so it doesn't share the strong runtime LM.
+        # Built lazily on first use so construction never triggers an LM build
+        # (and never fails when the verifier is disabled).
+        self._verify_lm = None
 
     def load_compiled_demos(self, compiled_path: str) -> int:
         """Load few-shot demos from a compile.py output JSON into the generator.
@@ -1068,21 +1126,27 @@ class PromptGeneratorAgent(dspy.Module):
                              rationale_preview[:400].replace("\n", " "))
 
             if self.verifier_enabled:
-                logger.info("  calling Review (ChainOfThought)...")
-                verify_out = self.verify(
-                    new_prompt_file=new_prompt,
-                    primary_directive=directive,
-                    competencies=comp_str,
-                    task_shape=task_shape,
-                    runtime=runtime,
-                    frameworks=frameworks_json,
-                    datastores=datastores_json,
-                    persona=persona,
-                    reference_prompts=refs_text,
-                    similar_tasks=tasks_text,
-                    competency_scopes=scopes_str,
-                    detailed_skill_signal=skill_signal,
-                )
+                if self._verify_lm is None:
+                    self._verify_lm = build_verify_lm()
+                logger.info("  calling Review (ChainOfThought) on %s...",
+                            DEFAULT_VERIFY_MODEL)
+                # Run the advisory verify on the cheap model, leaving the strong
+                # runtime LM configured for generate.
+                with dspy.context(lm=self._verify_lm):
+                    verify_out = self.verify(
+                        new_prompt_file=new_prompt,
+                        primary_directive=directive,
+                        competencies=comp_str,
+                        task_shape=task_shape,
+                        runtime=runtime,
+                        frameworks=frameworks_json,
+                        datastores=datastores_json,
+                        persona=persona,
+                        reference_prompts=refs_text,
+                        similar_tasks=tasks_text,
+                        competency_scopes=scopes_str,
+                        detailed_skill_signal=skill_signal,
+                    )
                 logger.info("    Review done — passes=%s feedback=%d chars",
                             verify_out.passes, len(verify_out.feedback or ""))
                 if verify_out.feedback:

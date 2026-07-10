@@ -787,15 +787,28 @@ def create_task(
                     f"missing={match.missing_capabilities} "
                     f"suggested={match.suggested_template}"
                 )
-                # Best-effort: queue an actionable draft for the gap instead of
-                # letting it disappear into this log line. Never affects the
-                # abort below — draft_remediation never raises, and the hard
-                # stop still fires this run regardless of outcome.
+                # Smart routing FIRST: an LLM decides whether the missing
+                # capability fits an existing template (e.g. utkrusht-infra's
+                # DinD can host a broker as a task docker-compose container) or
+                # needs a brand-new image. On fit_existing it patches the target
+                # template + re-points this combo INLINE and returns a resolved
+                # plan, so generation proceeds THIS run instead of aborting. On
+                # new_template / any failure it queues a human rebuild draft and
+                # returns None — the hard stop below then fires with a clear
+                # reason (the deliberate backstop). Never raises.
                 try:
-                    from flows.tech.stages.generate.template_remediation import draft_remediation
-                    draft_remediation(match, plan.combo_key)
+                    from flows.tech.stages.generate.template_remediation import route_or_draft
+                    routed = route_or_draft(match, plan.combo_key, task_shape)
+                    if routed is not None:
+                        plan = routed
+                        match = routed.match
+                        template = routed.template
+                        logger.info(
+                            f"  route: gap closed inline -> template_id="
+                            f"{match.template_id} persona={match.persona}"
+                        )
                 except Exception as exc:  # noqa: BLE001
-                    logger.warning(f"  template_remediation draft skipped: {exc}")
+                    logger.warning(f"  template routing skipped: {exc}")
         # HARD STOP: an infra-shaped task with no runtime template can't be built,
         # tested, or deployed — the E2B gate would silently SKIP and a
         # non-deployable task would still ship (the RabbitMQ case). Abort BEFORE

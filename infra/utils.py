@@ -634,6 +634,19 @@ def generate_task_with_code(
         model_pricing = {"input": _pin, "output": _pout}
         total_input_tokens = 0
         total_output_tokens = 0
+        total_cached_tokens = 0  # prompt-cache HITS (subset of input); billed at a discount
+
+        def _cached_of(u) -> int:
+            """Cached (prompt-cache HIT) tokens from a usage object. OpenAI nests
+            them under prompt_tokens_details.cached_tokens; Anthropic (via Portkey)
+            exposes cache_read_input_tokens. Returns 0 when absent."""
+            if not u:
+                return 0
+            details = getattr(u, "prompt_tokens_details", None)
+            c = getattr(details, "cached_tokens", None) if details is not None else None
+            if not c:
+                c = getattr(u, "cache_read_input_tokens", None)
+            return int(c) if c else 0
 
         # Send prompts one by one using Chat Completions API (universally supported)
         # max_tokens raised 16k -> 32k (F11). At 16k an INTERMEDIATE task with a
@@ -683,6 +696,7 @@ def generate_task_with_code(
             _lo = usage.completion_tokens if usage else 0
             total_input_tokens += _li
             total_output_tokens += _lo
+            total_cached_tokens += _cached_of(usage)
             logger.info("=" * 70)
             logger.info(" Lean Correction Response: ")
             logger.info(response_text)
@@ -727,7 +741,8 @@ def generate_task_with_code(
             prompt_output = usage.completion_tokens if usage else 0
             total_input_tokens += prompt_input
             total_output_tokens += prompt_output
-            cached_read = getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", 0) if usage else 0
+            cached_read = _cached_of(usage)
+            total_cached_tokens += cached_read
             if cached_read:
                 logger.info(f" Cache: {cached_read:,} tokens served from cache (prompt {i})")
 
@@ -769,19 +784,29 @@ def generate_task_with_code(
             usage = response.usage
             total_input_tokens += usage.prompt_tokens if usage else 0
             total_output_tokens += usage.completion_tokens if usage else 0
+            total_cached_tokens += _cached_of(usage)
             logger.info("=" * 70)
             logger.info(" Feedback-correction Response: ")
             logger.info(response_text)
             logger.info("=" * 70)
 
-        # Print cost summary
-        input_cost = (total_input_tokens / 1_000_000) * model_pricing["input"]
+        # Print cost summary. Cached input tokens (a subset of total_input) are
+        # billed at CACHE_READ_MULTIPLIER × the input rate, so discount them
+        # rather than charging every input token at full price.
+        from infra.pricing import CACHE_READ_MULTIPLIER, cost_usd
+        _cached = min(total_cached_tokens, total_input_tokens)
+        _uncached_in = total_input_tokens - _cached
+        input_cost = (
+            _uncached_in / 1_000_000 * model_pricing["input"]
+            + _cached / 1_000_000 * model_pricing["input"] * CACHE_READ_MULTIPLIER
+        )
         output_cost = (total_output_tokens / 1_000_000) * model_pricing["output"]
-        total_cost = input_cost + output_cost
+        total_cost = cost_usd(model, total_input_tokens, total_output_tokens, _cached)
         logger.info("=" * 70)
         logger.info(" API COST SUMMARY")
         logger.info(f" Model: {model}")
-        logger.info(f" Total Input Tokens:  {total_input_tokens:,}")
+        logger.info(f" Total Input Tokens:  {total_input_tokens:,}  "
+                    f"(cached {_cached:,} @ {CACHE_READ_MULTIPLIER:g}×)")
         logger.info(f" Total Output Tokens: {total_output_tokens:,}")
         logger.info(f" Input Cost:  ${input_cost:.4f} (${model_pricing['input']}/M tokens)")
         logger.info(f" Output Cost: ${output_cost:.4f} (${model_pricing['output']}/M tokens)")

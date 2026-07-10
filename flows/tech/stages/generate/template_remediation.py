@@ -184,6 +184,289 @@ def draft_remediation(match, combo_key: str, supabase=None) -> RemediationDraft 
         return None
 
 
+# ─────────────────────────────────────────────────────────────────────
+# LLM route decider + inline auto-apply (fit-existing path).
+#
+# ``draft_remediation`` above is the deterministic, draft-only fallback.
+# ``route_or_draft`` below is the smart path the pipeline calls first: an
+# LLM reads EVERY built template's capability sheet and decides whether the
+# missing capability fits an EXISTING template (e.g. utkrusht-infra's DinD
+# can host a broker as a task docker-compose container) or genuinely needs a
+# new image. On ``fit_existing`` it applies the capability patch + re-points
+# this combo's match INLINE and returns a resolved plan so generation can
+# proceed. On ``new_template`` (or any failure) it falls back to the
+# human-facing rebuild draft and returns None — the caller then hard-aborts
+# with a clear reason (the deliberate backstop).
+# ─────────────────────────────────────────────────────────────────────
+
+_ROUTE_SYSTEM_PROMPT = """You decide how to close a runtime-template gap for a \
+technical assessment task.
+
+A classifier could not match a competency combo to any built E2B template. \
+Your job is to decide, from the EXISTING built templates below, whether the \
+missing capabilities can be hosted by one of them WITHOUT rebuilding an image, \
+or whether a brand-new template must be authored.
+
+EXISTING TEMPLATES:
+{templates_block}
+
+DECISION RULES:
+- fit_existing: an existing template already has the SUBSTRATE to run the \
+missing capability without an image rebuild. The ONLY qualifying substrate is \
+Docker-in-Docker: the target MUST have "docker-ce"/"docker"/"docker-ce-cli" in \
+its tools, so a datastore/broker/service (postgres, redis, kafka, pulsar, \
+rabbitmq, ...) runs as a task-shipped docker-compose container — no baked \
+install needed. Do NOT pick a template that lacks Docker in its tools, and do \
+NOT pick a language-specific template (e.g. go-base, node-base) just because a \
+persona sounds related — those pin a runtime and will mismatch the task. For a \
+datastore/broker/service capability, STRONGLY PREFER the runtime-agnostic infra \
+template (primary_runtime "infra") when one has Docker. Pick the best \
+target_template_id, ONE persona from that template's personas, and a \
+capability_patch: a JSON object mapping capability list-keys (e.g. "frameworks", \
+"datastores", "protocols", "tags") to the array of canonical values to ADD, so \
+the classifier matches this need next time.
+- new_template: NO existing template can host it without baking real install \
+steps into a base image (no DinD substrate, or a first-class language SDK is \
+required). In that case set target_template_id and capability_patch to null.
+
+OUTPUT: ONLY a JSON object, no prose, no markdown fences, EXACTLY these fields:
+  • decision: "fit_existing" OR "new_template"
+  • target_template_id: string (a built template id) OR null
+  • persona: string (one of the chosen template's personas) OR null
+  • capability_patch: object mapping capability-key -> array of strings, OR null
+  • rationale: one short sentence
+"""
+
+
+def _render_route_templates_block(active) -> str:
+    """Format active TemplateSpec list as capability sheets for the decider."""
+    if not active:
+        return "  (no built templates — every decision must be new_template)"
+    lines = []
+    for t in active:
+        caps = t.capabilities or {}
+        lines.append(f"\n- template_id: {t.template_id}")
+        lines.append(f"  primary_runtime: {t.primary_runtime}")
+        lines.append(f"  personas: {t.personas}")
+        lines.append(f"  tools: {caps.get('tools') or []}")
+        lines.append(f"  datastores: {caps.get('datastores') or []}")
+        lines.append(f"  frameworks: {caps.get('frameworks') or []}")
+        lines.append(f"  tags: {caps.get('tags') or []}")
+    return "\n".join(lines)
+
+
+def _extract_json_obj(text: str) -> dict:
+    """First balanced top-level JSON object in text."""
+    start = text.find("{")
+    if start == -1:
+        raise ValueError("no JSON object in decider reply")
+    depth = 0
+    for i in range(start, len(text)):
+        if text[i] == "{":
+            depth += 1
+        elif text[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return json.loads(text[start:i + 1])
+    raise ValueError("unbalanced braces in decider reply")
+
+
+def _decide_route_llm(missing_capabilities: list[str], active) -> dict:
+    """Ask the Claude-role LLM to route the gap. Returns the parsed decision
+    dict. Raises on transport/parse failure (caller treats as new_template)."""
+    from infra.llm_provider import make_llm_client, resolve_model
+    from infra.prompt_cache import cache_messages
+
+    client = make_llm_client()
+    system = _ROUTE_SYSTEM_PROMPT.format(
+        templates_block=_render_route_templates_block(active)
+    )
+    user = (
+        "The task needs these missing capabilities: "
+        f"{missing_capabilities}. Decide fit_existing vs new_template."
+    )
+    resp = client.chat.completions.create(
+        model=resolve_model("classifier"),
+        messages=cache_messages([
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ]),
+    )
+    raw = resp.choices[0].message.content or ""
+    return _extract_json_obj(raw)
+
+
+def _apply_capability_patch(supabase, template_id: str, patch: dict) -> int:
+    """Merge ``patch`` (key -> list) into the template's capabilities, bump
+    registry_version, invalidate that template's match cache. Returns the new
+    registry_version. Raises if the template row is absent.
+    """
+    row = (supabase.table("templates").select("capabilities, registry_version")
+           .eq("template_id", template_id).limit(1).execute())
+    rows = row.data or []
+    if not rows:
+        raise RuntimeError(
+            f"route: target template {template_id!r} not found in templates table"
+        )
+    caps = dict(rows[0].get("capabilities") or {})
+    for key, values in (patch or {}).items():
+        if not isinstance(values, list):
+            continue
+        existing = list(caps.get(key) or [])
+        caps[key] = existing + [v for v in values if v not in existing]
+    next_version = int(rows[0].get("registry_version") or 1) + 1
+    supabase.table("templates").update({
+        "capabilities": caps,
+        "registry_version": next_version,
+    }).eq("template_id", template_id).execute()
+
+    from infra.e2b.template_builder import _invalidate_match_cache
+    _invalidate_match_cache(supabase, template_id)
+    return next_version
+
+
+def route_or_draft(match, combo_key: str, task_shape: str | None, *, supabase=None):
+    """Smart resolution of a no-match infra gap.
+
+    On ``fit_existing``: apply the capability patch to the target template,
+    re-point THIS combo's match row at it, and return a fully-resolved
+    ``ResolvedPlan`` (with the target template hydrated) so generation can
+    proceed on THIS run. On ``new_template`` or ANY failure: fall back to the
+    human-facing rebuild draft (``draft_remediation``) and return ``None`` —
+    the caller then hard-aborts with a clear reason.
+
+    Never raises — a raise here would defeat the point (the caller's hard stop
+    is the intended backstop, not a stack trace).
+    """
+    # Only actionable for an INFRA no-match that carries missing capabilities.
+    if (task_shape or "").strip().lower() != "infra":
+        return None
+    if match is None or match.template_id is not None or not match.missing_capabilities:
+        return None
+
+    try:
+        from flows.tech.stages.generate.runtime_resolver import (
+            ResolvedPlan,
+            _build_supabase_client,
+            _get_template,
+            _load_active_templates,
+            _match_write,
+        )
+        from infra.classifier.runtime import TaskTemplateMatch
+
+        client = supabase or _build_supabase_client()
+        active = _load_active_templates(client)
+
+        decision = _decide_route_llm(list(match.missing_capabilities), active)
+        route = (decision.get("decision") or "").strip().lower()
+        target_id = decision.get("target_template_id")
+        rationale = decision.get("rationale") or ""
+
+        if route != "fit_existing" or not target_id:
+            logger.info(
+                f"route: combo={combo_key!r} decided new_template "
+                f"(target={target_id!r}) — {rationale} — drafting rebuild scaffold"
+            )
+            draft_remediation(match, combo_key, supabase=client)
+            return None
+
+        active_by_id = {t.template_id: t for t in active}
+        target = active_by_id.get(target_id)
+        if target is None:
+            logger.warning(
+                f"route: decider picked unknown target {target_id!r} — "
+                "falling back to rebuild draft"
+            )
+            draft_remediation(match, combo_key, supabase=client)
+            return None
+
+        # DETERMINISTIC GUARD 1: a fit_existing target is only legitimate if it
+        # actually has the Docker-in-Docker substrate to host the service as a
+        # task container. Reject → rebuild draft.
+        target_tools = list((target.capabilities or {}).get("tools") or [])
+        if not any(t in _DOCKER_TOOL_NAMES for t in target_tools):
+            logger.warning(
+                f"route: decider picked {target_id!r} but it has no "
+                f"Docker-in-Docker in tools — not a real fit; drafting rebuild"
+            )
+            draft_remediation(match, combo_key, supabase=client)
+            return None
+
+        # DETERMINISTIC GUARD 2: nearly every template has DinD, so the LLM can
+        # wrongly pick a LANGUAGE-specific template (go-base, node-base) whose
+        # primary_runtime then mismatches the task (the go-base misfire). For a
+        # DinD-hosted external service the correct home is the runtime-AGNOSTIC
+        # infra template. If the decider picked a language template but a built
+        # infra template exists, override to infra so the runtime stays neutral.
+        if target.primary_runtime != "infra":
+            infra_target = next(
+                (t for t in active
+                 if t.primary_runtime == "infra"
+                 and any(x in _DOCKER_TOOL_NAMES
+                         for x in ((t.capabilities or {}).get("tools") or []))),
+                None,
+            )
+            if infra_target is not None:
+                logger.info(
+                    f"route: overriding decider pick {target_id!r} "
+                    f"(runtime={target.primary_runtime!r}) -> "
+                    f"{infra_target.template_id!r} (runtime-agnostic infra host)"
+                )
+                target = infra_target
+                target_id = infra_target.template_id
+
+        # Persona must be one the target actually declares.
+        persona = decision.get("persona")
+        if persona not in (target.personas or []):
+            persona = (target.personas or [None])[0]
+
+        patch = decision.get("capability_patch") or {}
+        new_version = _apply_capability_patch(client, target_id, patch)
+
+        # Re-point THIS combo's match at the now-capable target so this run —
+        # and every future run — resolves it. Persist an audit draft too.
+        new_match = TaskTemplateMatch(
+            template_id=target_id,
+            persona=persona,
+            confidence=match.confidence,
+            no_match_reason=None,
+            missing_capabilities=[],
+            suggested_template=None,
+        )
+        _match_write(client, combo_key, new_match, registry_version=new_version)
+
+        try:
+            _write_draft(RemediationDraft(
+                combo_key=combo_key,
+                missing_capabilities=list(match.missing_capabilities),
+                suggested_template=target_id,
+                strategy="declarative",
+                rationale=f"[auto-applied inline] {rationale}",
+                capability_patch=patch,
+                status="approved",
+                approved_at=_now_iso(),
+            ))
+        except Exception:  # noqa: BLE001 — audit draft is best-effort
+            pass
+
+        template = _get_template(client, target_id)
+        logger.info(
+            f"route: combo={combo_key!r} FIT_EXISTING -> {target_id!r} "
+            f"persona={persona!r} patch={patch} — applied inline; gate will run"
+        )
+        return ResolvedPlan(combo_key=combo_key, match=new_match, template=template)
+    except Exception as exc:  # noqa: BLE001 — backstop is the caller's hard stop
+        logger.warning(
+            f"route: combo={combo_key!r} routing failed: {exc} — "
+            "falling back to hard-abort"
+        )
+        try:
+            draft_remediation(match, combo_key)
+        except Exception:  # noqa: BLE001
+            pass
+        return None
+
+
 def list_pending() -> list[RemediationDraft]:
     if not _QUEUE_DIR.exists():
         return []

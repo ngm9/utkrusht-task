@@ -77,7 +77,32 @@ def price_per_million(model: str | None) -> tuple[float, float]:
     return PRICING_DEFAULT
 
 
-def cost_usd(model: str | None, input_tokens: int, output_tokens: int) -> float:
-    """Estimated USD for a call's token usage at the canonical rate."""
+# Cached input tokens (OpenAI auto-cache / Anthropic cache-read) are billed at a
+# fraction of the normal input rate. OpenAI's gpt-5 family and Anthropic both
+# price a cache HIT at ~0.1× input; we use one conservative multiplier for both.
+# NB: both providers report cached tokens as a SUBSET of the prompt/input total,
+# so we discount that subset rather than adding it on top.
+CACHE_READ_MULTIPLIER: float = 0.1
+
+
+def cost_usd(
+    model: str | None,
+    input_tokens: int,
+    output_tokens: int,
+    cached_tokens: int = 0,
+) -> float:
+    """Estimated USD for a call's token usage at the canonical rate.
+
+    ``cached_tokens`` is the portion of ``input_tokens`` served from the prompt
+    cache (a subset, not additive). It is billed at ``CACHE_READ_MULTIPLIER`` ×
+    the input rate. Passing 0 (the default) reproduces the old full-price
+    behaviour, so every existing caller is unaffected.
+    """
     pin, pout = price_per_million(model)
-    return input_tokens / 1_000_000 * pin + output_tokens / 1_000_000 * pout
+    cached = min(max(int(cached_tokens or 0), 0), max(int(input_tokens or 0), 0))
+    uncached_in = max(int(input_tokens or 0) - cached, 0)
+    return (
+        uncached_in / 1_000_000 * pin
+        + cached / 1_000_000 * pin * CACHE_READ_MULTIPLIER
+        + output_tokens / 1_000_000 * pout
+    )
