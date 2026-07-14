@@ -20,4 +20,5 @@ sse-starlette
 httpx
 boto3
 claude-agent-sdk  # P6 run-through solver (headless Claude Code agent)
+logtail-python  # Better Stack log shipping (task_builder/logging_setup.py)
 

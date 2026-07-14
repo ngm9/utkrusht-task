@@ -38,8 +38,10 @@ from task_builder.conversation_repo import (
     mark_submitted,
     save_session,
 )
+from task_builder.logging_setup import configure_logging
 from task_builder.slots import SessionState, TaskBrief
 
+configure_logging()
 logger = logging.getLogger("task_builder.server")
 
 app = FastAPI(title="Task Builder")
@@ -64,12 +66,18 @@ _PUBLIC_PATHS = ("/api/health", "/static", "/")
 
 @app.middleware("http")
 async def _enforce_internal_token(request: Request, call_next):
-    """Reject /api/* requests lacking a valid X-Internal-Token header.
+    """Reject /api/* requests lacking a valid access token.
 
-    The Next.js admin proxy stamps the header on every forwarded request;
-    direct browser hits do not, so they 403. The check is opt-in via the
-    INTERNAL_PROXY_TOKEN env var — leaving it empty (local dev) disables the
-    middleware entirely so contributors can hit the UI directly.
+    Accepted forms:
+    * ``X-Internal-Token`` header — stamped by the Next.js admin proxy, or
+      sent directly by the static UI (which prompts once and stores the
+      token in localStorage).
+    * ``?access_token=`` query param — fallback for the SSE endpoint, since
+      ``EventSource`` cannot set request headers.
+
+    The check is opt-in via the INTERNAL_PROXY_TOKEN env var — leaving it
+    empty (local dev) disables the middleware entirely so contributors can
+    hit the UI directly.
     """
     if not _INTERNAL_TOKEN:
         return await call_next(request)
@@ -81,7 +89,11 @@ async def _enforce_internal_token(request: Request, call_next):
     if not path.startswith("/api/"):
         return await call_next(request)
 
-    provided = request.headers.get("x-internal-token") or ""
+    provided = (
+        request.headers.get("x-internal-token")
+        or request.query_params.get("access_token")
+        or ""
+    )
     if provided != _INTERNAL_TOKEN:
         return JSONResponse(
             status_code=403,
