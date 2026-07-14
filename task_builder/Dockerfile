@@ -1,17 +1,14 @@
-# Dockerfile for the task_builder FastAPI service (admin-panel backend).
+# Dockerfile for the task_builder FastAPI service (conversational task
+# generator + web UI).
 #
-# Build context = repo root (../). The compose file sets this.
+# Build context = repo root. The image carries the WHOLE repo because the
+# service runs the generation pipeline stages (flows/, infra/,
+# task_generation_prompts/, ...) as in-process subprocesses.
 #
-# Runtime env vars expected (see .env.example):
-#   PORT, TASK_BUILDER_HOST, TASK_BUILDER_ENV
-#   INTERNAL_PROXY_TOKEN — required in prod
-#   SUPABASE_URL_APTITUDETESTSDEV / SUPABASE_API_KEY_APTITUDETESTSDEV
-#   (and PROD variants for prod runs)
-#   OPENAI_API_KEY, PORTKEY_API_KEY
-#   GITHUB_UTKRUSHTAPPS_TOKEN, GITHUB_GIST_TOKEN, REPO_OWNER
-#   E2B_API_KEY, SANDBOX_EVAL_ENABLED
+# Runtime env vars: see .env.example at the repo root. Values are populated
+# per environment in Coolify — never baked into the image.
 
-FROM python:3.13-slim AS base
+FROM python:3.13-slim AS runtime
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -20,27 +17,41 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# System deps: git for PyGithub push targets, build-essential for any wheel
-# that lacks a manylinux build.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-        git build-essential \
+# git: PyGithub push targets + pipeline repo ops. build-essential: wheels
+# that lack a manylinux build. curl: container healthcheck.
+RUN apt-get update && apt-get upgrade -y && apt-get install -y --no-install-recommends \
+        ca-certificates git build-essential curl \
     && rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt ./
-RUN pip install -r requirements.txt
+RUN useradd -m -u 10001 utkrusht-app-user
 
-# Copy only what the web tier needs. Worker image extends this file (see
-# infra/jobs/Dockerfile) and brings the same source — no duplication.
+# Dependency layer — cached until requirements.txt changes.
+COPY requirements.txt ./
+RUN pip install --upgrade pip && pip install -r requirements.txt
+
 COPY . .
 
-# Default port; override via PORT env.
-ENV PORT=8000
+# Pipeline stages write run artifacts under the repo tree, so the app user
+# must own it.
+RUN chown -R utkrusht-app-user:utkrusht-app-user /app
+
+# Deploy-time configuration — override per environment in Coolify.
+ENV PORT=8000 \
+    TASK_BUILDER_HOST=0.0.0.0 \
+    TASK_BUILDER_ENV=dev \
+    INTERNAL_PROXY_TOKEN="" \
+    BETTERSTACK_SOURCE_TOKEN="" \
+    BETTERSTACK_INGESTING_HOST=""
+
 EXPOSE 8000
 
-# Health check at the public path that bypasses the token middleware.
-HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
-    CMD python -c "import urllib.request,sys; \
-        sys.exit(0) if urllib.request.urlopen(f'http://127.0.0.1:{__import__(\"os\").environ.get(\"PORT\",\"8000\")}/api/health', timeout=3).status==200 else sys.exit(1)" \
-    || exit 1
+# /api/health bypasses the access-token middleware, so the probe works even
+# on locked-down deployments.
+HEALTHCHECK --interval=30s --timeout=3s --start-period=20s --retries=3 \
+    CMD curl -fsS "http://127.0.0.1:${PORT}/api/health" || exit 1
+
+ENV HOME=/home/utkrusht-app-user
+USER utkrusht-app-user
+STOPSIGNAL SIGTERM
 
 CMD ["python", "-m", "task_builder"]

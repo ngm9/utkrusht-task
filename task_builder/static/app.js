@@ -9,6 +9,53 @@ let sessionId = null;
 let busy = false;
 let activeStream = null;
 
+// ---- deployment access token ---------------------------------------------
+// Deployed instances set INTERNAL_PROXY_TOKEN on the backend; every /api/*
+// call must then carry it. The UI prompts once, stores the token in
+// localStorage, and retries. Local dev (token unset server-side) never 403s,
+// so the prompt never fires.
+const TOKEN_KEY = "taskbuilder.token";
+let apiToken = "";
+try {
+  apiToken = localStorage.getItem(TOKEN_KEY) || "";
+} catch (e) {
+  /* storage unavailable — token re-prompted per page load */
+}
+
+function promptForToken() {
+  const t = prompt("This Task Builder deployment is protected.\nEnter the access token:");
+  if (!t || !t.trim()) return false;
+  apiToken = t.trim();
+  try {
+    localStorage.setItem(TOKEN_KEY, apiToken);
+  } catch (e) {
+    /* ignore */
+  }
+  return true;
+}
+
+// fetch() wrapper: attaches the token header and, on 403, prompts for the
+// token and retries once.
+async function api(path, opts = {}) {
+  const doFetch = () => {
+    const headers = { ...(opts.headers || {}) };
+    if (apiToken) headers["X-Internal-Token"] = apiToken;
+    return fetch(path, { ...opts, headers });
+  };
+  let res = await doFetch();
+  if (res.status === 403 && promptForToken()) {
+    res = await doFetch();
+  }
+  return res;
+}
+
+// EventSource cannot set headers — the backend accepts ?access_token= as a
+// fallback for the SSE stream.
+function withToken(url) {
+  if (!apiToken) return url;
+  return url + (url.includes("?") ? "&" : "?") + "access_token=" + encodeURIComponent(apiToken);
+}
+
 // ---- transcript persistence (localStorage) -------------------------------
 // `transcript` is a serializable mirror of the chat area. It is saved to
 // localStorage so a page reload can re-render the conversation (read-only).
@@ -178,7 +225,11 @@ function renderDone(spec) {
 // ---- live conversation flow ----------------------------------------------
 async function startSession() {
   try {
-    const res = await fetch("/api/session", { method: "POST" });
+    const res = await api("/api/session", { method: "POST" });
+    if (res.status === 403) {
+      addBubble("bot", "Access token required — reload the page to try again.");
+      return;
+    }
     const data = await res.json();
     sessionId = data.session_id;
     addBubble("bot", data.reply);
@@ -195,7 +246,7 @@ async function send() {
   addBubble("user", text);
   const thinking = bubble("bot", "…"); // transient — intentionally not recorded
   try {
-    const res = await fetch("/api/chat", {
+    const res = await api("/api/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ session_id: sessionId, message: text }),
@@ -220,7 +271,7 @@ function startGeneration() {
   if (gen) gen.disabled = true;
   if (envSel) envSel.disabled = true;
   addBubble("bot", `Generating in ${env}…`, "stage");
-  fetch("/api/generate", {
+  api("/api/generate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ session_id: sessionId, env }),
@@ -250,7 +301,7 @@ function doneBubble(e) {
 function streamRun(runId) {
   const panels = {};
   const stageItems = {};
-  const es = new EventSource(`/api/runs/${runId}/events`);
+  const es = new EventSource(withToken(`/api/runs/${runId}/events`));
   activeStream = es;
   es.onmessage = (ev) => {
     const e = JSON.parse(ev.data);
