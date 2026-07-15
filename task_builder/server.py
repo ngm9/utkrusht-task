@@ -20,12 +20,11 @@ import asyncio
 import json
 import logging
 import os
-from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
@@ -47,9 +46,6 @@ logger = logging.getLogger("task_builder.server")
 
 app = FastAPI(title="Task Builder")
 
-_STATIC_DIR = Path(__file__).parent / "static"
-app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
-
 # v1 default env. Override per request via the body, or set
 # TASK_BUILDER_ENV to flip the global default.
 _DEFAULT_ENV = os.environ.get("TASK_BUILDER_ENV", "dev")
@@ -60,9 +56,17 @@ _DEFAULT_ENV = os.environ.get("TASK_BUILDER_ENV", "dev")
 # task_builder`` against localhost but DO NOT deploy without the env var set.
 _INTERNAL_TOKEN = os.environ.get("INTERNAL_PROXY_TOKEN", "").strip()
 
-# Paths that bypass the internal-token check. Static + health are needed for
-# container liveness probes and for the legacy static UI direct test path.
-_PUBLIC_PATHS = ("/api/health", "/static", "/")
+# CORS: the UI is a separate frontend service/origin now, so the browser needs
+# CORS headers to call this API cross-origin. Comma-separated allow-list;
+# default "*" is safe because every /api/* call is still gated by
+# INTERNAL_PROXY_TOKEN (a header token, not cookies).
+_CORS_ORIGINS = [
+    o.strip() for o in os.environ.get("CORS_ALLOW_ORIGINS", "*").split(",") if o.strip()
+] or ["*"]
+
+# Paths that bypass the internal-token check — health for liveness probes and
+# "/" for a plain service descriptor.
+_PUBLIC_PATHS = ("/api/health", "/")
 
 
 @app.middleware("http")
@@ -80,6 +84,12 @@ async def _enforce_internal_token(request: Request, call_next):
     empty (local dev) disables the middleware entirely so contributors can
     hit the UI directly.
     """
+    # CORS preflight (OPTIONS) carries no token; never block it. The CORS
+    # middleware (registered outermost, below) normally answers preflight
+    # before this runs — this OPTIONS skip is a safety net.
+    if request.method == "OPTIONS":
+        return await call_next(request)
+
     if not _INTERNAL_TOKEN:
         return await call_next(request)
 
@@ -104,9 +114,27 @@ async def _enforce_internal_token(request: Request, call_next):
     return await call_next(request)
 
 
+# Registered AFTER the token middleware so it sits OUTERMOST in the stack
+# (Starlette applies the last-added middleware first) — CORS then answers the
+# preflight OPTIONS before the token check can 403 it.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_CORS_ORIGINS,
+    allow_credentials=False,  # auth is a custom header token, not cookies
+    allow_methods=["*"],
+    allow_headers=["*"],  # includes X-Internal-Token, X-Testmaker-Id, Content-Type
+)
+
+
 @app.get("/")
-def index() -> FileResponse:
-    return FileResponse(_STATIC_DIR / "index.html")
+def index() -> dict[str, str]:
+    """Plain service descriptor — the UI is a separate frontend service now."""
+    return {
+        "service": "task-builder-api",
+        "status": "ok",
+        "health": "/api/health",
+        "docs": "/docs",
+    }
 
 
 _GREETING = (

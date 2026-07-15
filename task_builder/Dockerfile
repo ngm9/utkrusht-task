@@ -1,5 +1,6 @@
-# Dockerfile for the task_builder FastAPI service (conversational task
-# generator + web UI).
+# Dockerfile for the task_builder FastAPI service — the BACKEND API only.
+# The web UI is a separate frontend service (its own repo); this image serves
+# JSON at /api/* and streams pipeline progress over SSE. No static assets.
 #
 # Build context = repo root. The image carries the WHOLE repo because the
 # service runs the generation pipeline stages (flows/, infra/,
@@ -36,10 +37,14 @@ COPY . .
 RUN chown -R utkrusht-app-user:utkrusht-app-user /app
 
 # Deploy-time configuration — override per environment in Coolify.
+# CORS_ALLOW_ORIGINS: comma-separated allow-list of frontend origins ("*" ok
+# since /api/* is gated by INTERNAL_PROXY_TOKEN); set it to the frontend URL
+# in prod if you want to lock it down.
 ENV PORT=8000 \
     TASK_BUILDER_HOST=0.0.0.0 \
     TASK_BUILDER_ENV=dev \
     INTERNAL_PROXY_TOKEN="" \
+    CORS_ALLOW_ORIGINS="*" \
     BETTERSTACK_SOURCE_TOKEN="" \
     BETTERSTACK_INGESTING_HOST=""
 
