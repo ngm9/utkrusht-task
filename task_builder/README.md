@@ -1,14 +1,17 @@
-# Task Builder
+# Task Builder — Backend API
 
-A conversational web app that interviews you for the task-generation
-pipeline's inputs and runs the pipeline with live progress. The UI follows
-the utkrusht.ai brand system (Inter, green ink `#0e6b3c`, white cards).
+The backend for Task Builder: a FastAPI service that interviews you (via the
+conversational bot) for the task-generation pipeline's inputs and runs the
+pipeline with live progress streamed over SSE. It exposes JSON at `/api/*`
+only — **the web UI is a separate frontend service** (its own repo).
 
 ## Run it locally
 
     .venv/bin/python -m task_builder
 
-Open http://127.0.0.1:8000
+Serves the API on http://127.0.0.1:8000 — browse the interactive docs at
+http://127.0.0.1:8000/docs. Point the frontend dev server at this URL
+(`VITE_API_BASE`), or run it same-origin behind a proxy.
 
 ## Requires (in .env)
 
@@ -18,14 +21,23 @@ the chat: `ANTHROPIC_API_KEY`, `PORTKEY_API_KEY` (the conversational bot),
 (competency validation + conversation persistence), plus everything the
 pipeline stages need to actually generate.
 
+> **Use the Supabase `service_role` key, not the `anon` key.** The
+> `conversations` / `generation_jobs` tables are RLS-gated, so an anon key
+> makes `POST /api/session` fail with 500 (anon INSERT → 401). Set
+> `SUPABASE_API_KEY_APTITUDETESTSDEV` to the dev **service_role** key.
+
+`CORS_ALLOW_ORIGINS` (comma-separated, default `*`) controls which frontend
+origins may call the API from a browser.
+
 ## Deploy
 
 Container image built from `task_builder/Dockerfile` (build context = repo
 root), shipped by `.github/workflows/task-builder{-dev,}.yaml` to GHCR and
 deployed via Coolify. Full runbook: [`DEPLOYMENT.md`](DEPLOYMENT.md).
 
-Deployed instances MUST set `INTERNAL_PROXY_TOKEN` — the UI prompts for it
-once and sends it on every API call.
+Deployed instances MUST set `INTERNAL_PROXY_TOKEN` — every `/api/*` call must
+carry it as `X-Internal-Token` (the SSE stream accepts `?access_token=`). The
+frontend prompts the user for it once and attaches it from then on.
 
 ## How it works
 

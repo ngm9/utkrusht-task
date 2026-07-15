@@ -52,9 +52,10 @@ On the dev Coolify instance create a new **Docker Image** resource:
 - **Domain:** e.g. `taskbuilder-dev.utkrusht.ai`
 - **Env vars:** everything in [`../.env.example`](../.env.example). Non-negotiable
   on a deployed instance: `INTERNAL_PROXY_TOKEN` (access token — without it
-  the API is open to the internet), the Supabase dev pair, `ANTHROPIC_API_KEY`,
+  the API is open to the internet), the Supabase dev pair (use the
+  **service_role** key — see [Supabase key](#supabase-key)), `ANTHROPIC_API_KEY`,
   `PORTKEY_API_KEY`, `OPENAI_API_KEY`, GitHub tokens + `REPO_OWNER`,
-  `E2B_API_KEY`.
+  `E2B_API_KEY`, and `CORS_ALLOW_ORIGINS` (the frontend origin, or `*`).
 - Copy the app's **deploy webhook URL** into the GitHub secret above.
 
 ### 4. Sizing
@@ -79,11 +80,24 @@ and `TASK_BUILDER_ENV=prod`. Deploys trigger from the `release` branch
 
 - Every `/api/*` request must send it as `X-Internal-Token`; the SSE stream
   may pass it as `?access_token=` instead (EventSource cannot set headers).
-- The static UI prompts for it on the first 403, stores it in localStorage,
-  and attaches it from then on.
-- `/`, `/static/*`, and `/api/health` stay public (page load + liveness probe).
+- The frontend (separate service) prompts for it on the first 403, stores it
+  in localStorage, and attaches it from then on.
+- `/` (service descriptor) and `/api/health` stay public (liveness probe).
 - Empty token env = auth disabled; acceptable only for `python -m task_builder`
   on localhost.
+
+## CORS
+
+The frontend is a separate origin, so the browser needs CORS headers.
+`CORS_ALLOW_ORIGINS` (comma-separated, default `*`) is the allow-list — `*` is
+safe because `INTERNAL_PROXY_TOKEN` still gates every call. Lock it to the
+frontend URL in prod if you prefer. Preflight `OPTIONS` is always allowed.
+
+## Supabase key
+
+Use the dev **`service_role`** key for `SUPABASE_API_KEY_APTITUDETESTSDEV`.
+The `conversations` / `generation_jobs` tables are RLS-gated; the anon key
+makes `POST /api/session` fail (anon INSERT → 401 → 500).
 
 ## Smoke test after first deploy
 
@@ -93,5 +107,6 @@ curl -is https://taskbuilder-dev.utkrusht.ai/api/greeting | head -1   # 403 with
 curl -fsS -H "X-Internal-Token: $TOKEN" https://taskbuilder-dev.utkrusht.ai/api/greeting
 ```
 
-Then open the UI, enter the token when prompted, run a conversation through
-to a `dev` generation and watch the stage panels stream.
+Then point the separate frontend service at this API (`VITE_API_BASE`), enter
+the token when prompted, run a conversation through to a `dev` generation, and
+watch the stage panels stream.
