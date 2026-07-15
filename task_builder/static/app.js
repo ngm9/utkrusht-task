@@ -20,10 +20,26 @@ const runStagesEl = document.getElementById("run-stages");
 const runResultEl = document.getElementById("run-result");
 const startersEl = document.getElementById("starters");
 const startersRow = document.getElementById("starters-row");
+const reviewFields = document.getElementById("review-fields");
+const instructionsEl = document.getElementById("instructions");
+const suggestChipsEl = document.getElementById("suggest-chips");
+const scenarioCurrentEl = document.getElementById("scenario-current");
+const chooseScenarioBtn = document.getElementById("choose-scenario");
+const scenarioModal = document.getElementById("scenario-modal");
+const scenarioCloseBtn = document.getElementById("scenario-close");
+const scenarioListEl = document.getElementById("scenario-list");
+const scenarioPrepEl = document.getElementById("scenario-prep");
+const prepStagesEl = document.getElementById("prep-stages");
 let sessionId = null;
 let busy = false;
 let generating = false;
 let activeStream = null;
+let prepStream = null;
+
+// ---- review-step state (instructions + scenario selection) ----------------
+let selectedScenario = "";   // human-picked scenario text ("" = auto-rotate)
+let scenariosPrepared = false; // true once /api/prepare produced a pool
+let suggestLoadedFor = "";   // combo the chips were last fetched for
 
 // ---- deployment access token ---------------------------------------------
 // Deployed instances set INTERNAL_PROXY_TOKEN on the backend; every /api/*
@@ -154,12 +170,59 @@ function renderBriefPanel() {
   progressFill.style.width = `${(filledRequired / total) * 100}%`;
   progressLabel.textContent = `${filledRequired} of ${total} fields`;
   genBtn.disabled = !(ready && sessionId && !generating);
+  if (reviewFields) reviewFields.hidden = !ready;
+  if (ready && !generating) loadSuggestions();
   if (generating) {
     genHint.textContent = "Generation in progress — logs stream in the chat.";
   } else if (ready) {
-    genHint.textContent = "Brief complete. Pick an environment and generate.";
+    genHint.textContent = "Add optional instructions, pick a scenario if you like, then generate.";
   } else {
     genHint.textContent = "Answer the questions in the chat — the brief fills in here as you go.";
+  }
+}
+
+// Competency+proficiency signature — the key for suggestion + scenario lookups.
+function briefCombo() {
+  const b = panelState.brief || {};
+  return {
+    names: (b.competencies || []).join(","),
+    proficiency: b.proficiency || "BASIC",
+  };
+}
+
+// ---- instruction suggestion chips -----------------------------------------
+async function loadSuggestions() {
+  const { names, proficiency } = briefCombo();
+  if (!names) return;
+  const key = `${names}::${proficiency}`;
+  if (key === suggestLoadedFor) return; // already fetched for this combo
+  suggestLoadedFor = key;
+  suggestChipsEl.innerHTML = '<span class="suggest-status">Loading suggestions…</span>';
+  try {
+    const res = await api(
+      `/api/suggest-instructions?names=${encodeURIComponent(names)}&proficiency=${encodeURIComponent(proficiency)}`
+    );
+    const data = await res.json();
+    renderSuggestChips(data.suggestions || []);
+  } catch {
+    suggestChipsEl.innerHTML = "";
+    suggestLoadedFor = ""; // allow a retry next render
+  }
+}
+
+function renderSuggestChips(suggestions) {
+  suggestChipsEl.innerHTML = "";
+  for (const text of suggestions) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "suggest-chip";
+    b.textContent = text;
+    b.onclick = () => {
+      const cur = instructionsEl.value.trim();
+      instructionsEl.value = cur ? `${cur}\n${text}` : text;
+      instructionsEl.focus();
+    };
+    suggestChipsEl.appendChild(b);
   }
 }
 
@@ -179,6 +242,183 @@ function updateBrief(data) {
 function resetBrief() {
   panelState = { brief: {}, missing: [], ready: false };
   renderBriefPanel();
+}
+
+// ---- scenario selection modal ---------------------------------------------
+const PREP_STAGES = [
+  ["00_preflight", "Preflight checks"],
+  ["01_input_files", "Input files"],
+  ["02_scenarios", "Scenarios"],
+];
+const prepStageEls = {};
+
+// Split a scenario's free text into its three bold sections for display.
+function parseScenario(text) {
+  const sections = [];
+  const re = /\*\*(Current Implementation|Your Task|Success Criteria):\*\*/g;
+  const marks = [];
+  let m;
+  while ((m = re.exec(text)) !== null) marks.push({ label: m[1], start: m.index, end: re.lastIndex });
+  if (!marks.length) return [{ label: "", body: text.trim() }];
+  for (let i = 0; i < marks.length; i++) {
+    const bodyStart = marks[i].end;
+    const bodyEnd = i + 1 < marks.length ? marks[i + 1].start : text.length;
+    sections.push({ label: marks[i].label, body: text.slice(bodyStart, bodyEnd).trim() });
+  }
+  return sections;
+}
+
+function openScenarioModal() {
+  if (!sessionId || !panelState.ready) return;
+  scenarioModal.hidden = false;
+  scenarioListEl.hidden = true;
+  scenarioListEl.innerHTML = "";
+  scenarioPrepEl.hidden = false;
+  buildPrepChecklist();
+  const env = envSelect ? envSelect.value : "dev";
+  // If a pool already exists for this combo, show it immediately; otherwise
+  // generate one (preflight → input_files → scenarios).
+  api(`/api/scenarios?session_id=${encodeURIComponent(sessionId)}&env=${env}`)
+    .then((r) => r.json())
+    .then((data) => {
+      const pool = (data && data.scenarios) || [];
+      if (pool.length) {
+        scenariosPrepared = true; // pool exists on disk/DB already
+        renderScenarioCards(pool);
+      } else {
+        runPrepare(env);
+      }
+    })
+    .catch(() => runPrepare(env));
+}
+
+function closeScenarioModal() {
+  if (prepStream) {
+    prepStream.close();
+    prepStream = null;
+  }
+  scenarioModal.hidden = true;
+}
+
+function buildPrepChecklist() {
+  prepStagesEl.innerHTML = "";
+  for (const [key, label] of PREP_STAGES) {
+    const li = document.createElement("li");
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    const text = document.createElement("span");
+    text.textContent = label;
+    li.appendChild(dot);
+    li.appendChild(text);
+    prepStagesEl.appendChild(li);
+    prepStageEls[key] = { li, dot };
+  }
+}
+
+function setPrepStage(key, status) {
+  const entry = prepStageEls[key];
+  if (!entry) return;
+  entry.li.className = status;
+  entry.dot.textContent = status === "ok" ? "✓" : status === "failed" ? "✗" : "";
+}
+
+function runPrepare(env) {
+  scenarioPrepEl.hidden = false;
+  scenarioListEl.hidden = true;
+  api("/api/prepare", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ session_id: sessionId, env }),
+  })
+    .then((r) => r.json())
+    .then((data) => streamPrepare(data.run_id, env))
+    .catch(() => showScenarioError("Could not start scenario preparation."));
+}
+
+function streamPrepare(runId, env) {
+  const es = new EventSource(withToken(`/api/runs/${runId}/events`));
+  prepStream = es;
+  es.onmessage = (ev) => {
+    const e = JSON.parse(ev.data);
+    if (e.stage === "done") {
+      es.close();
+      prepStream = null;
+      if (e.status === "completed") {
+        scenariosPrepared = true;
+        api(`/api/scenarios?session_id=${encodeURIComponent(sessionId)}&env=${env}`)
+          .then((r) => r.json())
+          .then((data) => renderScenarioCards((data && data.scenarios) || []))
+          .catch(() => showScenarioError("Scenarios were generated but could not be loaded."));
+      } else {
+        showScenarioError(e.detail || "Scenario preparation failed.");
+      }
+      return;
+    }
+    if (["00_preflight", "01_input_files", "02_scenarios"].includes(e.stage)) {
+      setPrepStage(e.stage, e.status === "ok" ? "ok" : e.status === "failed" ? "failed" : "running");
+    }
+  };
+  es.onerror = () => {
+    es.close();
+    prepStream = null;
+  };
+}
+
+function showScenarioError(msg) {
+  scenarioPrepEl.hidden = true;
+  scenarioListEl.hidden = false;
+  scenarioListEl.innerHTML = `<div class="scenario-empty">${msg}<br>You can close this and generate with auto-selection instead.</div>`;
+}
+
+function renderScenarioCards(pool) {
+  scenarioPrepEl.hidden = true;
+  scenarioListEl.hidden = false;
+  scenarioListEl.innerHTML = "";
+  if (!pool.length) {
+    scenarioListEl.innerHTML =
+      '<div class="scenario-empty">No scenarios available for this combo yet. Close this and generate — the pipeline will create and pick one automatically.</div>';
+    return;
+  }
+  pool.forEach((text, i) => {
+    const card = document.createElement("button");
+    card.type = "button";
+    card.className = "scenario-card" + (text === selectedScenario ? " picked" : "");
+    const num = document.createElement("div");
+    num.className = "sc-num";
+    num.textContent = `Scenario ${i + 1}`;
+    card.appendChild(num);
+    for (const sec of parseScenario(text)) {
+      const p = document.createElement("div");
+      p.className = "sc-sec";
+      if (sec.label) {
+        const b = document.createElement("b");
+        b.textContent = `${sec.label}: `;
+        p.appendChild(b);
+      }
+      p.appendChild(document.createTextNode(sec.body));
+      card.appendChild(p);
+    }
+    card.onclick = () => pickScenario(text, i + 1);
+    scenarioListEl.appendChild(card);
+  });
+}
+
+function pickScenario(text, num) {
+  selectedScenario = text;
+  scenarioCurrentEl.textContent = `Scenario ${num} selected`;
+  scenarioCurrentEl.classList.add("picked");
+  if (chooseScenarioBtn) chooseScenarioBtn.textContent = "Change scenario →";
+  closeScenarioModal();
+}
+
+function clearScenarioSelection() {
+  selectedScenario = "";
+  scenariosPrepared = false;
+  if (scenarioCurrentEl) {
+    scenarioCurrentEl.textContent = "Auto — the pipeline picks one";
+    scenarioCurrentEl.classList.remove("picked");
+  }
+  if (chooseScenarioBtn) chooseScenarioBtn.textContent = "Choose a scenario →";
 }
 
 // ---- pipeline checklist in the panel ---------------------------------------
@@ -449,15 +689,30 @@ async function send() {
 function startGeneration() {
   if (generating || !panelState.ready || !sessionId) return;
   const env = envSelect ? envSelect.value : "dev";
+  const instructions = instructionsEl ? instructionsEl.value.trim() : "";
   generating = true;
   if (envSelect) envSelect.disabled = true;
   renderBriefPanel();
   showRunPanel();
-  addBubble("bot", `Generating in ${env}…`, "stage");
+  // When the pool was prepared up front, stages 00–02 already ran — show them
+  // done so the checklist reflects the skipped-and-reused stages.
+  if (scenariosPrepared) {
+    for (const key of ["00_preflight", "01_input_files", "02_scenarios"]) setPanelStage(key, "ok");
+  }
+  const bits = [];
+  if (instructions) bits.push("with your instructions");
+  if (selectedScenario) bits.push("your selected scenario");
+  addBubble("bot", `Generating in ${env}${bits.length ? " — " + bits.join(" and ") : ""}…`, "stage");
   api("/api/generate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ session_id: sessionId, env }),
+    body: JSON.stringify({
+      session_id: sessionId,
+      env,
+      instructions,
+      selected_scenario: selectedScenario,
+      scenarios_prepared: scenariosPrepared,
+    }),
   })
     .then((r) => r.json())
     .then((data) => streamRun(data.run_id))
@@ -617,6 +872,10 @@ function newTask() {
   generating = false;
   if (envSelect) envSelect.disabled = false;
   panelRun.hidden = true;
+  if (instructionsEl) instructionsEl.value = "";
+  suggestChipsEl.innerHTML = "";
+  suggestLoadedFor = "";
+  clearScenarioSelection();
   resetBrief();
   renderStarters();
   startSession();
@@ -648,6 +907,13 @@ input.addEventListener("keydown", (e) => {
 if (newTaskBtn) newTaskBtn.onclick = newTask;
 if (pdfBtn) pdfBtn.onclick = downloadPdf;
 if (genBtn) genBtn.onclick = startGeneration;
+if (chooseScenarioBtn) chooseScenarioBtn.onclick = openScenarioModal;
+if (scenarioCloseBtn) scenarioCloseBtn.onclick = closeScenarioModal;
+if (scenarioModal) {
+  scenarioModal.addEventListener("click", (e) => {
+    if (e.target === scenarioModal) closeScenarioModal();
+  });
+}
 
 // Restore any saved transcript (read-only), mark a session boundary, then
 // start a fresh chat session. The brief panel always starts empty — it

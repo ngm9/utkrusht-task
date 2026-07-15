@@ -45,7 +45,30 @@
         <div class="progress-label" id="brief-progress-label">0 of 5 fields</div>
         <ul class="slots" id="slots"></ul>
       </div>
-      <div class="panel-section panel-generate">
+      <div class="panel-section panel-review" id="panel-review">
+        <div class="panel-title">Review &amp; generate</div>
+
+        <div id="review-fields" hidden>
+          <div class="review-field">
+            <label class="review-label" for="instructions">Instructions
+              <span class="review-opt">optional — shapes the task</span>
+            </label>
+            <div class="suggest-chips" id="suggest-chips"></div>
+            <textarea id="instructions" class="instructions" rows="3"
+              placeholder="e.g. make it infra — require a Redis dependency + Dockerfile + run.sh"></textarea>
+          </div>
+
+          <div class="review-field">
+            <div class="review-label">Scenario
+              <span class="review-opt">optional — pick one or let the pipeline choose</span>
+            </div>
+            <div class="scenario-state" id="scenario-state">
+              <span class="scenario-current" id="scenario-current">Auto — the pipeline picks one</span>
+              <button class="link-btn" id="choose-scenario" type="button">Choose a scenario →</button>
+            </div>
+          </div>
+        </div>
+
         <label class="env-pick">Environment
           <select id="env">
             <option value="dev">dev</option>
@@ -61,6 +84,23 @@
         <div class="run-result" id="run-result" hidden></div>
       </div>
     </aside>
+  </div>
+
+  <div class="modal-overlay" id="scenario-modal" hidden>
+    <div class="modal" role="dialog" aria-modal="true" aria-label="Choose a scenario">
+      <div class="modal-head">
+        <div class="modal-title">Choose a scenario</div>
+        <button class="modal-close" id="scenario-close" type="button" aria-label="Close">×</button>
+      </div>
+      <div class="modal-body" id="scenario-body">
+        <div class="modal-prep" id="scenario-prep">
+          <div class="panel-title">Preparing scenario options</div>
+          <ul class="run-stages" id="prep-stages"></ul>
+          <div class="gen-hint">Generating a candidate pool for this brief — this runs preflight, input files, and scenarios (~1–2 min).</div>
+        </div>
+        <div class="scenario-list" id="scenario-list" hidden></div>
+      </div>
+    </div>
   </div>
 
   <script src="/static/app.js"></script>
