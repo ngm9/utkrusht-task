@@ -25,7 +25,11 @@ import uuid
 from typing import Any, Dict, Optional
 
 from infra.supabase import init_supabase
-from task_builder.runner import StageEvent, run_pipeline_for_brief
+from task_builder.runner import (
+    StageEvent,
+    run_generate_for_brief,
+    run_prepare_for_brief,
+)
 from task_builder.slots import TaskBrief
 
 logger = logging.getLogger("task_builder.jobs")
@@ -57,37 +61,27 @@ def _now() -> str:
     return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
 
-def enqueue_job(*, brief: Dict[str, Any], env: str, conversation_id: Optional[str]) -> str:
-    """Record a generation run and start it in a background thread.
-
-    Inserts the row as ``queued`` (the thread flips it to ``running`` once it
-    claims a slot), then starts the daemon thread. Returns the ``job_id``
-    immediately — the SSE stream key.
-    """
-    sb = init_supabase(env)
+def _insert_job(sb, *, brief: Dict[str, Any], env: str,
+                conversation_id: Optional[str], initial_stage: str) -> str:
     inserted = (
         sb.table("generation_jobs")
         .insert({
             "conversation_id": conversation_id,
             "brief": brief,
             "status": JobStatus.QUEUED.value,
-            "stage": "00_preflight",
+            "stage": initial_stage,
             "env": env,
             "attempts": 1,
             "max_attempts": 1,
         })
         .execute()
     ).data
-    job_id = str(inserted[0]["id"])
+    return str(inserted[0]["id"])
 
-    # Reuse the same client in the worker thread (the request thread is done
-    # with it after the insert) — avoids leaking a second HTTP session.
-    thread = threading.Thread(
-        target=_run_job,
-        args=(job_id, _brief_from_payload(brief), env, sb),
-        daemon=True,
-        name=f"taskbuilder-job-{job_id[:8]}",
-    )
+
+def _start_thread(sb, job_id: str, target, args) -> None:
+    thread = threading.Thread(target=target, args=args, daemon=True,
+                              name=f"taskbuilder-job-{job_id[:8]}")
     try:
         thread.start()
     except RuntimeError as exc:  # interpreter shutting down / OS thread limit
@@ -97,7 +91,46 @@ def enqueue_job(*, brief: Dict[str, Any], env: str, conversation_id: Optional[st
             "finished_at": _now(),
         }, retries=2)
         raise
-    logger.info("enqueue_job: started in-process run job_id=%s env=%s", job_id, env)
+
+
+def enqueue_prepare_job(*, brief: Dict[str, Any], env: str,
+                        conversation_id: Optional[str]) -> str:
+    """Phase 1: record + start a background run of preflight → input_files →
+    scenarios, so a candidate scenario pool exists for the combo. Returns the
+    ``job_id`` (the SSE stream key). The UI then loads the pool for selection.
+    """
+    sb = init_supabase(env)
+    job_id = _insert_job(sb, brief=brief, env=env,
+                         conversation_id=conversation_id, initial_stage="00_preflight")
+    _start_thread(sb, job_id, _run_prepare_job,
+                  (job_id, _brief_from_payload(brief), env, sb))
+    logger.info("enqueue_prepare_job: started job_id=%s env=%s", job_id, env)
+    return job_id
+
+
+def enqueue_job(*, brief: Dict[str, Any], env: str, conversation_id: Optional[str],
+                instructions: str = "", selected_scenario: str = "",
+                scenarios_prepared: bool = False) -> str:
+    """Phase 2: record a generation run and start it in a background thread.
+
+    Inserts the row as ``queued`` (the thread flips it to ``running`` once it
+    claims a slot), then starts the daemon thread. Returns the ``job_id``
+    immediately — the SSE stream key.
+
+    ``instructions`` shapes the prompt stage; ``selected_scenario`` locks the
+    task to one human-picked scenario; ``scenarios_prepared`` skips stages
+    00–02 (the prepare phase already produced the pool).
+    """
+    sb = init_supabase(env)
+    initial_stage = "03_prompt" if scenarios_prepared else "00_preflight"
+    job_id = _insert_job(sb, brief=brief, env=env,
+                         conversation_id=conversation_id, initial_stage=initial_stage)
+    _start_thread(sb, job_id, _run_job,
+                  (job_id, _brief_from_payload(brief), env, sb,
+                   (instructions or "").strip(), (selected_scenario or "").strip(),
+                   bool(scenarios_prepared)))
+    logger.info("enqueue_job: started in-process run job_id=%s env=%s prepared=%s",
+                job_id, env, scenarios_prepared)
     return job_id
 
 
@@ -131,21 +164,11 @@ def _safe_update(sb, job_id: str, update: Dict[str, Any], *, retries: int = 0) -
     return False
 
 
-def _run_job(job_id: str, brief: TaskBrief, env: str, sb) -> None:
-    """Background worker: run the five-stage pipeline, mirroring each
-    ``StageEvent`` onto the ``generation_jobs`` row. Concurrency-capped and
-    crash-safe — the row always reaches a terminal state."""
-    if not _JOB_SEMAPHORE.acquire(blocking=False):
-        _safe_update(sb, job_id, {
-            "status": JobStatus.FAILED.value,
-            "error": f"server busy: max {_MAX_CONCURRENT_JOBS} concurrent runs reached",
-            "finished_at": _now(),
-        }, retries=1)
-        return
-
-    stage_logs: Dict[str, str] = {}
+def _make_emit(job_id: str, sb, stage_logs: Dict[str, str]):
+    """Build the StageEvent→generation_jobs mirror callback shared by both the
+    prepare and generate phases. Debounces log writes; retries the terminal
+    write so a lost write can't strand the row in 'running'."""
     last_flush = time.monotonic()
-    _safe_update(sb, job_id, {"status": JobStatus.RUNNING.value, "started_at": _now()})
 
     def emit(ev: StageEvent) -> None:
         nonlocal last_flush
@@ -175,8 +198,25 @@ def _run_job(job_id: str, brief: TaskBrief, env: str, sb) -> None:
         if not _safe_update(sb, job_id, update, retries=2):
             logger.error("job %s: TERMINAL write failed — row may be stuck in 'running'", job_id)
 
+    return emit
+
+
+def _run_phase(job_id: str, sb, work) -> None:
+    """Concurrency-capped, crash-safe shell around one phase. ``work(emit)``
+    drives the actual stages; the row always reaches a terminal state."""
+    if not _JOB_SEMAPHORE.acquire(blocking=False):
+        _safe_update(sb, job_id, {
+            "status": JobStatus.FAILED.value,
+            "error": f"server busy: max {_MAX_CONCURRENT_JOBS} concurrent runs reached",
+            "finished_at": _now(),
+        }, retries=1)
+        return
+
+    stage_logs: Dict[str, str] = {}
+    _safe_update(sb, job_id, {"status": JobStatus.RUNNING.value, "started_at": _now()})
+    emit = _make_emit(job_id, sb, stage_logs)
     try:
-        run_pipeline_for_brief(brief, run_id=job_id, emit=emit, env=env)
+        work(emit)
     except Exception as exc:  # noqa: BLE001 — never let a daemon thread die silently
         logger.exception("job %s: runner crashed", job_id)
         _safe_update(sb, job_id, {
@@ -186,6 +226,24 @@ def _run_job(job_id: str, brief: TaskBrief, env: str, sb) -> None:
         }, retries=2)
     finally:
         _JOB_SEMAPHORE.release()
+
+
+def _run_prepare_job(job_id: str, brief: TaskBrief, env: str, sb) -> None:
+    """Phase 1 worker: preflight → input_files → scenarios (build the pool)."""
+    _run_phase(job_id, sb, lambda emit: run_prepare_for_brief(
+        brief, run_id=job_id, emit=emit, env=env))
+
+
+def _run_job(job_id: str, brief: TaskBrief, env: str, sb,
+             instructions: str = "", selected_scenario: str = "",
+             scenarios_prepared: bool = False) -> None:
+    """Phase 2 worker: run the pipeline (prompt + generate, plus stages 00–02
+    unless the pool was already prepared), mirroring each StageEvent onto the
+    ``generation_jobs`` row."""
+    _run_phase(job_id, sb, lambda emit: run_generate_for_brief(
+        brief, run_id=job_id, emit=emit, env=env,
+        instructions=instructions, selected_scenario=selected_scenario,
+        scenarios_prepared=scenarios_prepared))
 
 
 def _as_uuid(value: Optional[str]) -> Optional[str]:

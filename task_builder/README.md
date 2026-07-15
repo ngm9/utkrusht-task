@@ -29,9 +29,23 @@ once and sends it on every API call.
 
 ## How it works
 
-The bot fills six slots — competencies, proficiency, role, focus areas, domain,
-scenario count — validates them (competencies against Supabase), then runs
-`preflight → input_files → scenarios → prompts → generate`, streaming
+The bot fills five slots — competencies, proficiency, role, focus areas,
+domain — validates them (competencies against Supabase). When the brief is
+complete a **review step** appears (human-in-the-loop, before any generation):
+
+- **Instructions** — an optional authoritative free-text directive that shapes
+  the task (infra vs non-infra, a required dependency like Redis, a deliverable
+  like a Dockerfile). Passed to the prompt stage's `--instructions`. LLM-written
+  suggestion chips (`GET /api/suggest-instructions`) offer competency-tailored
+  starters.
+- **Scenario** — optionally pick one scenario for the task. "Choose a scenario"
+  builds the candidate pool (`POST /api/prepare` → preflight → input_files →
+  scenarios) and shows it (`GET /api/scenarios`); the pick locks generation to
+  that scenario (via the generate stage's new `--scenario-file`). Skip it and
+  the pipeline auto-rotates the pool.
+
+Generation then runs `preflight → input_files → scenarios → prompts → generate`
+(stages 00–02 are skipped when the pool was already prepared), streaming
 per-stage progress over Server-Sent Events.
 
 See `docs/superpowers/specs/2026-05-18-task-builder-conversational-frontend-design.md`.
