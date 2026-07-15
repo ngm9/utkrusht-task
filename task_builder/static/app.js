@@ -1,12 +1,28 @@
 // Task Builder chat client — talks to the FastAPI backend.
+// Layout: chat on the left; a live "Task brief" panel on the right that
+// auto-fills from every /api/chat response (the server returns brief +
+// missing_slots each turn) and hosts the Generate button + pipeline
+// checklist.
 const chat = document.getElementById("chat");
 const input = document.getElementById("msg");
 const sendBtn = document.getElementById("send");
 const newTaskBtn = document.getElementById("new-task");
 const pdfBtn = document.getElementById("download-pdf");
 const printDate = document.getElementById("print-date");
+const slotsEl = document.getElementById("slots");
+const progressFill = document.getElementById("brief-progress");
+const progressLabel = document.getElementById("brief-progress-label");
+const genBtn = document.getElementById("gen");
+const genHint = document.getElementById("gen-hint");
+const envSelect = document.getElementById("env");
+const panelRun = document.getElementById("panel-run");
+const runStagesEl = document.getElementById("run-stages");
+const runResultEl = document.getElementById("run-result");
+const startersEl = document.getElementById("starters");
+const startersRow = document.getElementById("starters-row");
 let sessionId = null;
 let busy = false;
+let generating = false;
 let activeStream = null;
 
 // ---- deployment access token ---------------------------------------------
@@ -85,6 +101,184 @@ function record(item) {
   saveTranscript();
 }
 
+// ---- the task-brief panel --------------------------------------------------
+// Mirrors task_builder/slots.py: five required slots + optional
+// scenario_count (defaults to 6 server-side).
+const SLOT_DEFS = [
+  { key: "competencies", label: "Tech stack", list: true, required: true },
+  { key: "proficiency", label: "Proficiency", required: true },
+  { key: "role", label: "Role", required: true },
+  { key: "focus_areas", label: "Focus areas", list: true, required: true },
+  { key: "domain", label: "Domain", required: true },
+  { key: "scenario_count", label: "Scenarios", required: false, fallback: "6 (default)" },
+];
+let panelState = { brief: {}, missing: [], ready: false };
+
+function slotValue(def, brief) {
+  const v = brief ? brief[def.key] : null;
+  if (def.list) return (v || []).join(", ");
+  if (v === null || v === undefined || v === "") return "";
+  return String(v);
+}
+
+function renderBriefPanel() {
+  const { brief, missing, ready } = panelState;
+  slotsEl.innerHTML = "";
+  const asking = missing.length ? missing[0] : null;
+  let filledRequired = 0;
+  for (const def of SLOT_DEFS) {
+    const value = slotValue(def, brief);
+    const filled = !!value;
+    if (filled && def.required) filledRequired += 1;
+    const li = document.createElement("li");
+    li.className = filled ? "filled" : "empty";
+    if (!generating && def.key === asking) li.classList.add("asking");
+    const label = document.createElement("div");
+    label.className = "slot-label";
+    label.textContent = def.label;
+    const val = document.createElement("div");
+    val.className = "slot-value";
+    val.textContent = filled ? value : (def.fallback || (def.key === asking ? "being asked now…" : "not set yet"));
+    li.appendChild(label);
+    li.appendChild(val);
+    if (filled && !generating) {
+      li.title = `Click to change ${def.label.toLowerCase()}`;
+      li.onclick = () => {
+        input.value = `Change the ${def.label.toLowerCase()} to `;
+        input.focus();
+      };
+    }
+    slotsEl.appendChild(li);
+  }
+  const total = SLOT_DEFS.filter((d) => d.required).length;
+  progressFill.style.width = `${(filledRequired / total) * 100}%`;
+  progressLabel.textContent = `${filledRequired} of ${total} fields`;
+  genBtn.disabled = !(ready && sessionId && !generating);
+  if (generating) {
+    genHint.textContent = "Generation in progress — logs stream in the chat.";
+  } else if (ready) {
+    genHint.textContent = "Brief complete. Pick an environment and generate.";
+  } else {
+    genHint.textContent = "Answer the questions in the chat — the brief fills in here as you go.";
+  }
+}
+
+function updateBrief(data) {
+  panelState = {
+    brief: data.brief || {},
+    missing: data.missing_slots || [],
+    ready: !!data.ready,
+  };
+  renderBriefPanel();
+}
+
+// The panel mirrors the CURRENT server-side conversation only. A page
+// reload starts a fresh session (empty brief server-side), so the panel
+// starts empty too — restoring an old brief here would enable Generate
+// against a session that can't generate yet.
+function resetBrief() {
+  panelState = { brief: {}, missing: [], ready: false };
+  renderBriefPanel();
+}
+
+// ---- pipeline checklist in the panel ---------------------------------------
+const PIPELINE_STAGES = [
+  ["00_preflight", "Preflight checks"],
+  ["01_input_files", "Input files"],
+  ["02_scenarios", "Scenarios"],
+  ["03_prompt", "Prompts"],
+  ["04_tasks", "Generate & evaluate"],
+];
+const panelStageEls = {};
+
+function showRunPanel() {
+  panelRun.hidden = false;
+  runResultEl.hidden = true;
+  runResultEl.innerHTML = "";
+  runStagesEl.innerHTML = "";
+  for (const [key, label] of PIPELINE_STAGES) {
+    const li = document.createElement("li");
+    const dot = document.createElement("span");
+    dot.className = "dot";
+    const text = document.createElement("span");
+    text.textContent = label;
+    const secs = document.createElement("span");
+    secs.className = "secs";
+    li.appendChild(dot);
+    li.appendChild(text);
+    li.appendChild(secs);
+    runStagesEl.appendChild(li);
+    panelStageEls[key] = { li, dot, secs };
+  }
+}
+
+function setPanelStage(stageKey, status, durationS) {
+  const entry = panelStageEls[stageKey];
+  if (!entry) return;
+  entry.li.className = status;
+  if (status === "ok") {
+    entry.dot.textContent = "✓";
+    if (durationS != null) entry.secs.textContent = `${durationS}s`;
+  } else if (status === "failed") {
+    entry.dot.textContent = "✗";
+  } else {
+    entry.dot.textContent = "";
+  }
+}
+
+function showRunResult(spec) {
+  runResultEl.hidden = false;
+  runResultEl.innerHTML = "";
+  if (spec.status === "completed") {
+    const strong = document.createElement("strong");
+    strong.textContent = spec.task_name || "Task created";
+    runResultEl.appendChild(strong);
+    if (spec.task_id) {
+      runResultEl.appendChild(document.createElement("br"));
+      runResultEl.appendChild(document.createTextNode(`ID ${spec.task_id}`));
+    }
+    if (spec.task_url) {
+      runResultEl.appendChild(document.createElement("br"));
+      const a = document.createElement("a");
+      a.href = spec.task_url;
+      a.textContent = "Open repository →";
+      a.target = "_blank";
+      a.rel = "noopener";
+      runResultEl.appendChild(a);
+    }
+  } else {
+    runResultEl.textContent = spec.outcome || spec.detail || "Generation failed.";
+  }
+}
+
+// ---- starter suggestion chips ----------------------------------------------
+const STARTERS = [
+  "An INTERMEDIATE React + TypeScript task for a frontend engineer, focused on state management, e-commerce domain",
+  "A BASIC Java + Kafka task for a backend engineer, focused on consumer groups, logistics domain",
+  "An ADVANCED Python task for a data engineer, focused on pipeline reliability, fintech domain",
+];
+
+function renderStarters() {
+  startersRow.innerHTML = "";
+  for (const text of STARTERS) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "chip";
+    b.textContent = text;
+    b.onclick = () => {
+      input.value = text;
+      hideStarters();
+      send();
+    };
+    startersRow.appendChild(b);
+  }
+  startersEl.hidden = false;
+}
+
+function hideStarters() {
+  startersEl.hidden = true;
+}
+
 // ---- rendering primitives ------------------------------------------------
 // Low-level DOM helper. Does NOT record — used directly for transient UI
 // (the "…" placeholder) and as the primitive behind addBubble/summaryCard.
@@ -118,38 +312,24 @@ function divider(text) {
   record({ kind: "divider", text });
 }
 
-// The task-brief card. live=true wires the Generate button and records the
-// item; live=false renders a static, read-only card (used on restore).
-function summaryCard(brief, live = true) {
+// Read-only task-brief card. Only used when restoring transcripts saved by
+// the previous single-column UI — the live flow renders the brief in the
+// side panel instead.
+function summaryCard(brief) {
   const card = bubble("bot", "", "summary");
-  const actions = live
-    ? `<div class="actions">
-         <label class="env-pick">Environment
-           <select id="env">
-             <option value="dev">dev</option>
-             <option value="prod">prod</option>
-           </select>
-         </label>
-         <button class="cta" id="gen">Generate task →</button>
-       </div>`
-    : "";
   card.innerHTML = `<h4>Task brief</h4><div class="kv">
     <div class="k">Tech stack</div><div class="v"></div>
     <div class="k">Proficiency</div><div class="v"></div>
     <div class="k">Role</div><div class="v"></div>
     <div class="k">Focus areas</div><div class="v"></div>
     <div class="k">Domain</div><div class="v"></div>
-  </div>${actions}`;
+  </div>`;
   const v = card.querySelectorAll(".kv .v");
   v[0].textContent = (brief.competencies || []).join(", ");
   v[1].textContent = brief.proficiency || "";
   v[2].textContent = brief.role || "";
   v[3].textContent = (brief.focus_areas || []).join(", ");
   v[4].textContent = brief.domain || "";
-  if (live) {
-    card.querySelector("#gen").onclick = startGeneration;
-    record({ kind: "summary", brief });
-  }
 }
 
 // Build one collapsible stage-log panel and return handles to its parts.
@@ -233,6 +413,7 @@ async function startSession() {
     const data = await res.json();
     sessionId = data.session_id;
     addBubble("bot", data.reply);
+    renderBriefPanel();
   } catch {
     addBubble("bot", "Could not connect to the server. Is the backend running?");
   }
@@ -243,6 +424,7 @@ async function send() {
   if (!text || busy || !sessionId) return;
   busy = true;
   input.value = "";
+  hideStarters();
   addBubble("user", text);
   const thinking = bubble("bot", "…"); // transient — intentionally not recorded
   try {
@@ -254,7 +436,7 @@ async function send() {
     const data = await res.json();
     thinking.textContent = data.reply;
     record({ kind: "bubble", role: "bot", text: data.reply, cls: "" });
-    if (data.ready) summaryCard(data.brief);
+    updateBrief(data);
   } catch (e) {
     const msg = "Network error — please try again.";
     thinking.textContent = msg;
@@ -265,11 +447,12 @@ async function send() {
 }
 
 function startGeneration() {
-  const gen = document.getElementById("gen");
-  const envSel = document.getElementById("env");
-  const env = envSel ? envSel.value : "dev";
-  if (gen) gen.disabled = true;
-  if (envSel) envSel.disabled = true;
+  if (generating || !panelState.ready || !sessionId) return;
+  const env = envSelect ? envSelect.value : "dev";
+  generating = true;
+  if (envSelect) envSelect.disabled = true;
+  renderBriefPanel();
+  showRunPanel();
   addBubble("bot", `Generating in ${env}…`, "stage");
   api("/api/generate", {
     method: "POST",
@@ -278,7 +461,12 @@ function startGeneration() {
   })
     .then((r) => r.json())
     .then((data) => streamRun(data.run_id))
-    .catch(() => addBubble("bot", "Could not start generation.", "stage failed"));
+    .catch(() => {
+      generating = false;
+      if (envSelect) envSelect.disabled = false;
+      renderBriefPanel();
+      addBubble("bot", "Could not start generation.", "stage failed");
+    });
 }
 
 // Terminal "done" event — final outcome bubble plus a repo link on success.
@@ -296,6 +484,16 @@ function doneBubble(e) {
   };
   renderDone(spec);
   record({ kind: "done", ...spec });
+  showRunResult(spec);
+  if (spec.status === "completed") {
+    for (const [key] of PIPELINE_STAGES) {
+      const entry = panelStageEls[key];
+      if (entry && entry.li.className !== "failed") setPanelStage(key, "ok");
+    }
+  }
+  generating = false;
+  if (envSelect) envSelect.disabled = false;
+  renderBriefPanel();
 }
 
 function streamRun(runId) {
@@ -315,6 +513,7 @@ function streamRun(runId) {
     if (e.status === "running") {
       panel.summary.textContent = `⏳ ${e.stage}`;
       panel.details.open = true;
+      setPanelStage(e.stage, "running");
     } else if (e.status === "log") {
       panel.log.textContent += e.detail || "";
       panel.log.scrollTop = panel.log.scrollHeight;
@@ -322,9 +521,11 @@ function streamRun(runId) {
       const secs = e.duration_s != null ? ` · ${e.duration_s}s` : "";
       panel.summary.textContent = `✓ ${e.stage}${secs}`;
       panel.details.open = false;
+      setPanelStage(e.stage, "ok", e.duration_s);
     } else if (e.status === "failed") {
       panel.summary.textContent = `✗ ${e.stage} ${e.detail || ""}`.trim();
       panel.details.open = true;
+      setPanelStage(e.stage, "failed");
     }
     if (!restoring) {
       let item = stageItems[e.stage];
@@ -342,6 +543,9 @@ function streamRun(runId) {
   es.onerror = () => {
     es.close();
     activeStream = null;
+    generating = false;
+    if (envSelect) envSelect.disabled = false;
+    renderBriefPanel();
   };
 }
 
@@ -355,7 +559,7 @@ function renderItem(item) {
     el.textContent = item.text || "";
     chat.appendChild(el);
   } else if (item.kind === "summary") {
-    summaryCard(item.brief || {}, false);
+    summaryCard(item.brief || {});
   } else if (item.kind === "stage") {
     const panel = makeStagePanel();
     panel.summary.textContent = item.summary || "";
@@ -410,6 +614,11 @@ function newTask() {
   chat.innerHTML = "";
   sessionId = null;
   busy = false;
+  generating = false;
+  if (envSelect) envSelect.disabled = false;
+  panelRun.hidden = true;
+  resetBrief();
+  renderStarters();
   startSession();
 }
 
@@ -438,10 +647,15 @@ input.addEventListener("keydown", (e) => {
 });
 if (newTaskBtn) newTaskBtn.onclick = newTask;
 if (pdfBtn) pdfBtn.onclick = downloadPdf;
+if (genBtn) genBtn.onclick = startGeneration;
 
 // Restore any saved transcript (read-only), mark a session boundary, then
-// start a fresh chat session.
+// start a fresh chat session. The brief panel always starts empty — it
+// mirrors the new session, not the restored history.
 if (loadTranscript()) {
   divider("— new session —");
+} else {
+  renderStarters();
 }
+renderBriefPanel();
 startSession();
