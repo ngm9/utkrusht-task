@@ -871,8 +871,13 @@ def create_task(
                             f"cheaper model '{_gen_model}' instead of '{_TASK_GEN_MODEL}'"
                         )
                     with trace_stage("task_gen"):
+                        # ponytail: openai_client routes both models this call
+                        # ever uses — primary (claude-opus) and repair
+                        # (claude-sonnet) are both claude-role. Add a
+                        # per-provider client factory only if a gpt-* repair
+                        # model is ever introduced (would need openai_via_portkey).
                         candidate = generate_task_with_code(
-                            _llm_client_for(_gen_model), input_data,
+                            openai_client, input_data,
                             feedback=feedback,
                             model=_gen_model,
                         )

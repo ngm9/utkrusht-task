@@ -1,0 +1,14 @@
+# Keep the task_builder image lean — the Dockerfile does COPY . .
+.git
+.github
+.claude
+.venv
+venv
+.env
+.env.*
+!.env.example
+__pycache__
+*.pyc
+.pytest_cache
+solvability_runs
+export
