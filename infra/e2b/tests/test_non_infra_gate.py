@@ -6,7 +6,31 @@ the field audit passed it because neither executes the code. These assert the
 gate would have caught it — and, just as importantly, that a normally-red
 starter still passes (a generated task ships unsolved on purpose).
 """
-from infra.e2b.sandbox_eval import _classify_test_run, _detect_non_infra_stack
+from infra.e2b.sandbox_eval import (
+    _classify_dotnet,
+    _classify_test_run,
+    _detect_non_infra_stack,
+)
+
+# `dotnet test` exits 1 for BOTH of these — only the output separates them.
+DOTNET_BUILD_ERROR = """
+Determining projects to restore...
+/task/src/OrderService.cs(42,17): error CS1002: ; expected
+Build FAILED.
+"""
+
+DOTNET_RED_BUT_HEALTHY = """
+Determining projects to restore...
+Build succeeded.
+  Failed OrderTotals_ApplyDiscount [12 ms]
+  Error Message: Assert.Equal() Failure: Expected 90, Actual 100
+Failed!  - Failed: 3, Passed: 5, Skipped: 0, Total: 8
+"""
+
+DOTNET_NO_TESTS = """
+Build succeeded.
+No test is available in /task/bin/Debug/net8.0/Task.dll.
+"""
 
 # Verbatim tail of the failing run on the shipped starter.
 VITEST_NO_CONFIG = """
@@ -71,11 +95,34 @@ def test_crash_exit_code_is_caught():
     assert r.verdict == "test_run_error"
 
 
+def test_dotnet_build_error_is_caught():
+    # Exit 1 here means "does not compile", not "tests failed".
+    r = _classify_dotnet(1, DOTNET_BUILD_ERROR)
+    assert not r.passed
+    assert r.verdict == "collection_error"
+
+
+def test_dotnet_red_starter_still_passes_the_gate():
+    # Same exit code as the build error above — the output is what separates them.
+    r = _classify_dotnet(1, DOTNET_RED_BUT_HEALTHY)
+    assert r.passed
+    assert r.verdict == "ok"
+
+
+def test_dotnet_no_tests_is_caught():
+    r = _classify_dotnet(1, DOTNET_NO_TESTS)
+    assert not r.passed
+    assert r.verdict == "no_tests"
+
+
 def test_stack_detection():
     assert _detect_non_infra_stack({"package.json"})[1] == "utkrusht-node-base"
     assert _detect_non_infra_stack({"requirements.txt"})[1] == "utkrusht-python-base"
     assert _detect_non_infra_stack({"go.mod"})[1] == "utkrusht-go-base"
     # Nested manifests still resolve.
     assert _detect_non_infra_stack({"app/package.json"})[1] == "utkrusht-node-base"
+    # C# has no fixed manifest name — match on the .csproj suffix, nested or not.
+    assert _detect_non_infra_stack({"OrderService.csproj"})[1] == "utkrusht-dotnet-base"
+    assert _detect_non_infra_stack({"src/Api/Api.csproj"})[3] == "dotnet test --nologo"
     # Nothing recognisable -> skip, never a false fail.
     assert _detect_non_infra_stack({"README.md"}) is None

@@ -278,12 +278,16 @@ def _finish(result: SandboxEvalResult) -> SandboxEvalResult:
 # vite.config.js and a suite that collected 0 tests.
 # ---------------------------------------------------------------------------
 
-# marker file -> (base template, install cmd, test cmd, classifier kind)
+# marker -> (base template, install cmd, test cmd, classifier kind).
+# A ``*.ext`` marker matches any file with that suffix (C# has no fixed
+# manifest filename — the project file is named after the project).
 _NON_INFRA_STACKS: tuple[tuple[str, str, str, str, str], ...] = (
     ("package.json", "utkrusht-node-base", "npm install", "npm test", "node"),
     ("requirements.txt", "utkrusht-python-base",
      "pip install --break-system-packages -r requirements.txt",
      "python -m pytest -q --tb=short", "pytest"),
+    ("*.csproj", "utkrusht-dotnet-base", "dotnet restore",
+     "dotnet test --nologo", "dotnet"),
     ("go.mod", "utkrusht-go-base", "go mod download", "go test ./... -count=1", "generic"),
     ("Cargo.toml", "utkrusht-rust", "cargo fetch", "cargo test", "generic"),
 )
@@ -303,9 +307,48 @@ _HARNESS_ERRORS: tuple[str, ...] = (
 def _detect_non_infra_stack(names: set[str]):
     """Pick the stack from the manifest the task actually ships."""
     for marker, template, install_cmd, test_cmd, kind in _NON_INFRA_STACKS:
-        if any(n == marker or n.endswith(f"/{marker}") for n in names):
+        if marker.startswith("*."):
+            suffix = marker[1:]
+            matched = any(n.endswith(suffix) for n in names)
+        else:
+            matched = any(n == marker or n.endswith(f"/{marker}") for n in names)
+        if matched:
             return marker, template, install_cmd, test_cmd, kind
     return None
+
+
+def _classify_dotnet(exit_code: int, output: str) -> SandboxEvalResult:
+    """Map a ``dotnet test`` run to a gate verdict.
+
+    ``dotnet test`` exits 1 BOTH when the project fails to compile and when
+    tests merely fail, so the exit code alone cannot separate "starter is
+    broken" from "starter is red by design" — the output has to be read.
+    A compile error means the candidate could never run the suite at all.
+    """
+    low = output.lower()
+    if "error cs" in low or "msb1003" in low or "msb1011" in low:
+        return SandboxEvalResult(
+            passed=False, verdict="collection_error",
+            detail="the project does not compile — `dotnet test` could not "
+                   "build the suite, so the candidate cannot run it.",
+            stdout_tail=output[-2000:])
+    if "no test is available" in low:
+        return SandboxEvalResult(
+            passed=False, verdict="no_tests",
+            detail="`dotnet test` found no tests — the task ships no runnable tests.",
+            stdout_tail=output[-2000:])
+    # "Passed!"/"Failed!" is the per-assembly summary — its presence proves the
+    # suite actually built and executed, which is all this gate asks for.
+    if "passed!" in low or "failed!" in low or exit_code in (0, 1):
+        return SandboxEvalResult(
+            passed=True, verdict="ok",
+            detail="test suite built and executed",
+            stdout_tail=output[-1000:])
+    return SandboxEvalResult(
+        passed=False, verdict="test_run_error",
+        detail=f"`dotnet test` exited with code {exit_code} — the suite did "
+               "not run cleanly.",
+        stdout_tail=output[-2000:])
 
 
 def _classify_test_run(exit_code: int, output: str) -> SandboxEvalResult:
@@ -404,6 +447,8 @@ def run_non_infra_gate(code_files: dict) -> SandboxEvalResult:
         _log_output("test output", combined)
         if kind == "pytest":
             return _finish(_classify_pytest(code, combined))
+        if kind == "dotnet":
+            return _finish(_classify_dotnet(code, combined))
         return _finish(_classify_test_run(code, combined))
     finally:
         try:
