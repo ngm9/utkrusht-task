@@ -7,7 +7,7 @@ name: Task Builder prod deployment
 on:
   push:
     branches:
-      - release
+      - main
     paths:
       - 'task_builder/**'
       - 'flows/**'
