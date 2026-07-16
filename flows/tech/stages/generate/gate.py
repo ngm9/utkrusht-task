@@ -45,7 +45,11 @@ class _Metrics:
 
 metrics = _Metrics()
 
-from infra.e2b.sandbox_eval import run_sandbox_eval, sandbox_eval_enabled
+from infra.e2b.sandbox_eval import (
+    run_non_infra_gate,
+    run_sandbox_eval,
+    sandbox_eval_enabled,
+)
 from flows.tech.stages.generate.evaluator import build_retry_feedback
 from flows.tech.stages.generate.runtime_resolver import ResolvedPlan
 
@@ -110,32 +114,55 @@ def run_gate_for_attempt(
     ``run_sandbox_eval`` and fires with the still-live sandbox only when the
     gate passes — the tour step verifies its commands there before teardown.
 
-    Skip conditions (both yield ``DISABLED`` — loop proceeds to storage):
+    Skip condition (yields ``DISABLED`` — loop proceeds to storage):
 
       * ``SANDBOX_EVAL_ENABLED`` env var is off (the original global
         kill-switch — unchanged).
-      * ``task_shape == "non_infra"`` — the prompt generator's shape
-        classifier decided the task is a pure-runtime local project with
-        no docker-compose / run.sh. There is nothing for the E2B gate to
-        build and test, so running it would always fail (or run a
-        misleading verdict). Skip cleanly; the LLM task + code evals
-        already gated quality.
+
+    ``task_shape == "non_infra"`` routes to ``run_non_infra_gate`` instead of
+    the run.sh gate: a pure-local project has no template and no run.sh, but
+    its own suite must still install and collect. This used to skip outright
+    ("nothing to build in the sandbox"), which let a starter ship with a suite
+    that could not be collected at all — the LLM task + code evals read the
+    code, they never execute it, so nothing caught it.
     """
     if not sandbox_eval_enabled():
         metrics.inc("gate_outcome_total", outcome="disabled")
         return GateOutcome.DISABLED, ""
 
     if task_shape == "non_infra":
-        logger.info(
-            "E2B gate skipped: task_shape=non_infra "
-            "(pure local project, nothing to build in the sandbox)"
-        )
-        metrics.inc("gate_outcome_total", outcome="non_infra_skip")
-        candidate_eval["sandbox_eval"] = {
-            "skipped": True,
-            "reason": "task_shape=non_infra",
-        }
-        return GateOutcome.DISABLED, ""
+        # A pure-local project has no template and no run.sh, so the run.sh
+        # gate cannot apply — but its own suite still has to install and
+        # collect. Skipping outright let a starter whose tests could not be
+        # collected at all ship green (the LLM evals read the code, they never
+        # run it). Failing tests still PASS here: the starter is meant to be red.
+        logger.info("Running non-infra install/collect gate")
+        sb_result = run_non_infra_gate(candidate.get("code_files", {}))
+        candidate_eval["sandbox_eval"] = sb_result.as_dict()
+
+        if sb_result.skipped:
+            logger.info(f"  non-infra gate skipped: {sb_result.detail}")
+            metrics.inc("gate_outcome_total", outcome="skipped",
+                        runtime="non_infra",
+                        reason=(sb_result.detail or "no_reason")[:40])
+            return GateOutcome.SKIPPED, ""
+
+        if not sb_result.passed:
+            metrics.inc("gate_outcome_total", outcome="retry", runtime="non_infra")
+            logger.warning(
+                f"Attempt {attempt}: non-infra gate FAILED "
+                f"({sb_result.verdict}) — {sb_result.detail}"
+            )
+            feedback = build_retry_feedback(
+                [],
+                candidate_eval,
+                prior_candidate=candidate,
+            )
+            return GateOutcome.RETRY, feedback
+
+        metrics.inc("gate_outcome_total", outcome="pass", runtime="non_infra")
+        logger.info(f"  non-infra gate passed: {sb_result.detail}")
+        return GateOutcome.PASS, ""
 
     logger.info("Running E2B run.sh readiness gate")
     # ``plan`` carries both the runtime AND the template recipe
