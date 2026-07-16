@@ -197,34 +197,53 @@ def run_generate_for_brief(brief: TaskBrief, *, run_id: str, emit: EmitFn,
     combo_dir = _combo_dir(runs_root, run_id)
     _stage = _make_stage_runner(combo_dir, emit)
 
+    # Run 00_preflight + 01_input_files; return the located (comp, bg) JSON, or
+    # None after emitting the failure. Shared by the fresh run and the
+    # prepared-but-input-files-missing fallback.
+    def _gen_input_files() -> tuple[Path, Path] | None:
+        rec = _stage("00_preflight", [
+            py, "-m", "flows.tech.stages.preflight",
+            "--combo", f"{','.join(names)}:{level}", "--env", env,
+        ])
+        if rec["exit_code"] != 0:
+            emit(StageEvent("done", "failed", detail="preflight failed"))
+            return None
+        t0 = time.time()
+        input_cmd = [
+            py, "-m", "flows.tech.stages.input_files",
+            "--competency-name", ", ".join(names),
+            "--proficiency", level, "--role", brief.role or "", "--env", env,
+        ]
+        if brief.domain:
+            input_cmd += ["--domain", brief.domain]
+        rec = _stage("01_input_files", input_cmd)
+        if rec["exit_code"] != 0:
+            emit(StageEvent("done", "failed", detail="input files failed"))
+            return None
+        return _locate_input_files(names, level, t0)
+
     try:
         combo_dir.mkdir(parents=True, exist_ok=True)
 
         if scenarios_prepared:
             # Reuse the pool + input files produced by the prepare phase.
             # since=0 → accept the existing on-disk input files regardless of age.
-            comp_json, bg_json = _locate_input_files(names, level, 0.0)
+            try:
+                comp_json, bg_json = _locate_input_files(names, level, 0.0)
+            except FileNotFoundError:
+                # Input files live on the container disk (data/generated/…) and
+                # are wiped on redeploy, while the scenario pool persists in the
+                # DB — so "prepared" can be True with the input files gone.
+                # Regenerate them (not the pool) instead of failing at stage 03.
+                located = _gen_input_files()
+                if located is None:
+                    return
+                comp_json, bg_json = located
         else:
-            rec = _stage("00_preflight", [
-                py, "-m", "flows.tech.stages.preflight",
-                "--combo", f"{','.join(names)}:{level}", "--env", env,
-            ])
-            if rec["exit_code"] != 0:
-                return emit(StageEvent("done", "failed", detail="preflight failed"))
-
-            t0 = time.time()
-            input_cmd = [
-                py, "-m", "flows.tech.stages.input_files",
-                "--competency-name", ", ".join(names),
-                "--proficiency", level, "--role", brief.role or "", "--env", env,
-            ]
-            if brief.domain:
-                input_cmd += ["--domain", brief.domain]
-            rec = _stage("01_input_files", input_cmd)
-            if rec["exit_code"] != 0:
-                return emit(StageEvent("done", "failed", detail="input files failed"))
-
-            comp_json, bg_json = _locate_input_files(names, level, t0)
+            located = _gen_input_files()
+            if located is None:
+                return
+            comp_json, bg_json = located
 
             scenario_cmd = [
                 py, "-m", "flows.tech.stages.scenarios",
