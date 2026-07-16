@@ -7,6 +7,7 @@ gate would have caught it — and, just as importantly, that a normally-red
 starter still passes (a generated task ships unsolved on purpose).
 """
 from infra.e2b.sandbox_eval import (
+    _require_red_starter,
     _classify_dotnet,
     _classify_test_run,
     _detect_non_infra_stack,
@@ -113,6 +114,53 @@ def test_dotnet_no_tests_is_caught():
     r = _classify_dotnet(1, DOTNET_NO_TESTS)
     assert not r.passed
     assert r.verdict == "no_tests"
+
+
+# Verbatim from the C# ADVANCED run: told "does not compile", the generator
+# marked the 5 failing tests [Fact(Skip=...)] and the suite went green.
+DOTNET_SKIPPED_TO_GREEN = (
+    "Passed!  - Failed:     0, Passed:     2, Skipped:     5, Total:     7, "
+    "Duration: 161 ms - TransferPosting.Tests.dll (net8.0)"
+)
+
+VITEST_ALL_PASS_NOTHING_TO_SOLVE = """
+ Test Files  2 passed (2)
+      Tests  8 passed (8)
+"""
+
+PYTEST_WITH_SKIPS = "3 failed, 2 passed, 4 skipped in 0.31s"
+
+PYTEST_ZERO_SKIPPED = "3 failed, 2 passed, 0 skipped in 0.31s"
+
+
+def test_skipping_tests_to_go_green_is_caught():
+    # The exact regression: exit 0 + "Passed!" looks healthy, but 5 disabled
+    # tests mean the required guarantees are never checked.
+    r = _require_red_starter(0, DOTNET_SKIPPED_TO_GREEN)
+    assert r is not None and not r.passed
+    # exit 0 is itself disqualifying — nothing left to solve.
+    assert r.verdict == "already_green"
+
+
+def test_skipped_tests_caught_even_when_suite_is_red():
+    r = _require_red_starter(1, PYTEST_WITH_SKIPS)
+    assert r is not None and not r.passed
+    assert r.verdict == "tests_skipped"
+
+
+def test_all_green_starter_is_rejected():
+    r = _require_red_starter(0, VITEST_ALL_PASS_NOTHING_TO_SOLVE)
+    assert r is not None and r.verdict == "already_green"
+
+
+def test_genuinely_red_starter_is_allowed_through():
+    assert _require_red_starter(1, VITEST_RED_BUT_HEALTHY) is None
+    assert _require_red_starter(1, DOTNET_RED_BUT_HEALTHY) is None
+
+
+def test_zero_skipped_is_not_a_skip():
+    # "0 skipped" must not trip the skip check.
+    assert _require_red_starter(1, PYTEST_ZERO_SKIPPED) is None
 
 
 def test_stack_detection():

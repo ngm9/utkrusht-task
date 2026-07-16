@@ -304,6 +304,42 @@ _HARNESS_ERRORS: tuple[str, ...] = (
 )
 
 
+# "Skipped: 5" (dotnet) or "5 skipped" (pytest/vitest). Zero must NOT match.
+_SKIPPED_RE = re.compile(r"Skipped:\s*([1-9]\d*)|\b([1-9]\d*) skipped", re.IGNORECASE)
+
+
+def _require_red_starter(exit_code: int, output: str) -> Optional[SandboxEvalResult]:
+    """Reject a starter that has nothing for the candidate to solve.
+
+    A generated task ships UNSOLVED: its own suite must fail. Two ways that
+    silently breaks, both of which look like a healthy run to an exit-code
+    check, and both of which a generator will reach for when told "your project
+    does not compile":
+
+      * every test passes  -> nothing to solve
+      * tests are skipped   -> a skipped test grades nothing, so the guarantee
+                               it encodes is never checked
+
+    Returns an override result, or None when the starter is legitimately red.
+    """
+    if exit_code == 0:
+        return SandboxEvalResult(
+            passed=False, verdict="already_green",
+            detail="the starter's own test suite passes with no failures — "
+                   "there is nothing for the candidate to solve.",
+            stdout_tail=output[-2000:])
+    match = _SKIPPED_RE.search(output)
+    if match:
+        count = match.group(1) or match.group(2)
+        return SandboxEvalResult(
+            passed=False, verdict="tests_skipped",
+            detail=f"{count} test(s) are disabled with a skip attribute — a "
+                   "skipped test grades nothing, so the behaviour it describes "
+                   "is never verified. Ship them enabled and failing.",
+            stdout_tail=output[-2000:])
+    return None
+
+
 def _detect_non_infra_stack(names: set[str]):
     """Pick the stack from the manifest the task actually ships."""
     for marker, template, install_cmd, test_cmd, kind in _NON_INFRA_STACKS:
@@ -446,10 +482,20 @@ def run_non_infra_gate(code_files: dict) -> SandboxEvalResult:
                     f"({time.time() - ts:.1f}s)")
         _log_output("test output", combined)
         if kind == "pytest":
-            return _finish(_classify_pytest(code, combined))
-        if kind == "dotnet":
-            return _finish(_classify_dotnet(code, combined))
-        return _finish(_classify_test_run(code, combined))
+            result = _classify_pytest(code, combined)
+        elif kind == "dotnet":
+            result = _classify_dotnet(code, combined)
+        else:
+            result = _classify_test_run(code, combined)
+
+        # Applied only on the non-infra path: the legacy/run.sh gate keeps its
+        # own contract. A suite that built and ran is necessary but not
+        # sufficient — it also has to leave the candidate something to do.
+        if result.passed:
+            override = _require_red_starter(code, combined)
+            if override is not None:
+                return _finish(override)
+        return _finish(result)
     finally:
         try:
             sb.kill()
