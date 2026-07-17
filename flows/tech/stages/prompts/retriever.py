@@ -15,6 +15,7 @@ from typing import Optional
 
 from infra.classifier.runtime import Competency
 from flows.tech.stages.generate.runtime_resolver import TemplateSpec
+from flows.tech.stages.prompts import corpus
 from flows.tech.stages.prompts.slugs import (
     COMPETENCY_ALIASES,
     competency_tokens,
@@ -160,10 +161,10 @@ def _level_folder(proficiency: str) -> Path:
     return PROMPT_ROOT / folder
 
 
-def _list_prompt_files(proficiency: str) -> list[Path]:
-    """Return curated prompt files at this proficiency level.
+def _scan_level_folder(folder: Path) -> list[Path]:
+    """Return the prompt files in one ``<level>/`` folder.
 
-    Two layouts are supported under ``<level>/``::
+    Two layouts are supported::
 
         <level>/<slug>.py                          # flat, legacy
         <level>/<slug>/<slug>.py                   # per-slug folder, canonical
@@ -173,7 +174,6 @@ def _list_prompt_files(proficiency: str) -> list[Path]:
     this, retriever results would include both the curated file and its archived
     predecessor.
     """
-    folder = _level_folder(proficiency)
     if not folder.exists():
         return []
     out: list[Path] = []
@@ -190,7 +190,44 @@ def _list_prompt_files(proficiency: str) -> list[Path]:
         canonical = child / f"{child.name}.py"
         if canonical.exists():
             out.append(canonical)
-    return sorted(out)
+    return out
+
+
+def _list_prompt_files(proficiency: str) -> list[Path]:
+    """Return reference prompt files at this proficiency level.
+
+    Unions two sources:
+
+    1. The curated, hand-reviewed ``task_generation_prompts/`` tree (in git).
+    2. Prompts promoted to ``approved`` in the durable corpus — i.e. ones whose
+       task passed the E2B gate and shipped. Without this the corpus is frozen at
+       whatever is committed: a prompt generated in prod is written to the
+       container's disposable layer, never read again, so a novel stack falls to
+       the Level-6 generic skeleton on every run forever. See
+       ``prompts/corpus.py``.
+
+    Curated wins on a filename collision — a hand-reviewed prompt outranks an
+    auto-promoted one for the same combo. Curated files are also returned FIRST
+    (each group sorted, groups concatenated — not one sort across both roots):
+    callers like ``_find_exact_match_file`` take the first match, so a curated
+    prompt must never be outranked by a temp-dir path that happens to sort lower.
+    """
+    curated = sorted(_scan_level_folder(_level_folder(proficiency)))
+    seen = {p.name for p in curated}
+
+    approved_root = corpus.approved_root()
+    if not approved_root:
+        return curated
+
+    folder = LEVEL_FOLDERS.get(proficiency.upper())
+    if not folder:
+        return curated
+
+    promoted = [
+        p for p in sorted(_scan_level_folder(approved_root / folder))
+        if p.name not in seen
+    ]
+    return curated + promoted
 
 
 def _slugify(name: str) -> str:
