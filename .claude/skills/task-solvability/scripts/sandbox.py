@@ -17,12 +17,14 @@ Subcommands:
     put     --sandbox SID --local PATH --remote PATH upload one file into the sandbox
     get     --sandbox SID --remote PATH              print a file from the sandbox
     diff    --sandbox SID                            git add -A && git diff (the agent's edits)
+    tour    --task-id ID [--env dev] [--sandbox SID] print the task tour, vars resolved + steps flattened (walk to verify)
     kill    --sandbox SID                            tear the sandbox down
 """
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -67,7 +69,7 @@ def load_task(task_id: str, env: str = "dev") -> dict:
     from infra.e2b.supabase_helpers import init_supabase
 
     supabase = init_supabase(env)
-    sel = "task_id, template_id, task_blob, readme_content, solutions, is_shared_infra_required"
+    sel = "task_id, template_id, task_blob, readme_content, solutions, is_shared_infra_required, tour, expected_ports"
     res = supabase.table("tasks").select(sel).eq("task_id", task_id).execute()
     if not res.data:
         raise SystemExit(f"FATAL: task_id {task_id} not found in {env} Supabase")
@@ -86,6 +88,8 @@ def load_task(task_id: str, env: str = "dev") -> dict:
     answer_repo = solutions.get("answer_repo") if isinstance(solutions, dict) else None
     template_id = _first_str(row.get("template_id"), blob.get("template_id"))
     starter_repo = _first_str(resources.get("github_repo"))
+    tour = row.get("tour") if isinstance(row.get("tour"), dict) else None
+    expected_ports = row.get("expected_ports") if isinstance(row.get("expected_ports"), list) else []
 
     if not template_id:
         raise SystemExit(f"FATAL: task {task_id} has no template_id — cannot boot a sandbox")
@@ -101,7 +105,104 @@ def load_task(task_id: str, env: str = "dev") -> dict:
         "problem": problem,
         "has_problem": bool(problem),
         "is_shared_infra_required": bool(row.get("is_shared_infra_required")),
+        "tour": tour,
+        "has_tour": bool(tour and tour.get("sections")),
+        "expected_ports": expected_ports,
     }
+
+
+# ── task tour ────────────────────────────────────────────────────────────────
+
+def resolve_tour_vars(spec: dict, sandbox_id: str | None) -> dict:
+    """Resolve the tour template variables ({{repo.url}}, {{sandbox.*_url}}) to
+    concrete values, GENERICALLY from the task's `expected_ports` — one
+    `sandbox.<label>_url` per declared port role (terminal, editor, db_console,
+    app_preview, …). Do NOT hardcode a fixed set of roles: a tour can reference any
+    port the task exposes, so anything omitted here silently renders as a literal
+    `{{…}}` for the candidate. sandbox.* need a live sandbox_id; without one they
+    resolve to None (local/non-infra tasks have no e2b surfaces)."""
+    def _url(port, url_params) -> str | None:
+        if not sandbox_id or not port:
+            return None
+        url = f"https://{port}-{sandbox_id}.e2b.app"
+        if url_params:
+            from urllib.parse import urlencode
+            url = f"{url}/?{urlencode(url_params)}"
+        return url
+
+    vars_: dict = {"repo.url": spec.get("starter_repo")}
+    for p in spec.get("expected_ports") or []:
+        if not isinstance(p, dict):
+            continue
+        label = str(p.get("label") or p.get("icon") or "").strip().lower()
+        if not label:
+            continue
+        url = _url(p.get("port"), p.get("url_params") or {})
+        vars_[f"sandbox.{label}_url"] = url
+        # the tour uses `sandbox.preview_url` for the globe/app_preview role
+        if label == "app_preview":
+            vars_["sandbox.preview_url"] = url
+
+    # fallbacks for the always-present template surfaces if a row omits expected_ports
+    for label, dport in (("terminal", 7681), ("editor", 8443)):
+        vars_.setdefault(f"sandbox.{label}_url", _url(dport, {} if label != "editor" else {"folder": _TASK_DIR}))
+    return vars_
+
+
+_VAR_RE = re.compile(r"\{\{\s*([^}]+?)\s*\}\}")
+
+
+def _leftover_vars(obj) -> set:
+    """Recursively collect any {{var}} that survived substitution — the honest
+    source of truth for `unresolved_variables` (never trust the known-keys list)."""
+    found: set = set()
+    if isinstance(obj, str):
+        found.update(m.strip() for m in _VAR_RE.findall(obj))
+    elif isinstance(obj, dict):
+        for v in obj.values():
+            found |= _leftover_vars(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            found |= _leftover_vars(v)
+    return found
+
+
+def _subst(s, vars_: dict):
+    if not isinstance(s, str):
+        return s
+    for k, v in vars_.items():
+        s = s.replace("{{" + k + "}}", v if isinstance(v, str) else ("" if v is None else str(v)))
+    return s
+
+
+def resolve_tour(spec: dict, sandbox_id: str | None) -> dict:
+    """Return the tour with all {{vars}} substituted and steps flattened into a
+    walkable list the agent can execute one by one. Command steps keep their
+    expected `output`; link steps carry a resolved `url` + whether it's a sandbox
+    surface (reachability-checkable) or the github repo (auth-gated)."""
+    tour = spec.get("tour") or {}
+    vars_ = resolve_tour_vars(spec, sandbox_id)
+    out_sections = []
+    for sec in tour.get("sections") or []:
+        steps = []
+        for st in sec.get("steps") or []:
+            t = st.get("type")
+            if t == "command":
+                steps.append({"type": "command", "label": st.get("label"),
+                              "command": _subst(st.get("command"), vars_),
+                              "expected_output": ((st.get("output") or {}).get("body"))})
+            elif t == "link":
+                url = _subst(st.get("url"), vars_)
+                steps.append({"type": "link", "label": st.get("label"), "url": url,
+                              "is_sandbox_surface": isinstance(url, str) and ".e2b.app" in (url or ""),
+                              "resolvable": "{{" not in (url or "")})
+            else:  # markdown / other
+                steps.append({"type": t, "body": _subst(st.get("body"), vars_)})
+        out_sections.append({"id": sec.get("id"), "title": sec.get("title"), "steps": steps})
+    # honest unresolved list: scan the RENDERED steps for any surviving {{var}}
+    unresolved = sorted(_leftover_vars(out_sections))
+    return {"enabled": tour.get("enabled", True), "has_tour": bool(out_sections),
+            "variables": vars_, "unresolved_variables": unresolved, "sections": out_sections}
 
 
 # ── sandbox ops ─────────────────────────────────────────────────────────────
@@ -191,6 +292,21 @@ def cmd_diff(a) -> int:
     return 0
 
 
+def cmd_tour(a) -> int:
+    """Print the task tour with variables resolved + steps flattened. Pass
+    --sandbox to resolve the sandbox.* URLs (needed for infra tasks); omit it for
+    local/non-infra tasks (sandbox.* stay None and link-to-sandbox steps are N/A).
+    This does NOT execute anything — the agent walks the printed steps (run command
+    steps via `run`/locally; reachability-check link steps) and grades them."""
+    spec = load_task(a.task_id, a.env)
+    if not spec["has_tour"]:
+        print(json.dumps({"has_tour": False, "task_id": a.task_id, "env": a.env,
+                          "note": "no tour on this row (tour column null/empty)"}, indent=2))
+        return 0
+    print(json.dumps(resolve_tour(spec, a.sandbox), indent=2))
+    return 0
+
+
 def cmd_kill(a) -> int:
     from infra.e2b import sandbox_manager
     sandbox_manager.kill(a.sandbox)
@@ -212,6 +328,7 @@ def main() -> int:
     s = sub.add_parser("put"); s.add_argument("--sandbox", required=True); s.add_argument("--local", required=True); s.add_argument("--remote", required=True); s.set_defaults(fn=cmd_put)
     s = sub.add_parser("get"); s.add_argument("--sandbox", required=True); s.add_argument("--remote", required=True); s.set_defaults(fn=cmd_get)
     s = sub.add_parser("diff"); s.add_argument("--sandbox", required=True); s.set_defaults(fn=cmd_diff)
+    s = sub.add_parser("tour"); _task(s); s.add_argument("--sandbox", default=None); s.set_defaults(fn=cmd_tour)
     s = sub.add_parser("kill"); s.add_argument("--sandbox", required=True); s.set_defaults(fn=cmd_kill)
 
     a = p.parse_args()
