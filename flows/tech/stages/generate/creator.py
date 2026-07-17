@@ -84,6 +84,7 @@ from flows.tech.stages.generate.persistence import (
     upload_answer_files_to_repo,
     upload_files_to_github,
 )
+from flows.tech.stages.prompts.corpus import approve_for_task
 from flows.tech.stages.generate.runtime_resolver import (
     InfraTemplateMissingError,
     require_infra_template,
@@ -1356,6 +1357,14 @@ def create_task(
                 [c.get("competency_id") for c in task_data["criterias"] if c.get("competency_id")],
                 env=env,
             )
+
+            # The task shipped (passed the E2B gate + evals, artifacts exist), so
+            # the prompt behind it has earned reference status — promote it to
+            # `approved` in the corpus, making it retrievable for future
+            # generations of this combo instead of falling to the generic
+            # skeleton forever. No-op when the prompt came from the curated tree.
+            # Best-effort (see corpus.py) — never fails a shipped task.
+            approve_for_task(task_data["criterias"], task_id, env=env)
 
             task_data.update(ready_row)
             task_data["task_id"] = task_id
