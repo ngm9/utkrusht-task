@@ -68,7 +68,42 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Trigger Coolify deploy
+        env:
+          WEBHOOK: ${{ secrets.COOLIFY_TASK_BUILDER_DEPLOY_WEBHOOK }}
+          TOKEN: ${{ secrets.COOLIFY_DEPLOY_API_TOKEN }}
         run: |
-          curl -fsS -X POST \
-          -H "Authorization: Bearer ${{ secrets.COOLIFY_DEPLOY_API_TOKEN }}" \
-          "${{ secrets.COOLIFY_TASK_BUILDER_DEPLOY_WEBHOOK }}"
+          set -euo pipefail
+          # force=true is REQUIRED: the image tag is a static ':latest', so
+          # without it Coolify sees an unchanged image reference and returns
+          # success WITHOUT pulling/redeploying — the container keeps running the
+          # old image. This is exactly why the #50 merge built + pushed but never
+          # went live (last real deploy was a day earlier, Manual). Append force
+          # respecting whether the webhook URL already carries a query string.
+          case "$WEBHOOK" in
+            *\?*) url="${WEBHOOK}&force=true" ;;
+            *)    url="${WEBHOOK}?force=true" ;;
+          esac
+
+          # Capture body + HTTP code separately so we can FAIL on a 2xx that
+          # didn't actually queue a deployment (the old `curl -fsS` passed on any
+          # 2xx, hiding "nothing deployed").
+          resp="$(curl -sS -m 30 -w $'\n%{http_code}' -X POST \
+            -H "Authorization: Bearer ${TOKEN}" "$url" || true)"
+          body="$(printf '%s' "$resp" | sed '$d')"
+          code="$(printf '%s' "$resp" | tail -n1)"
+          [ -n "$code" ] || code="000"
+          echo "Coolify HTTP $code"
+          echo "Response: $body"
+
+          if [ "$code" -lt 200 ] || [ "$code" -ge 300 ]; then
+            echo "::error::Coolify deploy webhook returned HTTP $code"
+            exit 1
+          fi
+          # Coolify returns a deployment_uuid / "Deployment(s) queued." on a real
+          # trigger. Match those specifically — a bare 'deployment' also appears in
+          # "No new deployment needed", which is exactly the no-op we must catch.
+          if ! printf '%s' "$body" | grep -qiE 'deployment_uuid|queued'; then
+            echo "::error::Webhook accepted (HTTP $code) but no deployment was queued — check the app UUID in COOLIFY_TASK_BUILDER_DEPLOY_WEBHOOK and that auto-deploy is enabled."
+            exit 1
+          fi
+          echo "Deployment queued."
