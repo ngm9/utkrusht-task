@@ -1,6 +1,6 @@
 ---
 name: task-solvability
-description: Check whether ONE Utkrushta task is actually solvable — deploy it to an E2B sandbox, then YOU (the coding agent) solve it with your own tools (RED→fix→GREEN + think-aloud notes + a task-quality assessment), grade against the task's tests, and write a report to solvability_runs/<slug>/. The coding agent is the solver — no headless agent, no metered LLM API. Non-infra tasks (is_shared_infra_required = false) can run in --local mode — clone + install deps + solve + grade entirely on this machine, no E2B sandbox. Use when verifying a generated task can be completed (not just that it deploys — that's the deployment-test skill).
+description: Check whether ONE Utkrushta task is actually solvable — deploy it to an E2B sandbox, then YOU (the coding agent) solve it with your own tools (RED→fix→GREEN + think-aloud notes + a task-quality assessment), grade against the task's tests where it has them and by running the behaviour where it doesn't, and write a report to solvability_runs/<slug>/. The coding agent is the solver — no headless agent, no metered LLM API. Non-infra tasks (is_shared_infra_required = false) can run in --local mode — clone + install deps + solve + grade entirely on this machine, no E2B sandbox. Use when verifying a generated task can be completed (not just that it deploys — that's the deployment-test skill).
 ---
 
 # Task Solvability
@@ -151,20 +151,21 @@ This is the point of the skill — solve it like a candidate would:
    ```bash
    .venv/bin/python $H run --sandbox "$SANDBOX" --cmd "$TEST_CMD"
    ```
-   Now read the **output**, not just the exit code. A task is **NOT required to
-   ship tests** — "no tests" is a distinct outcome from "tests failed," and must
-   never be reported as a fail. Classify what you see:
+   Now read the **output**, not just the exit code. **A task is NOT required to
+   ship tests, and a missing suite never stops the run** — most tasks are graded
+   in production by an LLM judge over the diff, not by pytest, so "no tests" is a
+   normal shape, not a defect and not a failure. Classify what you see:
 
    | Output signal | Meaning | What to do |
    |---|---|---|
-   | pytest `no tests ran` / exit **5**; npm `no test specified` or `Missing script: "test"`; go `[no test files]`; cargo `running 0 tests` (0 collected) | **no tests exist** | STOP the solve → verdict `unverified` / `no_tests` (STEP 4). Do NOT treat as red-to-fix; do NOT treat go/cargo's exit-0 as "already green." |
-   | real assertions failed (non-zero **with** failing test names) | baseline **red** — good, there's something to solve | continue to step 4 |
+   | no tests collected — pytest `no tests ran` / exit **5**; npm `no test specified` or `Missing script: "test"`; go `[no test files]`; cargo `running 0 tests` | **no test oracle** | **Solve it anyway** (continue to step 4). Grade by inspection at STEP 4 → `grade_signal: inspection`. Do NOT stop; do NOT treat pytest/npm's non-zero exit as red-to-fix; do NOT treat go/cargo's exit-0 as "already green." |
+   | real assertions failed (non-zero **with** failing test names) | baseline **red** — there's something to solve | continue to step 4 |
    | tests were collected and all passed | clean starter already green | verdict `invalid` (nothing to solve), stop |
 
-   ⚠️ **The trap that makes no-tests look like a fail:** pytest/npm with no tests
-   exit **non-zero** (looks red), while go/cargo with no tests exit **zero** (looks
-   already-solved). Both are `no_tests` — decide on whether tests were *collected*,
-   never on the exit code alone.
+   ⚠️ **Read collection, not the exit code:** pytest/npm with no tests exit
+   **non-zero** (looks red), while go/cargo with no tests exit **zero** (looks
+   already-solved). Neither is a real signal — decide on whether tests were
+   *collected*, never on the exit code alone.
 4. **Implement** the solution by editing files in `$WORK` (Edit/Write).
 5. **Sync changed files → sandbox, then run the suite there** (services live there):
    ```bash
@@ -175,6 +176,9 @@ This is the point of the skill — solve it like a candidate would:
    ```
 6. **Iterate** 4–5 until the suite is green or you've made a genuine, bounded
    effort (cap ~8 edit→test cycles so a stuck task doesn't run forever).
+   **With no test suite**, iterate against the runtime instead: exercise the
+   thing you changed (hit the endpoint, run the script, query the DB) and stop
+   when the behaviour the problem statement asks for actually holds.
 
 Do NOT edit the task's tests to force a pass — fix the implementation. (Isolation
 doesn't matter here, so consulting the answer repo is allowed if you're stuck;
@@ -196,17 +200,26 @@ mkdir -p .task_agent_runs/solvable
 | Situation | `verdict` | `grade_signal` |
 |---|---|---|
 | Suite went green after your edits | `solvable` | `tests_passed` |
+| **No test suite**, but you solved it and verified the behaviour by running it | `solvable` | `inspection` |
 | You made a real effort, suite still red | `unsolvable` | `tests_failed` |
-| **Task ships NO tests** (0 collected on ANY stack — see STEP 3.3 signals; never a `fail`) | `unverified` | `no_tests` |
+| **No test suite**, and you could not make the required behaviour work | `unsolvable` | `inspection` |
 | Clean starter already passed | `invalid` | `already_green` |
 
-For `unverified` (`no_tests`), record your **own judgment** ("implemented X per the
-spec; looks complete") — but never call it `solvable` and **never call it `fail`**:
-with no test oracle, execution can neither prove nor disprove the solution (and an
-agent left to invent its own tests will just fabricate a pass). A missing test suite
-is a **not-gradeable** outcome, not a failed one. Whether that's a task-quality
-*defect* depends on the task: flag it if this kind of task is expected to ship tests;
-note it neutrally if the task is legitimately graded some other way.
+**A missing test suite is not a verdict of its own** — it only changes
+`grade_signal` from `tests_passed`/`tests_failed` to `inspection`. Never emit
+`unverified` / `no_tests` for it, and never report it as a failure or a
+task-quality defect; production grades most tasks by LLM judge over the diff, so
+shipping no tests is a normal task shape.
+
+When grading by `inspection`, the bar is **runtime evidence, not your opinion**:
+say what you ran and what it returned (endpoint responses, DB state, script
+output) showing the behaviour the problem statement asked for now holds. Do not
+write tests to grade yourself with — an agent inventing its own oracle will just
+fabricate a pass. If you cannot demonstrate the behaviour by running something,
+that's `unsolvable` / `inspection`, not a green.
+
+Reserve `unverified` for the case where the environment stopped you from
+grading at all (toolchain missing, sandbox broken) — `grade_signal: env_unavailable`.
 
 Append to `.task_agent_runs/solvable/results.jsonl` (one line):
 
@@ -293,15 +306,16 @@ VERDICT: SOLVABLE   (TOUR: OK)
 NOTES: <what the task required / where it was tricky / or why it's unsolvable / unverified>
 ```
 
-On `unverified` / `unsolvable`, say plainly what's wrong (no tests → not gradeable;
-or the spec is underspecified / contradictory / needs resources that aren't there).
+On `unsolvable`, say plainly what's wrong (the spec is underspecified /
+contradictory / needs resources that aren't there).
 
-The `no_tests` outcome is reported as its own line — **not** as a red/failed suite:
+A task with no test suite reports as a normal solve, with the baseline line
+noting there was no oracle — **never** as a red/failed suite:
 
 ```
-baseline   ⚪ no tests — suite collected 0 tests (task ships none; not a failure)
-solve      ⚪ unverified — implemented per the spec by inspection; no oracle to grade against
-VERDICT: UNVERIFIED (no_tests)
+baseline   ⚪ no tests collected (task ships none — graded by inspection, not a failure)
+solve      ✅ solvable   — behaviour verified by running it after 3 edit cycles
+VERDICT: SOLVABLE (inspection)
 ```
 
 ## Local mode (`--local`) — non-infra tasks, no sandbox
@@ -345,8 +359,9 @@ inspect any bundled fixtures/seed files, and capture how each defect actually
 manifests (real error output) — summary.md's `### Verified by running it`
 section is required in local mode as well. Same ~8-cycle cap, same
 "never edit the tests" rule, and the **same baseline classification** (STEP 3.3):
-if the runner collects 0 tests, that's `unverified` / `no_tests`, never a fail —
-even though `go test`/`cargo test` exit 0 with no test files. If the tests unexpectedly need a live service (connection
+if the runner collects 0 tests, solve it anyway and grade by `inspection` — never
+a fail, never `unverified` — even though `go test`/`cargo test` exit 0 with no
+test files. If the tests unexpectedly need a live service (connection
 refused to a DB/broker), the task is mis-flagged as non-infra — record that as a
 task-quality defect and rerun via the sandbox flow.
 
