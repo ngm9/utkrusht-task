@@ -322,6 +322,50 @@ def has_shared_infra_files(code_data: Dict) -> bool:
 
     return False
 
+
+def _code_files_of(code_data: Dict) -> Dict:
+    """Normalise to the flat ``path -> contents`` map (handles the nested shape)."""
+    nested = code_data.get("files") if isinstance(code_data, dict) else None
+    return nested if isinstance(nested, dict) else (code_data if isinstance(code_data, dict) else {})
+
+
+# Filenames that, like docker-compose, DECLARE a backing service the task needs
+# booted. A repo can need the E2B template's shared services (the python-ai base
+# image already ships postgres + redis) WITHOUT shipping a docker-compose — so
+# docker files alone under-detect infra. These are the other unambiguous
+# "infra plumbing" markers the shape classifier itself names (init SQL, the
+# service kill/boot scripts).
+_INFRA_PLUMBING_BASENAMES = {
+    "init_database.sql", "init.sql", "schema.sql", "seed.sql",
+    "kill.sh",
+}
+
+
+def needs_shared_infra(code_data: Dict) -> bool:
+    """Whether the generated task needs a shared backing service to run/grade.
+
+    Broader than :func:`has_shared_infra_files` (docker-only): a task that talks
+    to the template's postgres/redis may ship no docker-compose yet still need
+    those services (e.g. an ``init_database.sql`` it seeds and queries). We treat
+    any declared infra-plumbing file as "needs shared infra".
+
+    NOTE (known gap): a task that reaches a template service purely in code —
+    a psycopg/redis client against a hostname, no SQL/compose shipped — is not
+    detected here and would read as non-infra. The reliable signal for that is
+    empirical: whether the task's suite runs offline (the E2B gate already
+    observes this). Sourcing the flag from the gate's offline/online result is
+    the intended follow-up; this file-level check is the conservative interim
+    that fixes the docker-only under-detection without new false positives.
+    """
+    if has_shared_infra_files(code_data):
+        return True
+    for fname in _code_files_of(code_data):
+        basename = fname.rsplit("/", 1)[-1].lower()
+        if basename in _INFRA_PLUMBING_BASENAMES:
+            return True
+    return False
+
+
 def format_pre_requisites(pre_requisites):
     """
     Format pre_requisites as a list of strings (array of bullet points).

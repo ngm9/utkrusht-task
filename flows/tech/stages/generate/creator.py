@@ -43,6 +43,7 @@ from infra.utils import (
     generate_task_with_code,
     get_task_shape_for,
     has_shared_infra_files,
+    needs_shared_infra,
     load_relevant_scenarios,
     parse_markdown_to_json,
     read_json_file_robust,
@@ -1217,17 +1218,37 @@ def create_task(
             solutions_data.setdefault("files", {})
             solutions_data["files"].update(hidden_tests)
 
-        # Drive is_shared_infra_required purely from whether the generated
-        # repo carries Docker / docker-compose artifacts. The previous
-        # heuristic marked every "backend" task True regardless of Docker,
-        # which flagged library-only tasks (LangChain / LlamaIndex /
-        # pure-Python) as needing a sandbox they can't actually use.
+        # Drive is_shared_infra_required from whether the generated repo declares
+        # a backing service it needs booted. This used to check docker files
+        # ONLY, but the python-ai base image already ships postgres + redis, so a
+        # task can need shared services (e.g. an init_database.sql it seeds and
+        # queries) without shipping a docker-compose — docker-only under-detects.
+        # `needs_shared_infra` widens the check to the other infra-plumbing
+        # markers (init SQL, kill.sh) while keeping the "pure-runtime library
+        # task = non-infra" property that stops us flagging a sandbox a
+        # LangChain/LlamaIndex task can't use.
+        #
+        # `task_shape` is NOT used here: it is a coarse per-PROMPT classifier
+        # label (decided on the scenario pool, inherited by every task the prompt
+        # produces), so it can say "infra" for a prompt whose specific generated
+        # task ships no services. The deployable artifact is the ground truth.
         code_data = task_data.get("code_files", {})
         has_docker = has_shared_infra_files(code_data)
-        is_shared_infra_required = bool(has_docker)
+        is_shared_infra_required = needs_shared_infra(code_data)
+        if task_shape == "infra" and not is_shared_infra_required:
+            # The classifier predicted infra but the generated repo declares no
+            # service. Surface the divergence (it usually means the classifier
+            # fired on a scenario-pool datastore this task didn't use); the
+            # artifact wins, but a reviewer may want to know.
+            logger.warning(
+                "task_shape='infra' but the generated repo declares no backing "
+                "service — treating as non-infra from the artifact. If this task "
+                "was meant to be service-backed, the generator dropped the infra "
+                "plumbing."
+            )
         logger.info(
             f"Setting is_shared_infra_required to {is_shared_infra_required} "
-            f"(task_type: {task_type}, has_docker: {has_docker})"
+            f"(task_type: {task_type}, has_docker: {has_docker}, task_shape: {task_shape})"
         )
 
         # Step 1 — INSERT the minimal draft row, get task_id BEFORE any
