@@ -51,7 +51,15 @@ def _validate_environment() -> None:
               help='Path to task_scenarios.json file')
 @click.option('--env', type=click.Choice(['dev', 'prod']), default='dev',
               help='Supabase environment to store the generated task in (default: dev).')
-def generate_tasks(competency_file: Path, background_file: Path, scenarios_file: Path, env: str):
+@click.option('--from-task-json',
+              type=click.Path(exists=True, dir_okay=False, path_type=Path),
+              default=None,
+              help='Score an already-generated task JSON instead of calling the '
+                   'task-gen LLM. Evals, the E2B gate, repos, gist and Supabase all '
+                   'run as normal. Use to rescue a task whose generation succeeded '
+                   'but whose run died afterwards, without paying for generation twice.')
+def generate_tasks(competency_file: Path, background_file: Path, scenarios_file: Path,
+                   env: str, from_task_json: Path | None):
     """
     Generate intelligent assessment tasks OR deploy existing tasks to droplets.
 
@@ -61,6 +69,21 @@ def generate_tasks(competency_file: Path, background_file: Path, scenarios_file:
     """
     print(" INTELLIGENT TASK GENERATION AGENT")
     print(f" Storage environment: {env}")
+
+    # Rescue path: score a recovered candidate rather than regenerating it.
+    seed_candidate = None
+    if from_task_json is not None:
+        import json as _json
+        seed_candidate = _json.loads(from_task_json.read_text(encoding="utf-8"))
+        missing = [k for k in ("name", "code_files") if k not in seed_candidate]
+        if missing:
+            raise click.UsageError(
+                f"{from_task_json} is not a task JSON — missing key(s): {', '.join(missing)}"
+            )
+        print(f" Seeded from: {from_task_json}")
+        print(f" Seeded task: {seed_candidate.get('name')} "
+              f"({len(seed_candidate.get('code_files', {}))} code files) "
+              f"— skipping the task-gen LLM call")
 
     # Bound up-front so the tracing `finally` block can never hit an
     # UnboundLocalError if an early-return path is added above it later.
@@ -108,7 +131,8 @@ def generate_tasks(competency_file: Path, background_file: Path, scenarios_file:
         _validate_environment()
 
         with trace_run(run_id):
-            result = create_task(competency_file, background_file, scenarios_file, env)
+            result = create_task(competency_file, background_file, scenarios_file, env,
+                                 seed_candidate=seed_candidate)
         _trace_result.update(
             outcome="created",
             task_id=result.get("task_id"),
