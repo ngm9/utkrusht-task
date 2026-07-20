@@ -53,6 +53,10 @@ def _default_test_cmd(template_id: str) -> str:
         return "go test ./..."
     if "rust" in tid:
         return "cargo test -- --test-threads=1"
+    if "dotnet" in tid or "csharp" in tid:
+        return "dotnet test"
+    if "java" in tid or "spring" in tid:
+        return "mvn -q test"
     return "python -m pytest -q"   # python + default
 
 

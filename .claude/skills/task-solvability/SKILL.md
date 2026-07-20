@@ -1,6 +1,6 @@
 ---
 name: task-solvability
-description: Check whether ONE Utkrushta task is actually solvable — deploy it to an E2B sandbox, then YOU (the coding agent) solve it with your own tools in the code-server web IDE, RECORD the solve as a WebM by default (RED→fix→GREEN + think-aloud notes + a task-quality assessment), grade against the task's tests, and write a report to solvability_runs/<slug>/. The coding agent is the solver — no headless agent, no metered LLM API. Non-infra tasks (is_shared_infra_required = false) can run in --local mode — clone + install deps + solve + grade entirely on this machine, no E2B sandbox. Use when verifying a generated task can be completed (not just that it deploys — that's the deployment-test skill).
+description: Check whether ONE Utkrushta task is actually solvable — deploy it to an E2B sandbox, then YOU (the coding agent) solve it with your own tools (RED→fix→GREEN + think-aloud notes + a task-quality assessment), grade against the task's tests, and write a report to solvability_runs/<slug>/. The coding agent is the solver — no headless agent, no metered LLM API. Non-infra tasks (is_shared_infra_required = false) can run in --local mode — clone + install deps + solve + grade entirely on this machine, no E2B sandbox. Use when verifying a generated task can be completed (not just that it deploys — that's the deployment-test skill).
 ---
 
 # Task Solvability
@@ -17,24 +17,64 @@ one-liner, because the *solving* and *adaptive gate-clicking* need the model. In
 
 > **`/task-solvability <task-id>`**  (or: "run the solvability flow on task `<id>`")
 
-**Recording is ON by default** — every run produces a WebM of the solve in the
-code-server web IDE. Use `--quick` only when you explicitly want to skip the video.
-
 | Mode | What runs | Reliable? |
 |---|---|---|
-| **default** | deploy → I solve in the **code-server web IDE, RECORDED** (RED→fix→GREEN + notes) → grade → write report | ✅ |
-| **`--quick`** | same, but **no video** (faster) — verdict + `solution.diff` + notes only | ✅ |
-| **`--local`** | **non-infra tasks only** — clone + install deps + solve + grade entirely on THIS machine; no E2B sandbox, no video | ✅ (see "Local mode" below) |
+| **default** | deploy → I solve it (RED→fix→GREEN + notes) → grade → write report | ✅ |
+| **`--local`** | **non-infra tasks only** — clone + install deps + solve + grade entirely on THIS machine; no E2B sandbox | ✅ (see "Local mode" below) |
 
-**Auto-suggest local:** `load` prints `is_shared_infra_required`. If it's `false` and the
-user didn't ask for a recording, prefer `--local` — it's faster and free
-(no sandbox billing). If it's `true`, `--local` is INVALID (the task needs the template's
-services) — hard-fail with that explanation and fall back to the sandbox flow.
+**Auto-suggest local:** `load` prints `is_shared_infra_required`. If it's `false`,
+prefer `--local` — it's faster and free (no sandbox billing). If it's `true`,
+`--local` is INVALID (the task needs the template's services) — hard-fail with
+that explanation and fall back to the sandbox flow.
 
 ## Outputs — `solvability_runs/<task-slug>/` (NOT `.task_agent_runs`)
 
 Each run writes a clean, human-named report folder at the repo root (gitignored):
-`solvability_runs/<task-slug>/` → `summary.md`, `notes.md` (think-aloud + task-quality), `result.json`, `solution.diff`, `solve.webm`, `frames/*.png`, `tour.md` (per-step tour verification, when the row has a tour — STEP 4b).
+`solvability_runs/<task-slug>/` → `summary.md`, `notes.md` (think-aloud + task-quality), `result.json`, `solution.diff`, `tour.md` (per-step tour verification, when the row has a tour — STEP 4b).
+
+### `summary.md` structure (required sections, in this order)
+
+Write `summary.md` in your OWN words — never paste the README/problem statement in.
+
+**Writing style (applies to every section) — "layered" framing:**
+
+- Every issue and every fix is a **layered bullet**: the first line is ONE bold
+  plain-English sentence anyone can understand (no jargon, no file names);
+  indented lines underneath carry the precise technical detail.
+- Short sentences, one idea per sentence. Active voice. Everyday words first;
+  when a technical term is unavoidable, explain it in brackets — e.g.
+  "a timezone-aware timestamp (a time that knows its timezone)".
+- Never pack symptom + cause + fix into one long sentence — split them.
+
+Layered bullet shape:
+
+```
+- **Looking up any product crashed the tool.**
+  Detail: the code subtracted a timezone-aware database timestamp from a
+  local time without a timezone — Python raises a TypeError on that.
+  Fix: both times are now compared in UTC.
+```
+
+Sections:
+
+1. **`## Current Implementation`** — one short plain paragraph on what the
+   starter ships, then a **`### Verified by running it`** sub-section with the
+   ACTUAL evidence from STEP 3's current-state check (never claim anything here
+   you didn't observe by executing something): which services were up, real DB
+   row counts / seeded data, real API responses (HTTP codes + bodies), build
+   output, and the baseline test result line. Then **layered bullets, one per
+   broken thing** (bold plain sentence + indented `Detail:` line with the
+   technical cause + `Observed:` line quoting the runtime evidence — the actual
+   error, wrong response, or failing output that proves it).
+2. **`## Objectives`** — what the task asked to be solved, restated from the
+   problem + failing tests in your own words (NOT copied from the README);
+   short plain bullets, one objective per bullet, everyday words.
+3. **`## What Was Solved`** — **layered bullets, one per fix**: bold plain
+   sentence saying what now works, then indented `Detail:` (file + exact
+   change) and why it was needed. Include the iteration count and the final
+   test result line.
+4. **`## Verdict`** — the verdict (`solvable` / `unsolvable` / `unverified` /
+   `invalid`), `grade_signal`, and one-line justification.
 
 ## Variables
 
@@ -89,6 +129,24 @@ This is the point of the skill — solve it like a candidate would:
 
 1. **Read the problem** (the `problem` field from `load`, and `$WORK/README.md`).
 2. **Read the code** in `$WORK` with your native tools; understand what's missing.
+2b. **Verify the current state by RUNNING it** — never describe the starter from
+   reading alone; prove what it actually does. In the sandbox, probe every piece
+   of infrastructure the task depends on and record the REAL outputs:
+   ```bash
+   # what is actually running / listening
+   $H run --sandbox "$SANDBOX" --cmd "ps aux | grep -vE 'ps aux|grep' | head -20; (ss -tln || netstat -tln) 2>/dev/null"
+   # DB-backed task → is the DB up AND populated? (adapt creds/table names from the starter)
+   $H run --sandbox "$SANDBOX" --cmd "psql <DB_URL> -c '\dt' -c 'SELECT count(*) FROM <seeded_table>;' -c 'SELECT * FROM <seeded_table> LIMIT 3;'"
+   # API task → does the app build, start, and answer? hit real endpoints, note codes + bodies
+   $H run --sandbox "$SANDBOX" --cmd "curl -s -m 5 -w '\n%{http_code}\n' localhost:<port>/<endpoint>"
+   # broker/cache/etc. → the equivalent liveness + data check for each service
+   ```
+   Check EVERYTHING the task claims to provide: services reachable, seed data
+   actually populated (row counts, sample rows), endpoints responding, and how
+   each suspected defect manifests at runtime (capture the actual error/output).
+   These observations are REQUIRED input for summary.md's
+   `### Verified by running it` sub-section — findings must be reported from
+   execution evidence, not inferred from source code.
 3. **Establish the baseline** — run the suite once on the clean starter:
    ```bash
    .venv/bin/python $H run --sandbox "$SANDBOX" --cmd "$TEST_CMD"
@@ -280,7 +338,12 @@ suggest the sandbox flow instead. If install itself fails on the clean starter, 
 a task-quality defect — record it.
 
 **STEP 3 (solve)** — identical to the sandbox STEP 3, except tests run locally with
-plain Bash in `$WORK` — no `put`/sync loop, no `$H run`. Same ~8-cycle cap, same
+plain Bash in `$WORK` — no `put`/sync loop, no `$H run`. Step 2b (verify the
+current state by RUNNING it) applies here too, with local commands: build the
+project, start the app if it has an entrypoint and hit its endpoints with curl,
+inspect any bundled fixtures/seed files, and capture how each defect actually
+manifests (real error output) — summary.md's `### Verified by running it`
+section is required in local mode as well. Same ~8-cycle cap, same
 "never edit the tests" rule, and the **same baseline classification** (STEP 3.3):
 if the runner collects 0 tests, that's `unverified` / `no_tests`, never a fail —
 even though `go test`/`cargo test` exit 0 with no test files. If the tests unexpectedly need a live service (connection
@@ -304,56 +367,12 @@ needs a live service (`docker-compose up`, `curl localhost:4566`, connection ref
 to a DB/broker), the task is **mis-flagged as non-infra** — record it as a
 task-quality defect and re-verify the tour via the sandbox flow.
 
-**STEP 5 (teardown)** — just `rm -rf "$WORK"` (nothing to kill). No WebM in local
-mode (there's no code-server IDE to record) — local mode implies `--quick`; if the
-user wants video proof, use the sandbox flow.
-
-## Recorded mode (`--record`) — headless video proof
-
-Produces a **WebM video** of the RED→solve→GREEN happening in the task's **real
-sandbox environment** — so a Claude agent can run this fully headless and hand
-back a recording that demonstrates **deployability + solvability** "like a human
-working the task." No candidate frontend, no login, no device/screen-share gates,
-no mocked media. (Driving the production candidate UI is rejected: it's brittle,
-human-gated, and forces a *fake* screen-share — the recording would be a blank
-canvas. Record the real sandbox instead.)
-
-**Prereq:** `npm i -g agent-browser && agent-browser install` (Rust browser CLI;
-no Playwright/MCP needed — drive it from Bash).
-
-The sandbox template exposes a **browser terminal (ttyd) on port 7681** at
-`https://7681-<sandbox_id>.e2b.app`. After STEP 2 (deploy), drive it:
-
-```bash
-TTYD="https://7681-${SANDBOX}.e2b.app"
-tcmd(){ agent-browser keyboard type "$1"; agent-browser press Enter; sleep "$2"; }  # ttyd auto-focuses
-
-agent-browser record start "$REC_DIR/solve.webm" "$TTYD"   # fresh ctx -> terminal; keystrokes target it
-sleep 4
-tcmd "cd /home/user/task" 1
-tcmd "sed -n 1,8p README.md" 2                              # show the problem
-tcmd "python -m pytest -q" 12                               # RED (baseline) ; screenshot red.png
-# --- apply YOUR solution into the SAME sandbox (off-camera, via the helper) ---
-#   sandbox.py put --sandbox $SANDBOX --local <fixed-file> --remote /home/user/task/<path>
-tcmd "git --no-pager diff --stat" 2                         # show the fix on camera
-tcmd "python -m pytest -q" 12                               # GREEN ; screenshot green.png
-agent-browser record stop
-agent-browser close --all
-```
-
-Notes that matter (learned live):
-- `record start` makes a **fresh context** but subsequent `keyboard`/`screenshot`
-  commands DO target it (verified). ttyd renders to a **canvas** → `.innerText` is
-  empty; use `agent-browser screenshot` to capture RED/GREEN, not text scraping.
-- Apply the solution via the helper `put` (e2b file API) between the two `pytest`
-  runs — same sandbox filesystem the terminal sees — then `git diff` shows it.
-- Save `solve.webm` + `red.png` + `green.png` under
-  `.task_agent_runs/solvable/recordings/<task-id>/` and reference them in the
-  `results.jsonl` row (add a `recording` field).
+**STEP 5 (teardown)** — just `rm -rf "$WORK"` (nothing to kill).
 
 ## Out of scope (deliberately)
 
 - **Batch / many tasks** — one task-id at a time; the user picks it.
-- **Driving the production candidate UI** — rejected (see Recorded mode): brittle,
-  human-gated, fake screen-share. The sandbox recording is the headless substitute.
-- **No fixes to the task, no commits** — solve in the sandbox, record, stop.
+- **Video recording** — removed; the report folder (`summary.md` + `solution.diff`
+  + `result.json`) is the proof of the solve.
+- **Driving the production candidate UI** — brittle, human-gated; never do it.
+- **No fixes to the task, no commits** — solve, grade, report, stop.
