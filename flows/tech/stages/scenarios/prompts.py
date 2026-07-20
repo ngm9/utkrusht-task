@@ -310,6 +310,10 @@ WHAT TO GENERATE:
 - The scenario should read like ONE focused ticket for a mid-level agent engineer.
 - Max 3 bullet points in the "Your Task" section.
 - Keep the entire scenario under 180 words.
+- "Your Task" bullets state the SYMPTOM and the desired OUTCOME — never the
+  mechanism. Do NOT name the schema/library/pattern/config the fix should use;
+  the candidate chooses the how (the task stage withholds solutions at
+  INTERMEDIATE+). Success Criteria stay concrete and measurable.
 
 PICK EXACTLY ONE PRIMARY CONCERN (optionally ONE small supporting tweak, no more):
 - Enforce a typed tool-output / LLM-response schema and validate it before use
@@ -332,8 +336,9 @@ EXAMPLE OF A WELL-CALIBRATED INTERMEDIATE AGENT SCENARIO:
 `VALIDATION_ERROR: order_id required` and occasional duplicate labels because the model
 sometimes emits a malformed, unvalidated tool call.
 **Your Task:**
-- Define a typed schema for the `create_return_label` arguments (`order_id`, `reason`).
-- Validate the LLM's tool call against it and reject/repair malformed calls before the tool runs.
+- Ensure a malformed tool call can never reach the tool — it is stopped before
+  execution with a structured, actionable error.
+- Ensure malformed or repeated model output cannot produce a duplicate return label.
 **Success Criteria:** Malformed tool calls are rejected before execution with a structured
 error, and no `VALIDATION_ERROR` or duplicate-label traces appear in a 50-request test run."""
 
@@ -364,6 +369,10 @@ WHAT TO GENERATE:
 - Keep the entire scenario under 400 words
 - Pin a primary framework in the scenario header when relevant, e.g.
   `**Stack:** LangGraph + LiteLLM (Anthropic primary, OpenAI fallback)`
+- "Your Task" bullets state failure symptoms and desired OUTCOMES — never the
+  mechanism. Do NOT name the file, function, library, or pattern the fix
+  should use; the candidate chooses the architecture (the task stage
+  withholds solutions at ADVANCED). Success Criteria stay measurable.
 
 ALLOWED CONCEPTS (combine many per scenario — that is the point of ADVANCED):
 - Production agent architecture: orchestrator + tool services + data stores
@@ -418,16 +427,16 @@ store the final assistant message; there is no `trace_id`, no prompt version,
 and no per-tool latency. Tickets are 5–20 turns deep.
 
 **Your Task:**
-- Bound the LangGraph loop (max 6 model calls per ticket) and surface a
-  clear `handoff_to_human` exit.
-- Implement `enforce_cost_ceiling()` in `agent/policy.py` — projected per-call
-  cost is rejected PRE-CALL (no swallowing in a try/except).
-- Configure LiteLLM router so primary 5xx falls back to the secondary model
-  with a logged `model_used` and reason.
-- Add structured traces (`trace_id`, prompt version, tool name, latency,
-  tokens, cost, fallback path) without storing full ticket bodies.
-- Add a 10-case golden eval in `tests/test_golden.py` and a per-ticket cost
-  assertion ≤ $0.05.
+- Ensure no ticket can consume unbounded model work — runaway conversations
+  must end in a clean, observable human handoff.
+- Ensure a call projected to blow the per-ticket cost budget is never sent,
+  and the rejection is visible rather than swallowed.
+- Ensure a primary-model outage does not stop replies, and every reply
+  records which model produced it and why.
+- Make every request traceable end-to-end (prompt version, tool activity,
+  latency, tokens, cost) without storing full ticket bodies.
+- Ensure regressions in reply quality or per-ticket cost are caught by a
+  repeatable eval run before they reach production.
 
 **Success Criteria:** Loop terminates in ≤ 6 model calls; on primary 529 the
 router uses the secondary and a reply is produced; projected >$0.05 calls
