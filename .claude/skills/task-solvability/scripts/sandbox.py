@@ -10,14 +10,14 @@ Run from the repo root with the venv python:
     .venv/bin/python .claude/skills/task-solvability/scripts/sandbox.py <subcmd> ...
 
 Subcommands:
-    load    --task-id ID [--env dev]                 print task JSON (template, starter, test_cmd, has_problem)
-    clone   --task-id ID [--env dev] --dest DIR      token-authed LOCAL clone of the starter (for native editing)
-    deploy  --task-id ID [--env dev]                 boot sandbox + clone starter + run.sh; print {sandbox_id, test_cmd, ...}
+    load    --task-id ID [--env prod]                print task JSON (template, starter, test_cmd, has_problem)
+    clone   --task-id ID [--env prod] --dest DIR     token-authed LOCAL clone of the starter (for native editing)
+    deploy  --task-id ID [--env prod]                boot sandbox + clone starter + run.sh; print {sandbox_id, test_cmd, ...}
     run     --sandbox SID --cmd "..."                exec in the sandbox task dir; prints output, exits with the cmd's code
     put     --sandbox SID --local PATH --remote PATH upload one file into the sandbox
     get     --sandbox SID --remote PATH              print a file from the sandbox
     diff    --sandbox SID                            git add -A && git diff (the agent's edits)
-    tour    --task-id ID [--env dev] [--sandbox SID] print the task tour, vars resolved + steps flattened (walk to verify)
+    tour    --task-id ID [--env prod] [--sandbox SID] print the task tour, vars resolved + steps flattened (walk to verify)
     kill    --sandbox SID                            tear the sandbox down
 """
 from __future__ import annotations
@@ -73,7 +73,7 @@ def load_task(task_id: str, env: str = "dev") -> dict:
     from infra.e2b.supabase_helpers import init_supabase
 
     supabase = init_supabase(env)
-    sel = "task_id, template_id, task_blob, readme_content, solutions, is_shared_infra_required, tour, expected_ports"
+    sel = "task_id, template_id, task_blob, readme_content, solutions, is_shared_infra_required, is_enabled, tour, expected_ports"
     res = supabase.table("tasks").select(sel).eq("task_id", task_id).execute()
     if not res.data:
         raise SystemExit(f"FATAL: task_id {task_id} not found in {env} Supabase")
@@ -110,6 +110,7 @@ def load_task(task_id: str, env: str = "dev") -> dict:
         "problem": problem,
         "has_problem": bool(problem),
         "is_shared_infra_required": bool(row.get("is_shared_infra_required")),
+        "is_enabled": bool(row.get("is_enabled")),
         "tour": tour,
         "has_tour": bool(tour and tour.get("sections")),
         "expected_ports": expected_ports,
@@ -329,7 +330,7 @@ def main() -> int:
 
     def _task(sp):
         sp.add_argument("--task-id", required=True)
-        sp.add_argument("--env", default="dev", choices=["dev", "prod"])
+        sp.add_argument("--env", default="prod", choices=["dev", "prod"])
 
     s = sub.add_parser("load"); _task(s); s.set_defaults(fn=cmd_load)
     s = sub.add_parser("clone"); _task(s); s.add_argument("--dest", required=True); s.set_defaults(fn=cmd_clone)

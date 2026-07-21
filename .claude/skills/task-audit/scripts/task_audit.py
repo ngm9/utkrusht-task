@@ -47,9 +47,20 @@ SETUP_RE = re.compile(
     r"\.env\b|see the readme|refer to the readme)",
     re.I,
 )
+# candidate-facing text must not point INTO the code: identifiers / hint phrasing.
+# FUNC_CALL_RE stays empty-parens-only so prose like "item(s)" never matches.
+FUNC_CALL_RE = re.compile(r"\b\w+\(\)")
+SNAKE_ID_RE = re.compile(r"\b[A-Za-z]\w*_[A-Za-z]\w*\b")
+SOLUTION_HINT_RE = re.compile(
+    r"\b(in|inside|within)\s+the\s+[`\w./-]*\s*(file|module|method|function)\b"
+    r"|\b(modify|change|edit|update|rewrite|refactor)\w*\s+(the\s+)?[`\w./-]+\s*"
+    r"(file|function|method|class)\b",
+    re.I,
+)
 
 QUESTION_MIN, QUESTION_MAX = 120, 1500
 PREREQ_MIN, PREREQ_MAX, PREREQ_LEN = 2, 3, 120
+OUTCOMES_MAX = 6
 
 SELECT = (
     "task_id, status, is_enabled, task_blob, criterias, pre_requisites, answer, "
@@ -103,14 +114,29 @@ def check_short_overview(blob: dict):
 
 
 def check_outcomes(blob: dict):
+    """Outcomes state the expected RESULT, never the route to it (no code pointers)."""
     items = blob.get("outcomes")
     if not isinstance(items, list) or not items:
         return FAIL, "missing or empty"
+    if len(items) > OUTCOMES_MAX:
+        return FAIL, f"{len(items)} outcomes (max {OUTCOMES_MAX} — fewer is fine, more is not)"
+    warns = []
     for i, o in enumerate(items):
         if not isinstance(o, str) or not o.strip():
             return FAIL, f"outcome[{i}] empty"
         if GLYPH_RE.match(o):
             return FAIL, f"outcome[{i}] has a glyph prefix"
+        if MD_CODE_RE.search(o):
+            return FAIL, f"outcome[{i}] has code backticks/fence (solution giveaway)"
+        if FILENAME_RE.search(o):
+            return FAIL, f"outcome[{i}] names a file/path (solution giveaway)"
+        if SOLUTION_HINT_RE.search(o):
+            warns.append(f"outcome[{i}] reads like an implementation pointer "
+                         "('change the X file/function') — confirm it isn't steering to the fix")
+        elif FUNC_CALL_RE.search(o) or SNAKE_ID_RE.search(o):
+            warns.append(f"outcome[{i}] carries a code identifier — confirm it isn't a solution pointer")
+    if warns:
+        return WARN, "; ".join(warns)
     return PASS, f"{len(items)} outcomes, clean"
 
 
@@ -134,8 +160,18 @@ def check_question(blob: dict):
         problems.append("structural label leaked in")
     if SETUP_RE.search(q):
         problems.append("setup/install instructions leaked in")
+    if FILENAME_RE.search(q):
+        problems.append("file name/path leaked in (direct pointer into the codebase)")
+    warns = []
+    if SOLUTION_HINT_RE.search(q):
+        warns.append("implementation-directive phrasing ('change the X file/function') — "
+                     "confirm it isn't steering to the fix")
+    if FUNC_CALL_RE.search(q) or SNAKE_ID_RE.search(q):
+        warns.append("bare code identifier — confirm it isn't a solution pointer")
     if problems:
         return FAIL, "; ".join(problems)
+    if warns:
+        return WARN, "; ".join(warns)
     return PASS, f"{n} chars, plain prose"
 
 
@@ -273,6 +309,18 @@ def _http_status(session, api_url: str):
         return None
 
 
+def _fetch_readme(session, repo_url: str):
+    """Raw README of the starter repo, or None if unfetchable. Fetch-only — the
+    README ↔ task_blob alignment judgment is the agent's job (SKILL.md step 4)."""
+    api = ("https://api.github.com/repos/"
+           + repo_url.strip().rstrip("/").split("github.com/", 1)[-1] + "/readme")
+    try:
+        resp = session.get(api, headers={"Accept": "application/vnd.github.raw+json"}, timeout=20)
+        return resp.text if resp.status_code == 200 else None
+    except Exception:  # noqa: BLE001 — network flake: report as not fetched
+        return None
+
+
 # ── driver ──────────────────────────────────────────────────────────────────
 
 def audit_row(row: dict, known_competency_ids, known_template_ids, session, skip_github):
@@ -294,7 +342,7 @@ def audit_row(row: dict, known_competency_ids, known_template_ids, session, skip
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="Audit Supabase task rows (read-only).")
-    ap.add_argument("--env", default="dev", choices=["dev", "prod"])
+    ap.add_argument("--env", default="prod", choices=["dev", "prod"])
     ap.add_argument("--task-id", help="audit a single task")
     ap.add_argument("--enabled", action="store_true", help="only is_enabled=True rows")
     ap.add_argument("--competency", help="substring match on any criterias[*].name")
@@ -393,6 +441,16 @@ def main() -> int:
             if level == FAIL:
                 failure_counts[field] = failure_counts.get(field, 0) + 1
 
+    # single-task mode also fetches the starter repo's README so the agent can run
+    # the README ↔ task_blob alignment check (SKILL.md step 4). Batch runs skip it
+    # (one extra API call per task); loop single-task runs to align a batch.
+    readme = None
+    if a.task_id and not a.skip_github:
+        repo_url = ((rows[0].get("task_blob") or {}).get("resources") or {}).get("github_repo")
+        readme = _fetch_readme(session, repo_url) if repo_url else None
+        reports[0]["readme"] = {"found": readme is not None,
+                                "chars": len(readme or ""), "content": readme}
+
     if a.json:
         # single object when a specific task was requested, else the array
         print(json.dumps(reports[0] if a.task_id else reports, indent=2))
@@ -404,6 +462,17 @@ def main() -> int:
         print("\nMost common failures:")
         for field, count in sorted(failure_counts.items(), key=lambda kv: -kv[1]):
             print(f"    {field}: {count} task(s)")
+
+    if a.task_id and not a.skip_github:
+        print("\n" + "=" * 64)
+        if readme is not None:
+            print(f"STARTER-REPO README ({len(readme)} chars) — compare against title/"
+                  "short_overview/question/outcomes (agent-graded alignment check, "
+                  "SKILL.md step 4):\n")
+            print(readme)
+        else:
+            print("STARTER-REPO README: could not fetch (missing/malformed repo URL, 404, "
+                  "or network) — alignment check blocked; report this as a finding")
     return 1 if n_fail else 0
 
 

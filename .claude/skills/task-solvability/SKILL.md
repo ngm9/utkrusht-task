@@ -43,6 +43,12 @@ Each run writes ONE folder at the repo root (gitignored) with **five files**:
 The `.md` files must never disagree with `result.json` — they're generated FROM it, so
 fill `result.json` first, then render. No content lives only in a `.md` file.
 
+Additionally, every run **appends one row** to the cross-run log
+`solvability_runs/task_audits.csv` (STEP 4e) — same columns as the Supabase
+`task_audits` table, with the `detail` column carrying the run's full
+`result.json`. The per-run folder stays five files; the CSV is the one shared,
+accumulating artifact across runs.
+
 ### `result.json` schema
 
 Write every prose field in your OWN words — never paste the README/problem statement in.
@@ -164,7 +170,8 @@ Render these FROM the filled `result.json` — same facts, human layout. Keep th
 ## Variables
 
 - `TASK_ID` = first token of `$ARGUMENTS` — **required** (ask if absent).
-- `ENV` = `dev` default; `prod` only if the user says so.
+- `ENV` = `prod` — tasks are picked from **prod ONLY**; use `dev` only if the
+  user explicitly asks to verify a dev task.
 - `PY` = `.venv/bin/python` — deps live in the venv, not system python.
 - `H` = `.claude/skills/task-solvability/scripts/sandbox.py` — the sandbox helper.
 - `SLUG` = the repo name (e.g. `cargolink-pickup-context-repair`); outputs go to `solvability_runs/$SLUG/`.
@@ -178,16 +185,22 @@ Render these FROM the filled `result.json` — same facts, human layout. Keep th
 ```bash
 cd <repo-root>
 .venv/bin/python -c "import e2b; from infra.e2b import sandbox_manager" || echo "FATAL: run from .venv"
-for k in E2B_API_KEY GITHUB_UTKRUSHTAPPS_TOKEN SUPABASE_URL_APTITUDETESTSDEV SUPABASE_API_KEY_APTITUDETESTSDEV; do
+for k in E2B_API_KEY GITHUB_UTKRUSHTAPPS_TOKEN SUPABASE_URL_APTITUDETESTS SUPABASE_API_KEY_APTITUDETESTS; do
   grep -q "^$k=" .env || echo "FATAL: missing $k in .env"
 done
+# (only with an explicit --env dev run, check the ...APTITUDETESTSDEV keys instead)
 .venv/bin/python .claude/skills/task-solvability/scripts/sandbox.py load --task-id "$TASK_ID" --env "$ENV"
 ```
 
 **Hard-fail** if the import errors, a key is missing, or `load` raises (task not
-found / no template / no starter repo). `load` prints `template_id`, `starter_repo`,
-`test_cmd`, and `has_problem` — note them.
+found / no template / no starter repo). `load` prints `is_enabled`, `template_id`,
+`starter_repo`, `test_cmd`, and `has_problem` — note them.
 
+- **`is_enabled: false` → STOP (the FIRST gate, in BOTH modes — sandbox and
+  `--local`).** Only enabled tasks get verified: do not deploy, clone, or solve —
+  report plainly that the task is disabled (`is_enabled = false`) and end the run
+  with no verdict. Proceed anyway ONLY if the user explicitly says to verify a
+  disabled task.
 - `has_problem: false` → **warn**: there's no problem statement to solve from;
   you'll be solving against the tests alone (or it may be unsolvable-by-spec).
 
@@ -430,6 +443,35 @@ audit is an `overall: fail`.
 
 ---
 
+## STEP 4e — Append the run to the local `task_audits` CSV
+
+Every completed run (whatever the verdict) is logged as ONE row in a single
+local CSV that mirrors the Supabase `task_audits` table column-for-column.
+The script creates the CSV with a header if it doesn't exist and appends
+otherwise:
+
+```bash
+.venv/bin/python .claude/skills/task-solvability/scripts/log_csv.py \
+    --result "solvability_runs/$SLUG/result.json"
+# optional: --duration-s <seconds> --cost-usd <usd> --solved-by <id> --csv <path>
+```
+
+Columns (same as the table): `audit_id` (fresh UUID), `task_id`, `verdict`
+(`PASS` | `PASS_WITH_FINDINGS` | `FAIL` | `INCONCLUSIVE` — solvable+clean,
+solvable+findings, unsolvable/broken, unverified respectively), `findings`
+(JSON array of "field: problem" strings — audit failures + audit warnings +
+tour warn/fail steps + `task_quality` notes), `solvable`, `solved_by`,
+`failure_reason` (the `verdict_note` when not a PASS), `trace_url` (the local
+run folder), **`detail` — the FULL `result.json`, verbatim compact JSON**,
+`content_hash` (sha256 of result.json), `harness`, `cost_usd`, `duration_s`,
+`created_at` (the run's `ts`).
+
+Run it AFTER STEP 4d — the row snapshots `result.json`, so `overall`, `tour`
+and `audit` must already be filled in. This step applies in **BOTH modes**
+(sandbox and `--local`).
+
+---
+
 ## STEP 5 — Teardown
 
 ```bash
@@ -490,7 +532,10 @@ verification (STEP 4b) if the row ships a tour — you produce a `solve` verdict
 a `tour` verdict, exactly like the sandbox flow, just without an e2b box.
 
 **STEP 1 (preflight)** — same `load` as above, but E2B keys are NOT required;
-only the Supabase + GitHub keys. Hard-fail `--local` if `is_shared_infra_required: true`.
+only the Supabase + GitHub keys. The **`is_enabled` gate applies here exactly as
+in the sandbox flow**: `is_enabled: false` → STOP before cloning or installing
+anything (unless the user explicitly asks to verify a disabled task). Hard-fail
+`--local` if `is_shared_infra_required: true`.
 
 **STEP 2 (clone + install)** — no `deploy`, just:
 
@@ -527,7 +572,8 @@ test files. If the tests unexpectedly need a live service (connection
 refused to a DB/broker), the task is mis-flagged as non-infra — record that as a
 task-quality defect and rerun via the sandbox flow.
 
-**STEP 4 (grade + record)** — same verdict table, same five output files. Capture the
+**STEP 4 (grade + record)** — same verdict table, same five output files, and the
+same STEP 4e CSV append (`log_csv.py`) once `result.json` is complete. Capture the
 diff with
 `git -C "$WORK" add -A && git -C "$WORK" diff --cached > solvability_runs/$SLUG/solution.diff`,
 write `solvability_runs/$SLUG/result.json` with `"mode":"local"` and
