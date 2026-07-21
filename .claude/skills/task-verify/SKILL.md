@@ -21,8 +21,8 @@ skill picks the changes up automatically.
 
 - `TASK_ID` = first token of `$ARGUMENTS` — **required** (ask if absent).
 - `ENV` = `dev` default; `prod` only if the user says so.
-- Flags after the task id are passed through to `task-solvability`
-  (e.g. `--quick`); `--local` is decided automatically in Step 1, don't require
+- Flags after the task id are passed through to `task-solvability`;
+  `--local` is decided automatically in Step 1, don't require
   the user to pass it.
 
 ## STEP 1 — Route by infra flag (cheap, no sandbox)
@@ -46,15 +46,14 @@ Load the task once to decide the solvability mode:
 
 Invoke the **`task-solvability`** skill with the mode chosen in Step 1:
 
-> `/task-solvability $TASK_ID --local --quick`   (non-infra)
-> `/task-solvability $TASK_ID --quick`           (infra → sandbox flow)
+> `/task-solvability $TASK_ID --local`   (non-infra)
+> `/task-solvability $TASK_ID`           (infra → sandbox flow)
 
 Follow that skill's runbook end to end (preflight → clone/deploy → solve →
 grade → teardown). Capture from its output:
 `verdict` (`solvable` / `unsolvable` / `unverified` / `invalid`),
 `grade_signal`, `iterations`, and the path to its report under
-`solvability_runs/<slug>/`. Drop `--quick` only if the user explicitly asked
-for a recording.
+`solvability_runs/<slug>/`.
 
 ## STEP 3 — Audit (invoke the task-audit skill)
 

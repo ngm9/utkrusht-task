@@ -1,6 +1,6 @@
 ---
 name: task-solvability
-description: Check whether ONE Utkrushta task is actually solvable — deploy it to an E2B sandbox, then YOU (the coding agent) solve it with your own tools in the code-server web IDE, RECORD the solve as a WebM by default (RED→fix→GREEN + think-aloud notes + a task-quality assessment), grade against the task's tests, and write a report to solvability_runs/<slug>/. The coding agent is the solver — no headless agent, no metered LLM API. Non-infra tasks (is_shared_infra_required = false) can run in --local mode — clone + install deps + solve + grade entirely on this machine, no E2B sandbox. Use when verifying a generated task can be completed (not just that it deploys — that's the deployment-test skill).
+description: Check whether ONE Utkrushta task is actually solvable — deploy it to an E2B sandbox, then YOU (the coding agent) solve it with your own tools (RED→fix→GREEN + think-aloud notes + a task-quality assessment), grade against the task's tests where it has them and by running the behaviour where it doesn't, and write a report to solvability_runs/<slug>/. The coding agent is the solver — no headless agent, no metered LLM API. Non-infra tasks (is_shared_infra_required = false) can run in --local mode — clone + install deps + solve + grade entirely on this machine, no E2B sandbox. Use when verifying a generated task can be completed (not just that it deploys — that's the deployment-test skill).
 ---
 
 # Task Solvability
@@ -17,24 +17,149 @@ one-liner, because the *solving* and *adaptive gate-clicking* need the model. In
 
 > **`/task-solvability <task-id>`**  (or: "run the solvability flow on task `<id>`")
 
-**Recording is ON by default** — every run produces a WebM of the solve in the
-code-server web IDE. Use `--quick` only when you explicitly want to skip the video.
-
 | Mode | What runs | Reliable? |
 |---|---|---|
-| **default** | deploy → I solve in the **code-server web IDE, RECORDED** (RED→fix→GREEN + notes) → grade → write report | ✅ |
-| **`--quick`** | same, but **no video** (faster) — verdict + `solution.diff` + notes only | ✅ |
-| **`--local`** | **non-infra tasks only** — clone + install deps + solve + grade entirely on THIS machine; no E2B sandbox, no video | ✅ (see "Local mode" below) |
+| **default** | deploy → I solve it (RED→fix→GREEN + notes) → grade → write report | ✅ |
+| **`--local`** | **non-infra tasks only** — clone + install deps + solve + grade entirely on THIS machine; no E2B sandbox | ✅ (see "Local mode" below) |
 
-**Auto-suggest local:** `load` prints `is_shared_infra_required`. If it's `false` and the
-user didn't ask for a recording, prefer `--local` — it's faster and free
-(no sandbox billing). If it's `true`, `--local` is INVALID (the task needs the template's
-services) — hard-fail with that explanation and fall back to the sandbox flow.
+**Auto-suggest local:** `load` prints `is_shared_infra_required`. If it's `false`,
+prefer `--local` — it's faster and free (no sandbox billing). If it's `true`,
+`--local` is INVALID (the task needs the template's services) — hard-fail with
+that explanation and fall back to the sandbox flow.
 
 ## Outputs — `solvability_runs/<task-slug>/` (NOT `.task_agent_runs`)
 
-Each run writes a clean, human-named report folder at the repo root (gitignored):
-`solvability_runs/<task-slug>/` → `summary.md`, `notes.md` (think-aloud + task-quality), `result.json`, `solution.diff`, `solve.webm`, `frames/*.png`, `tour.md` (per-step tour verification, when the row has a tour — STEP 4b).
+Each run writes ONE folder at the repo root (gitignored) with **five files**:
+
+- **`result.json`** — the whole report as structured data (schema below). This is the
+  **source of truth**; the three `.md` files are human-readable renderings of its
+  content, nothing more. Cross-run querying is `glob solvability_runs/*/result.json`.
+- **`solution.diff`** — the diff of your edits, verbatim.
+- **`summary.md`** — human render of `result.json.summary` (see **Markdown renderings**).
+- **`notes.md`** — human render of `result.json.notes`.
+- **`tour.md`** — human render of `result.json.tour` (per-step). Write it even when
+  `tour_verdict` is `n/a` (a one-line "no tour on this task").
+
+The `.md` files must never disagree with `result.json` — they're generated FROM it, so
+fill `result.json` first, then render. No content lives only in a `.md` file.
+
+### `result.json` schema
+
+Write every prose field in your OWN words — never paste the README/problem statement in.
+**Writing style for the nested prose** (the `summary` / `notes` fields): short sentences,
+one idea per sentence, active voice; the `summary` line is a plain-English sentence anyone
+can read (no jargon, no file names), and `detail` / `observed` / `verified` carry the
+precise technical text. Never pack symptom + cause + fix into one sentence — that's what
+the three sub-keys are for.
+
+```jsonc
+{
+  // ── identity ──
+  "task_id": "<id>", "env": "<env>", "template": "<tpl>",
+  "sandbox_id": "<id|null>",          // null in --local mode
+  "starter_repo": "<url>", "mode": "sandbox",   // or "local"
+
+  // ── overall (the rollup — computed LAST, from the three components below) ──
+  "overall": "fail",                  // pass | fail | inconclusive  (see rule under the schema)
+
+  // ── solvability verdict (flat, machine-queryable) ──
+  "verdict": "solvable",              // solvable | unsolvable | broken | unverified
+  "grade_signal": "inspection",       // tests_passed | tests_failed | inspection | already_solved | env_unavailable
+  "baseline": "<what the clean starter's suite did>",
+  "iterations": 3, "used_answer": false,
+
+  // ── summary (was summary.md) ──
+  "summary": {
+    "current_implementation": {
+      "overview": "one plain paragraph on what the starter ships",
+      "verified_by_running_it": [        // REAL evidence from STEP 3's current-state check —
+        "services up, row counts, API codes+bodies, baseline test line"
+      ],
+      "issues": [                        // one per broken thing
+        {"summary": "plain sentence, no jargon",
+         "detail": "the technical cause",
+         "observed": "the runtime evidence that proves it (actual error/response)"}
+      ]
+    },
+    "objectives": ["what the task asked, restated plainly — one per item"],
+    "what_was_solved": [                 // one per fix
+      {"summary": "what now works",
+       "detail": "file + exact change + why",
+       "verified": "the runtime evidence the fix holds"}
+    ],
+    "verdict_note": "one-line justification for the verdict"
+  },
+
+  // ── notes (was notes.md) ──
+  "notes": {
+    "think_aloud": "free-prose reflection: where it was tricky, judgment calls, whether you consulted the answer repo",
+    "task_quality": [                    // task-quality defects/observations, or [] if none
+      {"summary": "short defect", "detail": "why it matters / what a candidate hits"}
+    ]
+  },
+
+  // ── tour (was tour.md; STEP 4b) ──
+  "tour": {
+    "tour_verdict": "ok",                // ok | defects | n/a
+    "counts": {"steps": 7, "pass": 7, "warn": 0, "fail": 0},   // null when n/a
+    "steps": [                           // one per tour step walked, in order; [] when n/a
+      {"section": "<section title>", "label": "<step label>",
+       "type": "command|link|markdown", "result": "pass|warn|fail",
+       "note": "why (required for warn/fail; short 'runs clean, output matches' for pass)"}
+    ]
+  },
+
+  // ── audit (data-integrity, from the task-audit skill; STEP 4c) ──
+  "audit": {                             // null if the task-audit skill isn't available
+    "verdict": "pass",                   // pass | warn | fail
+    "checks": {"pass": 11, "warn": 0, "fail": 0},
+    "failures": [{"field": "criterias", "detail": "..."}],   // [] when clean
+    "warnings": []
+  },
+
+  "ts": "<iso>"
+}
+```
+
+Do NOT also emit a top-level `evidence` or `quality_defects` array — that runtime
+proof now lives in `summary.*.verified` / `verified_by_running_it`, and defects live
+in `notes.task_quality`. One home per fact, no duplication.
+
+### The `overall` rollup — one verdict over all three checks
+
+A run has three independent checks — **solvability** (`verdict`), **tour**
+(`tour.tour_verdict`), **audit** (`audit.verdict`). `overall` collapses them into one
+answer to "is this task fit to assign?" **If ANY one fails, `overall` is `fail`** — a
+solvable task with a broken tour is still a failed task. Compute it LAST, after all
+three are filled, by this rule (a failure anywhere wins):
+
+| Condition (checked in order) | `overall` |
+|---|---|
+| `verdict` ∈ {`unsolvable`, `broken`} **OR** `tour_verdict` == `defects` **OR** `audit.verdict` == `fail` | **`fail`** |
+| else `verdict` == `unverified` (couldn't grade — env broke) | `inconclusive` |
+| else (solvable/solvable-by-inspection, tour ok-or-n/a, audit pass-or-warn) | `pass` |
+
+Notes: a `tour_verdict` of `n/a` (no tour) never counts against `overall`. An audit
+`warn` does not fail `overall` on its own, but surface it. If `audit` is `null` (audit
+skill absent), ignore it in the rollup.
+
+### Markdown renderings (`summary.md` / `notes.md` / `tour.md`)
+
+Render these FROM the filled `result.json` — same facts, human layout. Keep the
+"layered bullet" style: a bold plain-English line, then indented technical detail.
+
+- **`summary.md`** — a `# <title>` H1 and a one-line **Overall: PASS/FAIL/INCONCLUSIVE**
+  banner, then `## Current Implementation` (the `overview`, a `### Verified by running it`
+  list, and one layered bullet per `issues[]` entry: bold `summary` + `Detail:` +
+  `Observed:`), `## Objectives`, `## What Was Solved` (one layered bullet per fix: bold
+  `summary` + `Detail:` + `Verified:`), and `## Verdict` (`verdict` + `grade_signal` +
+  `verdict_note`).
+- **`notes.md`** — `## Think-aloud` (the prose) then `## Task-quality` (one bullet per
+  `task_quality[]`: bold `summary` + indented `detail`; "none" if empty).
+- **`tour.md`** — a header line with the resolved sandbox/env, then one line per
+  `tour.steps[]` entry (`✅ pass` / `⚠️ warn: <note>` / `❌ fail: <note>`, grouped by
+  `section`), and a footer with the counts + `tour_verdict`. When `n/a`: a single line
+  "No tour on this task (checked both envs)."
 
 ## Variables
 
@@ -89,24 +214,43 @@ This is the point of the skill — solve it like a candidate would:
 
 1. **Read the problem** (the `problem` field from `load`, and `$WORK/README.md`).
 2. **Read the code** in `$WORK` with your native tools; understand what's missing.
+2b. **Verify the current state by RUNNING it** — never describe the starter from
+   reading alone; prove what it actually does. In the sandbox, probe every piece
+   of infrastructure the task depends on and record the REAL outputs:
+   ```bash
+   # what is actually running / listening
+   $H run --sandbox "$SANDBOX" --cmd "ps aux | grep -vE 'ps aux|grep' | head -20; (ss -tln || netstat -tln) 2>/dev/null"
+   # DB-backed task → is the DB up AND populated? (adapt creds/table names from the starter)
+   $H run --sandbox "$SANDBOX" --cmd "psql <DB_URL> -c '\dt' -c 'SELECT count(*) FROM <seeded_table>;' -c 'SELECT * FROM <seeded_table> LIMIT 3;'"
+   # API task → does the app build, start, and answer? hit real endpoints, note codes + bodies
+   $H run --sandbox "$SANDBOX" --cmd "curl -s -m 5 -w '\n%{http_code}\n' localhost:<port>/<endpoint>"
+   # broker/cache/etc. → the equivalent liveness + data check for each service
+   ```
+   Check EVERYTHING the task claims to provide: services reachable, seed data
+   actually populated (row counts, sample rows), endpoints responding, and how
+   each suspected defect manifests at runtime (capture the actual error/output).
+   These observations are REQUIRED input for
+   `summary.current_implementation.verified_by_running_it` in `result.json` —
+   findings must be reported from execution evidence, not inferred from source code.
 3. **Establish the baseline** — run the suite once on the clean starter:
    ```bash
    .venv/bin/python $H run --sandbox "$SANDBOX" --cmd "$TEST_CMD"
    ```
-   Now read the **output**, not just the exit code. A task is **NOT required to
-   ship tests** — "no tests" is a distinct outcome from "tests failed," and must
-   never be reported as a fail. Classify what you see:
+   Now read the **output**, not just the exit code. **A task is NOT required to
+   ship tests, and a missing suite never stops the run** — most tasks are graded
+   in production by an LLM judge over the diff, not by pytest, so "no tests" is a
+   normal shape, not a defect and not a failure. Classify what you see:
 
    | Output signal | Meaning | What to do |
    |---|---|---|
-   | pytest `no tests ran` / exit **5**; npm `no test specified` or `Missing script: "test"`; go `[no test files]`; cargo `running 0 tests` (0 collected) | **no tests exist** | STOP the solve → verdict `unverified` / `no_tests` (STEP 4). Do NOT treat as red-to-fix; do NOT treat go/cargo's exit-0 as "already green." |
-   | real assertions failed (non-zero **with** failing test names) | baseline **red** — good, there's something to solve | continue to step 4 |
-   | tests were collected and all passed | clean starter already green | verdict `invalid` (nothing to solve), stop |
+   | no tests collected — pytest `no tests ran` / exit **5**; npm `no test specified` or `Missing script: "test"`; go `[no test files]`; cargo `running 0 tests` | **no test oracle** | **Solve it anyway** (continue to step 4). Grade by inspection at STEP 4 → `grade_signal: inspection`. Do NOT stop; do NOT treat pytest/npm's non-zero exit as red-to-fix; do NOT treat go/cargo's exit-0 as "already green." |
+   | real assertions failed (non-zero **with** failing test names) | baseline **red** — there's something to solve | continue to step 4 |
+   | tests were collected and all passed | **the untouched starter already passes its own suite** — nothing for a candidate to do | verdict `broken` (STEP 4), stop. This is a task defect, not a neutral outcome. |
 
-   ⚠️ **The trap that makes no-tests look like a fail:** pytest/npm with no tests
-   exit **non-zero** (looks red), while go/cargo with no tests exit **zero** (looks
-   already-solved). Both are `no_tests` — decide on whether tests were *collected*,
-   never on the exit code alone.
+   ⚠️ **Read collection, not the exit code:** pytest/npm with no tests exit
+   **non-zero** (looks red), while go/cargo with no tests exit **zero** (looks
+   already-solved). Neither is a real signal — decide on whether tests were
+   *collected*, never on the exit code alone.
 4. **Implement** the solution by editing files in `$WORK` (Edit/Write).
 5. **Sync changed files → sandbox, then run the suite there** (services live there):
    ```bash
@@ -117,6 +261,9 @@ This is the point of the skill — solve it like a candidate would:
    ```
 6. **Iterate** 4–5 until the suite is green or you've made a genuine, bounded
    effort (cap ~8 edit→test cycles so a stuck task doesn't run forever).
+   **With no test suite**, iterate against the runtime instead: exercise the
+   thing you changed (hit the endpoint, run the script, query the DB) and stop
+   when the behaviour the problem statement asks for actually holds.
 
 Do NOT edit the task's tests to force a pass — fix the implementation. (Isolation
 doesn't matter here, so consulting the answer repo is allowed if you're stuck;
@@ -126,11 +273,11 @@ note in the record whether you did.)
 
 ## STEP 4 — Grade + record
 
-Capture the agent's diff and append one JSON line to the log:
+Capture the agent's diff into the report folder (the ONLY diff file — no second copy):
 
 ```bash
-mkdir -p .task_agent_runs/solvable
-.venv/bin/python $H diff --sandbox "$SANDBOX" > ".task_agent_runs/solvable/${TASK_ID}.diff"
+mkdir -p "solvability_runs/$SLUG"
+.venv/bin/python $H diff --sandbox "$SANDBOX" > "solvability_runs/$SLUG/solution.diff"
 ```
 
 **Verdict rules (be honest — never a hollow green):**
@@ -138,25 +285,58 @@ mkdir -p .task_agent_runs/solvable
 | Situation | `verdict` | `grade_signal` |
 |---|---|---|
 | Suite went green after your edits | `solvable` | `tests_passed` |
+| **No test suite**, but you solved it and verified the behaviour by running it | `solvable` | `inspection` |
 | You made a real effort, suite still red | `unsolvable` | `tests_failed` |
-| **Task ships NO tests** (0 collected on ANY stack — see STEP 3.3 signals; never a `fail`) | `unverified` | `no_tests` |
-| Clean starter already passed | `invalid` | `already_green` |
+| **No test suite**, and you could not make the required behaviour work | `unsolvable` | `inspection` |
+| **Nothing to solve** — the untouched starter already satisfies every objective/outcome | `broken` | `already_solved` |
 
-For `unverified` (`no_tests`), record your **own judgment** ("implemented X per the
-spec; looks complete") — but never call it `solvable` and **never call it `fail`**:
-with no test oracle, execution can neither prove nor disprove the solution (and an
-agent left to invent its own tests will just fabricate a pass). A missing test suite
-is a **not-gradeable** outcome, not a failed one. Whether that's a task-quality
-*defect* depends on the task: flag it if this kind of task is expected to ship tests;
-note it neutrally if the task is legitimately graded some other way.
+**`broken` — the task itself is defective (a FAILURE, not a neutral skip).**
+Emit it when the starter you were handed already does everything the task asks,
+so a candidate would have nothing to do. Two ways you'll detect it:
 
-Append to `.task_agent_runs/solvable/results.jsonl` (one line):
+- the task ships tests and they **pass on the clean starter** (before any edit), or
+- the task ships no tests but, by inspection, **every stated objective and outcome
+  is already implemented and works** when you run the starter.
 
-```json
-{"task_id":"<id>","env":"<env>","template":"<tpl>","verdict":"solvable","grade_signal":"tests_passed","iterations":3,"used_answer":false,"diff":".task_agent_runs/solvable/<id>.diff","notes":"<one line>","ts":"<iso>"}
-```
+`broken` is ALWAYS a task-quality failure — it MUST carry a `notes.task_quality`
+entry naming the defect (e.g. "starter repo ships the full solution"). Do not soften
+it to a neutral outcome; a pre-solved task cannot assess a candidate.
 
-(Get `ts` from `date -u +%Y-%m-%dT%H:%M:%SZ` — the helper has no clock.)
+⚠️ **Guard against a false `broken`:** a starter that merely *builds and runs* is not
+broken. `broken` requires that EVERY objective/outcome is already met with no gap.
+If the starter is complete but the task asks for something **beyond** what's there (an
+extension, a new endpoint, a bug the outcomes describe that still reproduces), then
+that beyond-part IS the task — solve it and grade normally; it is not `broken`. When
+in doubt, check the answer repo: if it's only a *stylistic* rewrite of the starter, the
+starter is functionally complete (`broken`); if it adds real behaviour the starter
+lacks, that gap is the task.
+
+**A missing test suite is not a verdict of its own** — it only changes
+`grade_signal` from `tests_passed`/`tests_failed` to `inspection`. Never emit
+`unverified` / `no_tests` for it, and never report it as a failure or a
+task-quality defect; production grades most tasks by LLM judge over the diff, so
+shipping no tests is a normal task shape.
+
+When grading by `inspection`, the bar is **runtime evidence, not your opinion**:
+say what you ran and what it returned (endpoint responses, DB state, script
+output) showing the behaviour the problem statement asked for now holds. Do not
+write tests to grade yourself with — an agent inventing its own oracle will just
+fabricate a pass. If you cannot demonstrate the behaviour by running something,
+that's `unsolvable` / `inspection`, not a green.
+
+Reserve `unverified` for the case where the environment stopped you from
+grading at all (toolchain missing, sandbox broken) — `grade_signal: env_unavailable`.
+
+Now write `solvability_runs/$SLUG/result.json` in the schema from **Outputs** above —
+the identity + verdict fields plus the `summary` and `notes` objects. (The `tour` block
+is filled in by STEP 4b; if the row has no tour, set it to
+`{"tour_verdict":"n/a","counts":null,"steps":[]}`. The `audit` block is STEP 4c; the
+`overall` rollup is computed in STEP 4d once all three are in.) Get `ts` from
+`date -u +%Y-%m-%dT%H:%M:%SZ` — the helper has no clock.
+
+Then render **`summary.md`** and **`notes.md`** from the `summary` / `notes` objects you
+just wrote (per **Markdown renderings** in Outputs). `tour.md` comes in STEP 4b, the
+`overall` banner in STEP 4d.
 
 ---
 
@@ -200,12 +380,53 @@ runs) — which must ALWAYS pass — from **"output matches"** — which only ho
 repo is in the state the step assumes. Never fail a tour step just because a
 solved-state output didn't appear on the unsolved starter.
 
-**Record** a `tour.md` in the report folder: one line per step
-(`✅ pass` / `⚠️ warn: <why>` / `❌ fail: <why>`), and add a `tour` block to
-`result.json` with counts + the overall `tour_verdict`
-(`ok` | `defects` | `n/a`). A tour with any `❌` is a **task-quality defect** — the
-task can be *solvable* yet ship a *broken tour*; report both verdicts honestly, don't
-let a green solve hide a red tour.
+**Record** the tour into `result.json`'s `tour` block: one entry per step in
+`tour.steps[]` (`section`, `label`, `type`, `result` = `pass`/`warn`/`fail`, and a
+`note` — required for warn/fail), plus `counts` and the overall `tour_verdict`
+(`ok` | `defects` | `n/a`). Then render **`tour.md`** from that block (per **Markdown
+renderings**). A tour with any `fail` is a **task-quality defect** — the task can be
+*solvable* yet ship a *broken tour*; report both verdicts honestly, don't let a green
+solve hide a red tour (and it flips `overall` to `fail` in STEP 4d).
+
+---
+
+## STEP 4c — Data-integrity audit (fold in the task-audit verdict)
+
+Solvability + tour answer "does the task *work*"; the **task-audit** skill answers
+"is the task's *data* well-formed" (required fields, content rules, GitHub/gist
+reachability, the infra ↔ template rule). They're orthogonal — a task can build and
+solve cleanly yet have a dangling competency id or a broken gist — so fold that verdict
+into the same `result.json`.
+
+If the task-audit skill is present, run it in JSON mode for this one task and drop the
+result into the `audit` block:
+
+```bash
+.venv/bin/python .claude/skills/task-audit/scripts/task_audit.py \
+    --env "$ENV" --task-id "$TASK_ID" --json
+```
+
+It prints one object (`verdict`, `checks`, `failures`, `warnings`, `fields`) — copy
+`verdict` + `checks` + `failures` + `warnings` into `result.json`'s `audit` block.
+If the script isn't there (task-audit not installed alongside this skill), set
+`"audit": null` and move on — it's best-effort, not a hard dependency. An audit
+`fail` is a **task-quality defect** in the same spirit as a red tour: report it, don't
+let a green solve hide it.
+
+---
+
+## STEP 4d — Roll up `overall` (all three checks in one verdict)
+
+Now that solvability (`verdict`), `tour.tour_verdict`, and `audit.verdict` are all
+filled, compute the top-level **`overall`** by the rule in **The `overall` rollup**
+(Outputs): **`fail` if ANY of the three failed** (`unsolvable`/`broken`, tour
+`defects`, or audit `fail`); `inconclusive` if solvability is `unverified` and nothing
+outright failed; else `pass`. Write it into `result.json`, and put the matching
+**Overall: PASS / FAIL / INCONCLUSIVE** banner at the top of `summary.md`.
+
+The point: a run is only fit-to-assign when *every* check is clean. Do not report a
+`pass` overall while a component is red — a solvable task with a broken tour or a failed
+audit is an `overall: fail`.
 
 ---
 
@@ -229,21 +450,34 @@ template <tpl>   sandbox <id>
 baseline   ❌ red (suite failed on clean starter — good, there's something to solve)
 solve      ✅ solvable   — suite green after 3 edit→test cycles
 tour       ✅ ok (7/7 steps) — or  ⚠️ defects (5/7; 1 dead link, 1 command fails)  or  n/a
-recorded   .task_agent_runs/solvable/<id>.diff  +  results.jsonl
+audit      ✅ pass (11/0/0) — or  ✗ fail (2 dangling competency ids)  or  n/a
+recorded   solvability_runs/<slug>/  →  result.json + solution.diff + summary.md + notes.md + tour.md
 
-VERDICT: SOLVABLE   (TOUR: OK)
-NOTES: <what the task required / where it was tricky / or why it's unsolvable / unverified>
+OVERALL: PASS   (solve ✅ · tour ✅ · audit ✅)
+ — or —  OVERALL: FAIL   (solve ✅ · tour ❌ defects · audit ✅)   ← any one red ⇒ FAIL
+NOTES: <what the task required / where it was tricky / or why it's unsolvable / broken>
 ```
 
-On `unverified` / `unsolvable`, say plainly what's wrong (no tests → not gradeable;
-or the spec is underspecified / contradictory / needs resources that aren't there).
+On `unsolvable`, say plainly what's wrong (the spec is underspecified /
+contradictory / needs resources that aren't there).
 
-The `no_tests` outcome is reported as its own line — **not** as a red/failed suite:
+A `broken` task (nothing to solve) reports as a **failure**, not a neutral skip —
+the diff is empty because there was nothing to fix, and the task-quality defect is
+the whole point:
 
 ```
-baseline   ⚪ no tests — suite collected 0 tests (task ships none; not a failure)
-solve      ⚪ unverified — implemented per the spec by inspection; no oracle to grade against
-VERDICT: UNVERIFIED (no_tests)
+baseline   ❌ nothing to solve — the untouched starter already satisfies every outcome
+solve      ⛔ broken — starter ships the full solution; a candidate has nothing to do
+VERDICT: BROKEN (already_solved)   — TASK DEFECT, must be fixed before assigning
+```
+
+A task with no test suite reports as a normal solve, with the baseline line
+noting there was no oracle — **never** as a red/failed suite:
+
+```
+baseline   ⚪ no tests collected (task ships none — graded by inspection, not a failure)
+solve      ✅ solvable   — behaviour verified by running it after 3 edit cycles
+VERDICT: SOLVABLE (inspection)
 ```
 
 ## Local mode (`--local`) — non-infra tasks, no sandbox
@@ -280,16 +514,25 @@ suggest the sandbox flow instead. If install itself fails on the clean starter, 
 a task-quality defect — record it.
 
 **STEP 3 (solve)** — identical to the sandbox STEP 3, except tests run locally with
-plain Bash in `$WORK` — no `put`/sync loop, no `$H run`. Same ~8-cycle cap, same
+plain Bash in `$WORK` — no `put`/sync loop, no `$H run`. Step 2b (verify the
+current state by RUNNING it) applies here too, with local commands: build the
+project, start the app if it has an entrypoint and hit its endpoints with curl,
+inspect any bundled fixtures/seed files, and capture how each defect actually
+manifests (real error output) — `summary.current_implementation.verified_by_running_it`
+is required in local mode as well. Same ~8-cycle cap, same
 "never edit the tests" rule, and the **same baseline classification** (STEP 3.3):
-if the runner collects 0 tests, that's `unverified` / `no_tests`, never a fail —
-even though `go test`/`cargo test` exit 0 with no test files. If the tests unexpectedly need a live service (connection
+if the runner collects 0 tests, solve it anyway and grade by `inspection` — never
+a fail, never `unverified` — even though `go test`/`cargo test` exit 0 with no
+test files. If the tests unexpectedly need a live service (connection
 refused to a DB/broker), the task is mis-flagged as non-infra — record that as a
 task-quality defect and rerun via the sandbox flow.
 
-**STEP 4 (grade + record)** — same verdict table. Capture the diff with
-`git -C "$WORK" add -A && git -C "$WORK" diff --cached > solvability_runs/$SLUG/solution.diff`.
-Add `"mode":"local"` to the `results.jsonl` row.
+**STEP 4 (grade + record)** — same verdict table, same five output files. Capture the
+diff with
+`git -C "$WORK" add -A && git -C "$WORK" diff --cached > solvability_runs/$SLUG/solution.diff`,
+write `solvability_runs/$SLUG/result.json` with `"mode":"local"` and
+`"sandbox_id":null`, then render `summary.md` / `notes.md` / `tour.md` and roll up
+`overall` (STEP 4d) exactly as in the sandbox flow.
 
 **STEP 4b (verify the tour)** — applies here too, if the row has one (check both
 envs — often null on dev, set on prod). Resolve it **without** `--sandbox`
@@ -304,56 +547,12 @@ needs a live service (`docker-compose up`, `curl localhost:4566`, connection ref
 to a DB/broker), the task is **mis-flagged as non-infra** — record it as a
 task-quality defect and re-verify the tour via the sandbox flow.
 
-**STEP 5 (teardown)** — just `rm -rf "$WORK"` (nothing to kill). No WebM in local
-mode (there's no code-server IDE to record) — local mode implies `--quick`; if the
-user wants video proof, use the sandbox flow.
-
-## Recorded mode (`--record`) — headless video proof
-
-Produces a **WebM video** of the RED→solve→GREEN happening in the task's **real
-sandbox environment** — so a Claude agent can run this fully headless and hand
-back a recording that demonstrates **deployability + solvability** "like a human
-working the task." No candidate frontend, no login, no device/screen-share gates,
-no mocked media. (Driving the production candidate UI is rejected: it's brittle,
-human-gated, and forces a *fake* screen-share — the recording would be a blank
-canvas. Record the real sandbox instead.)
-
-**Prereq:** `npm i -g agent-browser && agent-browser install` (Rust browser CLI;
-no Playwright/MCP needed — drive it from Bash).
-
-The sandbox template exposes a **browser terminal (ttyd) on port 7681** at
-`https://7681-<sandbox_id>.e2b.app`. After STEP 2 (deploy), drive it:
-
-```bash
-TTYD="https://7681-${SANDBOX}.e2b.app"
-tcmd(){ agent-browser keyboard type "$1"; agent-browser press Enter; sleep "$2"; }  # ttyd auto-focuses
-
-agent-browser record start "$REC_DIR/solve.webm" "$TTYD"   # fresh ctx -> terminal; keystrokes target it
-sleep 4
-tcmd "cd /home/user/task" 1
-tcmd "sed -n 1,8p README.md" 2                              # show the problem
-tcmd "python -m pytest -q" 12                               # RED (baseline) ; screenshot red.png
-# --- apply YOUR solution into the SAME sandbox (off-camera, via the helper) ---
-#   sandbox.py put --sandbox $SANDBOX --local <fixed-file> --remote /home/user/task/<path>
-tcmd "git --no-pager diff --stat" 2                         # show the fix on camera
-tcmd "python -m pytest -q" 12                               # GREEN ; screenshot green.png
-agent-browser record stop
-agent-browser close --all
-```
-
-Notes that matter (learned live):
-- `record start` makes a **fresh context** but subsequent `keyboard`/`screenshot`
-  commands DO target it (verified). ttyd renders to a **canvas** → `.innerText` is
-  empty; use `agent-browser screenshot` to capture RED/GREEN, not text scraping.
-- Apply the solution via the helper `put` (e2b file API) between the two `pytest`
-  runs — same sandbox filesystem the terminal sees — then `git diff` shows it.
-- Save `solve.webm` + `red.png` + `green.png` under
-  `.task_agent_runs/solvable/recordings/<task-id>/` and reference them in the
-  `results.jsonl` row (add a `recording` field).
+**STEP 5 (teardown)** — just `rm -rf "$WORK"` (nothing to kill).
 
 ## Out of scope (deliberately)
 
 - **Batch / many tasks** — one task-id at a time; the user picks it.
-- **Driving the production candidate UI** — rejected (see Recorded mode): brittle,
-  human-gated, fake screen-share. The sandbox recording is the headless substitute.
-- **No fixes to the task, no commits** — solve in the sandbox, record, stop.
+- **Video recording** — removed; the report folder (`result.json` + `solution.diff`
+  + the three rendered `.md` files) is the proof of the solve.
+- **Driving the production candidate UI** — brittle, human-gated; never do it.
+- **No fixes to the task, no commits** — solve, grade, report, stop.
