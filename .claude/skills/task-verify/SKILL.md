@@ -20,20 +20,26 @@ skill picks the changes up automatically.
 ## Variables
 
 - `TASK_ID` = first token of `$ARGUMENTS` — **required** (ask if absent).
-- `ENV` = `dev` default; `prod` only if the user says so.
+- `ENV` = `prod` — tasks are picked from **prod ONLY**; use `dev` only if the
+  user explicitly asks to verify a dev task.
 - Flags after the task id are passed through to `task-solvability`;
   `--local` is decided automatically in Step 1, don't require
   the user to pass it.
 
-## STEP 1 — Route by infra flag (cheap, no sandbox)
+## STEP 1 — Enabled gate + route by infra flag (cheap, no sandbox)
 
-Load the task once to decide the solvability mode:
+Load the task once to gate and decide the solvability mode:
 
 ```bash
 .venv/bin/python .claude/skills/task-solvability/scripts/sandbox.py load \
   --task-id "$TASK_ID" --env "$ENV"
 ```
 
+- **FIRST — the enabled gate: `is_enabled: false` → STOP the whole run.** Only
+  enabled tasks get verified — run neither the solve leg nor the audit leg;
+  report `DISABLED — task is not enabled (is_enabled = false); not verified`
+  and end. Override ONLY if the user explicitly says to verify a disabled task.
+  This gate applies regardless of which mode (local or sandbox) would be picked.
 - `is_shared_infra_required: false` → run task-solvability in **`--local`** mode
   (solve on this machine — deps installed locally, no E2B sandbox).
 - `is_shared_infra_required: true` → run task-solvability in its **default
@@ -77,6 +83,7 @@ legs are clean:
 | `unsolvable` / `invalid` | any | ❌ **FAIL** — do not ship (audit findings attached as context) |
 | `unverified` (no tests) | any | ❌ **FAIL** — not gradeable; a generation defect |
 | `not_run` (Step 1 load failed) | findings | ❌ **FAIL** — row too broken to even deploy |
+| `not_run` (Step 1 enabled gate: `is_enabled=false`) | not run | ⛔ **DISABLED** — not verified; enable the task (or explicitly override) first |
 
 Final report (single message, both legs always shown):
 
