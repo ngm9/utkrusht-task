@@ -29,16 +29,19 @@ that explanation and fall back to the sandbox flow.
 
 ## Outputs — `solvability_runs/<task-slug>/` (NOT `.task_agent_runs`)
 
-Each run writes ONE folder at the repo root (gitignored) with **exactly two files**:
+Each run writes ONE folder at the repo root (gitignored) with **five files**:
 
-- **`result.json`** — the whole report as structured data (schema below). Everything
-  the old `summary.md` / `notes.md` / `tour.md` used to hold is now folded in here as
-  keys. There are NO `.md` sidecar files anymore.
+- **`result.json`** — the whole report as structured data (schema below). This is the
+  **source of truth**; the three `.md` files are human-readable renderings of its
+  content, nothing more. Cross-run querying is `glob solvability_runs/*/result.json`.
 - **`solution.diff`** — the diff of your edits, verbatim.
+- **`summary.md`** — human render of `result.json.summary` (see **Markdown renderings**).
+- **`notes.md`** — human render of `result.json.notes`.
+- **`tour.md`** — human render of `result.json.tour` (per-step). Write it even when
+  `tour_verdict` is `n/a` (a one-line "no tour on this task").
 
-Cross-run querying (what the old `.task_agent_runs/solvable/results.jsonl` append-log
-did) is just `glob solvability_runs/*/result.json` — each run is self-contained, so
-there's no parallel log to keep in sync.
+The `.md` files must never disagree with `result.json` — they're generated FROM it, so
+fill `result.json` first, then render. No content lives only in a `.md` file.
 
 ### `result.json` schema
 
@@ -56,7 +59,10 @@ the three sub-keys are for.
   "sandbox_id": "<id|null>",          // null in --local mode
   "starter_repo": "<url>", "mode": "sandbox",   // or "local"
 
-  // ── verdict (flat, machine-queryable) ──
+  // ── overall (the rollup — computed LAST, from the three components below) ──
+  "overall": "fail",                  // pass | fail | inconclusive  (see rule under the schema)
+
+  // ── solvability verdict (flat, machine-queryable) ──
   "verdict": "solvable",              // solvable | unsolvable | broken | unverified
   "grade_signal": "inspection",       // tests_passed | tests_failed | inspection | already_solved | env_unavailable
   "baseline": "<what the clean starter's suite did>",
@@ -118,6 +124,42 @@ the three sub-keys are for.
 Do NOT also emit a top-level `evidence` or `quality_defects` array — that runtime
 proof now lives in `summary.*.verified` / `verified_by_running_it`, and defects live
 in `notes.task_quality`. One home per fact, no duplication.
+
+### The `overall` rollup — one verdict over all three checks
+
+A run has three independent checks — **solvability** (`verdict`), **tour**
+(`tour.tour_verdict`), **audit** (`audit.verdict`). `overall` collapses them into one
+answer to "is this task fit to assign?" **If ANY one fails, `overall` is `fail`** — a
+solvable task with a broken tour is still a failed task. Compute it LAST, after all
+three are filled, by this rule (a failure anywhere wins):
+
+| Condition (checked in order) | `overall` |
+|---|---|
+| `verdict` ∈ {`unsolvable`, `broken`} **OR** `tour_verdict` == `defects` **OR** `audit.verdict` == `fail` | **`fail`** |
+| else `verdict` == `unverified` (couldn't grade — env broke) | `inconclusive` |
+| else (solvable/solvable-by-inspection, tour ok-or-n/a, audit pass-or-warn) | `pass` |
+
+Notes: a `tour_verdict` of `n/a` (no tour) never counts against `overall`. An audit
+`warn` does not fail `overall` on its own, but surface it. If `audit` is `null` (audit
+skill absent), ignore it in the rollup.
+
+### Markdown renderings (`summary.md` / `notes.md` / `tour.md`)
+
+Render these FROM the filled `result.json` — same facts, human layout. Keep the
+"layered bullet" style: a bold plain-English line, then indented technical detail.
+
+- **`summary.md`** — a `# <title>` H1 and a one-line **Overall: PASS/FAIL/INCONCLUSIVE**
+  banner, then `## Current Implementation` (the `overview`, a `### Verified by running it`
+  list, and one layered bullet per `issues[]` entry: bold `summary` + `Detail:` +
+  `Observed:`), `## Objectives`, `## What Was Solved` (one layered bullet per fix: bold
+  `summary` + `Detail:` + `Verified:`), and `## Verdict` (`verdict` + `grade_signal` +
+  `verdict_note`).
+- **`notes.md`** — `## Think-aloud` (the prose) then `## Task-quality` (one bullet per
+  `task_quality[]`: bold `summary` + indented `detail`; "none" if empty).
+- **`tour.md`** — a header line with the resolved sandbox/env, then one line per
+  `tour.steps[]` entry (`✅ pass` / `⚠️ warn: <note>` / `❌ fail: <note>`, grouped by
+  `section`), and a footer with the counts + `tour_verdict`. When `n/a`: a single line
+  "No tour on this task (checked both envs)."
 
 ## Variables
 
@@ -286,11 +328,15 @@ Reserve `unverified` for the case where the environment stopped you from
 grading at all (toolchain missing, sandbox broken) — `grade_signal: env_unavailable`.
 
 Now write `solvability_runs/$SLUG/result.json` in the schema from **Outputs** above —
-the identity + verdict fields plus the `summary` and `notes` objects. (The `tour`
-block is filled in by STEP 4b; if the row has no tour, set it to
-`{"tour_verdict":"n/a","counts":null,"steps":[]}`.) Get `ts` from
-`date -u +%Y-%m-%dT%H:%M:%SZ` — the helper has no clock. That plus `solution.diff`
-are the only two files the run leaves behind.
+the identity + verdict fields plus the `summary` and `notes` objects. (The `tour` block
+is filled in by STEP 4b; if the row has no tour, set it to
+`{"tour_verdict":"n/a","counts":null,"steps":[]}`. The `audit` block is STEP 4c; the
+`overall` rollup is computed in STEP 4d once all three are in.) Get `ts` from
+`date -u +%Y-%m-%dT%H:%M:%SZ` — the helper has no clock.
+
+Then render **`summary.md`** and **`notes.md`** from the `summary` / `notes` objects you
+just wrote (per **Markdown renderings** in Outputs). `tour.md` comes in STEP 4b, the
+`overall` banner in STEP 4d.
 
 ---
 
@@ -334,12 +380,13 @@ runs) — which must ALWAYS pass — from **"output matches"** — which only ho
 repo is in the state the step assumes. Never fail a tour step just because a
 solved-state output didn't appear on the unsolved starter.
 
-**Record** the tour into `result.json`'s `tour` block (there is NO `tour.md`): one
-entry per step in `tour.steps[]` (`section`, `label`, `type`, `result` =
-`pass`/`warn`/`fail`, and a `note` — required for warn/fail), plus `counts` and the
-overall `tour_verdict` (`ok` | `defects` | `n/a`). A tour with any `fail` is a
-**task-quality defect** — the task can be *solvable* yet ship a *broken tour*; report
-both verdicts honestly, don't let a green solve hide a red tour.
+**Record** the tour into `result.json`'s `tour` block: one entry per step in
+`tour.steps[]` (`section`, `label`, `type`, `result` = `pass`/`warn`/`fail`, and a
+`note` — required for warn/fail), plus `counts` and the overall `tour_verdict`
+(`ok` | `defects` | `n/a`). Then render **`tour.md`** from that block (per **Markdown
+renderings**). A tour with any `fail` is a **task-quality defect** — the task can be
+*solvable* yet ship a *broken tour*; report both verdicts honestly, don't let a green
+solve hide a red tour (and it flips `overall` to `fail` in STEP 4d).
 
 ---
 
@@ -368,6 +415,21 @@ let a green solve hide it.
 
 ---
 
+## STEP 4d — Roll up `overall` (all three checks in one verdict)
+
+Now that solvability (`verdict`), `tour.tour_verdict`, and `audit.verdict` are all
+filled, compute the top-level **`overall`** by the rule in **The `overall` rollup**
+(Outputs): **`fail` if ANY of the three failed** (`unsolvable`/`broken`, tour
+`defects`, or audit `fail`); `inconclusive` if solvability is `unverified` and nothing
+outright failed; else `pass`. Write it into `result.json`, and put the matching
+**Overall: PASS / FAIL / INCONCLUSIVE** banner at the top of `summary.md`.
+
+The point: a run is only fit-to-assign when *every* check is clean. Do not report a
+`pass` overall while a component is red — a solvable task with a broken tour or a failed
+audit is an `overall: fail`.
+
+---
+
 ## STEP 5 — Teardown
 
 ```bash
@@ -388,10 +450,12 @@ template <tpl>   sandbox <id>
 baseline   ❌ red (suite failed on clean starter — good, there's something to solve)
 solve      ✅ solvable   — suite green after 3 edit→test cycles
 tour       ✅ ok (7/7 steps) — or  ⚠️ defects (5/7; 1 dead link, 1 command fails)  or  n/a
-recorded   solvability_runs/<slug>/result.json  +  solution.diff
+audit      ✅ pass (11/0/0) — or  ✗ fail (2 dangling competency ids)  or  n/a
+recorded   solvability_runs/<slug>/  →  result.json + solution.diff + summary.md + notes.md + tour.md
 
-VERDICT: SOLVABLE   (TOUR: OK)
-NOTES: <what the task required / where it was tricky / or why it's unsolvable / unverified>
+OVERALL: PASS   (solve ✅ · tour ✅ · audit ✅)
+ — or —  OVERALL: FAIL   (solve ✅ · tour ❌ defects · audit ✅)   ← any one red ⇒ FAIL
+NOTES: <what the task required / where it was tricky / or why it's unsolvable / broken>
 ```
 
 On `unsolvable`, say plainly what's wrong (the spec is underspecified /
@@ -463,11 +527,12 @@ test files. If the tests unexpectedly need a live service (connection
 refused to a DB/broker), the task is mis-flagged as non-infra — record that as a
 task-quality defect and rerun via the sandbox flow.
 
-**STEP 4 (grade + record)** — same verdict table, same two output files. Capture the
+**STEP 4 (grade + record)** — same verdict table, same five output files. Capture the
 diff with
 `git -C "$WORK" add -A && git -C "$WORK" diff --cached > solvability_runs/$SLUG/solution.diff`,
-and write `solvability_runs/$SLUG/result.json` with `"mode":"local"` and
-`"sandbox_id":null`.
+write `solvability_runs/$SLUG/result.json` with `"mode":"local"` and
+`"sandbox_id":null`, then render `summary.md` / `notes.md` / `tour.md` and roll up
+`overall` (STEP 4d) exactly as in the sandbox flow.
 
 **STEP 4b (verify the tour)** — applies here too, if the row has one (check both
 envs — often null on dev, set on prod). Resolve it **without** `--sandbox`
@@ -487,7 +552,7 @@ task-quality defect and re-verify the tour via the sandbox flow.
 ## Out of scope (deliberately)
 
 - **Batch / many tasks** — one task-id at a time; the user picks it.
-- **Video recording** — removed; the report folder (`result.json` + `solution.diff`)
-  is the proof of the solve.
+- **Video recording** — removed; the report folder (`result.json` + `solution.diff`
+  + the three rendered `.md` files) is the proof of the solve.
 - **Driving the production candidate UI** — brittle, human-gated; never do it.
 - **No fixes to the task, no commits** — solve, grade, report, stop.
