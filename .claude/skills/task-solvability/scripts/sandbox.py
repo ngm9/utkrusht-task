@@ -95,8 +95,9 @@ def load_task(task_id: str, env: str = "dev") -> dict:
     tour = row.get("tour") if isinstance(row.get("tour"), dict) else None
     expected_ports = row.get("expected_ports") if isinstance(row.get("expected_ports"), list) else []
 
-    if not template_id:
-        raise SystemExit(f"FATAL: task {task_id} has no template_id — cannot boot a sandbox")
+    # template_id is only needed to BOOT a sandbox — cmd_deploy enforces it.
+    # load/clone/tour (incl. the whole --local flow) work without it, and non-infra
+    # tasks correctly have a null template_id, so don't hard-fail here.
     if not starter_repo:
         raise SystemExit(f"FATAL: task {task_id} has no starter repo (task_blob.resources.github_repo)")
 
@@ -253,6 +254,11 @@ def cmd_clone(a) -> int:
 def cmd_deploy(a) -> int:
     from infra.e2b import sandbox_manager
     spec = load_task(a.task_id, a.env)
+    if not spec["template_id"]:
+        raise SystemExit(
+            f"FATAL: task {a.task_id} has no template_id — cannot boot a sandbox. "
+            "If it's non-infra (is_shared_infra_required=false), use --local instead."
+        )
     handle = sandbox_manager.create_and_setup(
         template=spec["template_id"], repo_url=spec["starter_repo"], timeout_hours=a.timeout_hours,
     )
