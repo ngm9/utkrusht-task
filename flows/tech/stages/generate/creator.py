@@ -43,6 +43,7 @@ from infra.utils import (
     generate_task_with_code,
     get_task_shape_for,
     has_shared_infra_files,
+    needs_shared_infra,
     load_relevant_scenarios,
     parse_markdown_to_json,
     read_json_file_robust,
@@ -637,6 +638,7 @@ def create_task(
     scenarios_file: Path | None = None,
     env: str = "dev",
     selected_scenarios: List[str] | None = None,
+    seed_candidate: Dict | None = None,
 ) -> Dict:
     """Generate an intelligent assessment task.
 
@@ -653,6 +655,13 @@ def create_task(
             lookup. A single entry hard-locks generation to that scenario.
             When ``None``/empty, the full candidate pool is resolved and the
             scenario-lock prompt picks one.
+        seed_candidate: An already-generated task JSON to score INSTEAD of
+            making a fresh task-gen call on the first attempt. Everything
+            downstream (evals, E2B gate, answer code, repos, gist, Supabase)
+            runs unchanged. Use it to rescue a task whose generation succeeded
+            but whose run died afterwards — the generate call is the expensive
+            part, so re-scoring a recovered candidate avoids paying twice. If
+            it fails the gate, later attempts regenerate as normal.
     """
     try:
         if scenarios_file is None:
@@ -846,7 +855,15 @@ def create_task(
         # criteria (YoE / criterias — both code-stamped), regenerating cannot
         # change the inputs the critic gated on. Carry the prior candidate here
         # and re-score it instead of burning a fresh ~30k-token regeneration.
-        reuse_candidate: Optional[Dict] = None
+        # Also the injection point for `seed_candidate` — a recovered task is
+        # scored exactly like a re-used one, so the rescue path needs no
+        # separate machinery.
+        reuse_candidate: Optional[Dict] = seed_candidate
+        if seed_candidate is not None:
+            logger.info(
+                "Seeded with a pre-generated task candidate — attempt 1 scores it "
+                "instead of calling the task-gen LLM"
+            )
         # No-progress guard: if the E2B gate fails with the SAME verdict on two
         # attempts running, regenerating won't help (the failure is environmental
         # /scaffold, not LLM-fixable) — abort to stop burning task-gen calls.
@@ -873,13 +890,21 @@ def create_task(
             logger.info(f"Task generation attempt {attempt}/{max_attempts}")
             if reuse_candidate is not None:
                 candidate = reuse_candidate
+                _was_seeded = reuse_candidate is seed_candidate
                 reuse_candidate = None
-                logger.info(
-                    f"Attempt {attempt}: re-scoring the prior candidate without "
-                    f"regenerating — previous blockers were deterministic-metadata "
-                    f"only (YoE/criterias are code-stamped, so a fresh task could "
-                    f"not change them); saves a full task_gen call"
-                )
+                if _was_seeded:
+                    logger.info(
+                        f"Attempt {attempt}: scoring the SEEDED candidate "
+                        f"'{candidate.get('name', '<unnamed>')}' without regenerating "
+                        f"— saves a full task_gen call"
+                    )
+                else:
+                    logger.info(
+                        f"Attempt {attempt}: re-scoring the prior candidate without "
+                        f"regenerating — previous blockers were deterministic-metadata "
+                        f"only (YoE/criterias are code-stamped, so a fresh task could "
+                        f"not change them); saves a full task_gen call"
+                    )
             else:
                 try:
                     # #2: route a mechanical-failure retry to the repair model
@@ -1157,21 +1182,73 @@ def create_task(
         task_type = determine_task_type(competencies, task_data)
         logger.info(f"Determined task type: {task_type}")
 
+        # Phase 2 (open-endedness): `hidden_tests` are grading assertions the
+        # candidate must NOT see — they spell out the exact values/fields the
+        # stub deliberately leaves for the candidate to design (the leak that
+        # made candidate-facing invariants an answer key). Lift them off the
+        # winning task BEFORE the answer-repo upload and the DB insert, so they
+        # reach neither `code_files` (template repo), the row, nor the gist.
+        # Popped here rather than inside the retry loop: a re-scored
+        # `reuse_candidate` has already been stripped, so popping per-attempt
+        # would silently lose them.
+        hidden_tests = task_data.pop("hidden_tests", None) or {}
+        if hidden_tests:
+            # Don't trust the generator: a path that also exists candidate-side
+            # would leak by collision, so drop those.
+            collided = [p for p in hidden_tests if p in task_data.get("code_files", {})]
+            for p in collided:
+                hidden_tests.pop(p, None)
+            if collided:
+                logger.warning(
+                    f"hidden_tests collided with candidate-facing files and were "
+                    f"dropped (they would have leaked the answer): {collided}"
+                )
+            logger.info(
+                f"Withheld {len(hidden_tests)} hidden grading test file(s) from the "
+                f"candidate: {sorted(hidden_tests)}"
+            )
+
         logger.info("Generating solution code and steps")
         with trace_stage("solution"):
             solutions_data = generate_answer_code_and_steps(task_data)
 
-        # Drive is_shared_infra_required purely from whether the generated
-        # repo carries Docker / docker-compose artifacts. The previous
-        # heuristic marked every "backend" task True regardless of Docker,
-        # which flagged library-only tasks (LangChain / LlamaIndex /
-        # pure-Python) as needing a sandbox they can't actually use.
+        # Re-attach the withheld tests to the answer repo — never shipped to the
+        # candidate, but reachable by graders and the solvability check.
+        if hidden_tests:
+            solutions_data.setdefault("files", {})
+            solutions_data["files"].update(hidden_tests)
+
+        # Drive is_shared_infra_required from whether the generated repo declares
+        # a backing service it needs booted. This used to check docker files
+        # ONLY, but the python-ai base image already ships postgres + redis, so a
+        # task can need shared services (e.g. an init_database.sql it seeds and
+        # queries) without shipping a docker-compose — docker-only under-detects.
+        # `needs_shared_infra` widens the check to the other infra-plumbing
+        # markers (init SQL, kill.sh) while keeping the "pure-runtime library
+        # task = non-infra" property that stops us flagging a sandbox a
+        # LangChain/LlamaIndex task can't use.
+        #
+        # `task_shape` is NOT used here: it is a coarse per-PROMPT classifier
+        # label (decided on the scenario pool, inherited by every task the prompt
+        # produces), so it can say "infra" for a prompt whose specific generated
+        # task ships no services. The deployable artifact is the ground truth.
         code_data = task_data.get("code_files", {})
         has_docker = has_shared_infra_files(code_data)
-        is_shared_infra_required = bool(has_docker)
+        is_shared_infra_required = needs_shared_infra(code_data)
+        if task_shape == "infra" and not is_shared_infra_required:
+            # The classifier predicted infra but the generated repo declares no
+            # service. Surface the divergence (it usually means the classifier
+            # fired on a scenario-pool datastore this task didn't use); the
+            # artifact wins, but a reviewer may want to know.
+            logger.warning(
+                "task_shape='infra' but the generated repo declares no backing "
+                "service — treating as non-infra from the artifact. If this task "
+                "was meant to be service-backed, the generator dropped the infra "
+                "plumbing."
+            )
         logger.info(
             f"Setting is_shared_infra_required to {is_shared_infra_required} "
-            f"(task_type: {task_type}, has_docker: {has_docker})"
+            f"(task_type: {task_type}, has_docker: {has_docker}, task_shape: {task_shape})"
         )
 
         # Step 1 — INSERT the minimal draft row, get task_id BEFORE any

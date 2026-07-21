@@ -587,6 +587,71 @@ class GeneratePromptSignature(dspy.Signature):
         key). It MUST NOT be generalized to the task itself.
 
     ─────────────────────────────────────────────────────────────────────────
+    HARD CONSTRAINT #9 — OPEN-ENDEDNESS scales with `proficiency`
+    (agent-engineering competencies only — same scope as #8)
+    ─────────────────────────────────────────────────────────────────────────
+    For agent-engineering competencies, how much of the SOLUTION the task hands
+    over is decided by the `proficiency` input alone — there is no separate
+    flag, mirroring how the README Objectives rules in #2 already branch on
+    proficiency.
+
+    GOLDEN RULE (applies at every level): underspecify the SOLUTION, never the
+    PROBLEM. The Task Overview / symptom stays crisp, fair, and reproducible.
+    Only the "how" — objectives-as-steps, solution-shaped tips, the exact
+    verify cases, return shapes, enum vocabularies, thresholds — is what higher
+    proficiency withholds. Stripping detail off the PROBLEM makes a task
+    ambiguous and unfair, which is NOT the goal.
+
+      (a) BASIC / BEGINNER → SPECIFIED / closed. Today's baseline: the README
+          still obeys #2, but the task MAY hand over the contract —
+          starter-stub docstrings MAY state the expected return shape / enum
+          values, Objectives MAY read as an explicit checklist, Helpful Tips
+          MAY nudge toward the solution shape, How to Verify MAY name the
+          exact cases, and policy constants (thresholds, retry/timeout
+          budgets, state/status enums) MAY be pre-set in config. The scenario
+          MAY have a single intended solution.
+
+      (b) INTERMEDIATE / ADVANCED → OPEN / underspecified. The generated
+          prompt MUST instruct the downstream task-gen LLM to WITHHOLD the
+          solution on every channel, STRICTER than the #2 baseline:
+
+            • Starter stubs: emit a BARE signature + a one-line purpose that
+              names the SYMPTOM only. NO "Expected shape:" block, NO dict
+              keys, NO enum vocabulary ("ok"/"stale"/"missing"), NO
+              return-type contract, NO reference to a named config constant.
+              The candidate DESIGNS the data shape.
+            • Policy constants: do NOT pre-set the decision values (confidence
+              floors, retry/timeout budgets, freshness windows, state/status
+              enums). The candidate CHOOSES and DEFENDS them. The scaffold and
+              fixtures MUST NOT bake in a single "expected shape".
+            • Objectives: state the symptom + how to reproduce it — NOT a
+              step checklist of what to build.
+            • Helpful Tips: few or none; orient to the symptom / where to
+              look, NEVER the shape of the fix.
+            • How to Verify: describe the observable end-state only, NOT the
+              exact fixtures / cases to feed.
+            • Definitions / hints: OMIT the solution's concepts; a hint may
+              point at the symptom, never name the building blocks of the fix.
+            • Problem design space: shape a scenario that admits SEVERAL
+              defensible architectures — the candidate's chosen tradeoff is
+              the signal, so do not pre-decide it for them.
+
+    Scope note: this constraint governs whether the generated prompt NARRATES
+    the answer. The candidate ALWAYS receives a runnable `invariants/` suite —
+    never emit a task the candidate cannot self-check.
+
+    At ADVANCED only, the test suite is SPLIT (see the "SPLITTING THE TESTS"
+    section of the ADVANCED agent reference): checks that can be derived from
+    the fixtures stay in `invariants/` (shipped), while checks that would hand
+    over a decision the stub deliberately left open — which operational fields
+    must survive, exact status strings, boundary thresholds — move to
+    `grading/` under the optional `hidden_tests` envelope key, which the
+    pipeline strips from the candidate repo and uploads to the answer repo.
+    A candidate-facing test that hard-codes the answer cancels every other
+    withholding rule here, which is why the split exists. INTERMEDIATE and
+    below ship a single visible suite — do NOT split below ADVANCED.
+
+    ─────────────────────────────────────────────────────────────────────────
     SOFT GUIDANCE — Scenario sourcing
     ─────────────────────────────────────────────────────────────────────────
     The candidate's EMPLOYER is described in `organization_background`. The

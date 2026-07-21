@@ -322,6 +322,50 @@ def has_shared_infra_files(code_data: Dict) -> bool:
 
     return False
 
+
+def _code_files_of(code_data: Dict) -> Dict:
+    """Normalise to the flat ``path -> contents`` map (handles the nested shape)."""
+    nested = code_data.get("files") if isinstance(code_data, dict) else None
+    return nested if isinstance(nested, dict) else (code_data if isinstance(code_data, dict) else {})
+
+
+# Filenames that, like docker-compose, DECLARE a backing service the task needs
+# booted. A repo can need the E2B template's shared services (the python-ai base
+# image already ships postgres + redis) WITHOUT shipping a docker-compose — so
+# docker files alone under-detect infra. These are the other unambiguous
+# "infra plumbing" markers the shape classifier itself names (init SQL, the
+# service kill/boot scripts).
+_INFRA_PLUMBING_BASENAMES = {
+    "init_database.sql", "init.sql", "schema.sql", "seed.sql",
+    "kill.sh",
+}
+
+
+def needs_shared_infra(code_data: Dict) -> bool:
+    """Whether the generated task needs a shared backing service to run/grade.
+
+    Broader than :func:`has_shared_infra_files` (docker-only): a task that talks
+    to the template's postgres/redis may ship no docker-compose yet still need
+    those services (e.g. an ``init_database.sql`` it seeds and queries). We treat
+    any declared infra-plumbing file as "needs shared infra".
+
+    NOTE (known gap): a task that reaches a template service purely in code —
+    a psycopg/redis client against a hostname, no SQL/compose shipped — is not
+    detected here and would read as non-infra. The reliable signal for that is
+    empirical: whether the task's suite runs offline (the E2B gate already
+    observes this). Sourcing the flag from the gate's offline/online result is
+    the intended follow-up; this file-level check is the conservative interim
+    that fixes the docker-only under-detection without new false positives.
+    """
+    if has_shared_infra_files(code_data):
+        return True
+    for fname in _code_files_of(code_data):
+        basename = fname.rsplit("/", 1)[-1].lower()
+        if basename in _INFRA_PLUMBING_BASENAMES:
+            return True
+    return False
+
+
 def format_pre_requisites(pre_requisites):
     """
     Format pre_requisites as a list of strings (array of bullet points).
@@ -703,6 +747,41 @@ def generate_task_with_code(
             logger.info(f" Tokens - Input: {_li:,} | Output: {_lo:,}")
             logger.info("=" * 70)
 
+        # Last turn that produced a complete, parseable task JSON. The final
+        # turn sometimes answers in prose ("already matches — no changes
+        # needed"), which would otherwise throw away a good task generated a
+        # turn earlier. See the fallback next to the JSON parsing below.
+        last_valid_task_data = None
+
+        def _remember_if_task_json(text):
+            """Keep `text` as the last valid task JSON if it parses and looks like a task."""
+            nonlocal last_valid_task_data
+            if not text:
+                return
+            candidate = None
+            try:
+                candidate = json.loads(text.strip())
+            except json.JSONDecodeError:
+                # Fall back to the largest balanced {...} span in the text.
+                brace_count, start_idx = 0, -1
+                for idx, char in enumerate(text):
+                    if char == '{':
+                        if brace_count == 0:
+                            start_idx = idx
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0 and start_idx != -1:
+                            try:
+                                candidate = json.loads(text[start_idx:idx + 1])
+                                break
+                            except json.JSONDecodeError:
+                                continue
+            # `name` + `code_files` are the minimum a usable task carries — this
+            # avoids latching onto some unrelated JSON blob the model emitted.
+            if isinstance(candidate, dict) and "name" in candidate and "code_files" in candidate:
+                last_valid_task_data = candidate
+
         # Base generation (first attempt, or old behavior when lean is off). When
         # lean fired above, this iterates an empty list and is skipped.
         for i, prompt in enumerate([] if _lean else task_generation_prompts, 1):
@@ -734,6 +813,7 @@ def generate_task_with_code(
                 logger.error(f"No response content from prompt {i}/{len(task_generation_prompts)}")
                 raise RuntimeError(f"Empty response from LLM on prompt {i}")
             messages.append({"role": "assistant", "content": response_text})
+            _remember_if_task_json(response_text)
 
             # Track token usage
             usage = response.usage
@@ -781,6 +861,7 @@ def generate_task_with_code(
                 logger.error("No response content on feedback-correction turn")
                 raise RuntimeError("Empty response from LLM on feedback turn")
             messages.append({"role": "assistant", "content": response_text})
+            _remember_if_task_json(response_text)
             usage = response.usage
             total_input_tokens += usage.prompt_tokens if usage else 0
             total_output_tokens += usage.completion_tokens if usage else 0
@@ -874,6 +955,20 @@ def generate_task_with_code(
                             except json.JSONDecodeError:
                                 continue
         
+        if task_data is None and last_valid_task_data is not None:
+            # The final turn answered in prose instead of re-emitting the task
+            # JSON — the observed shape is the model replying "the task I
+            # generated in the previous turn already matches ...". That is a
+            # no-op refinement, not a failure: an EARLIER turn already produced
+            # a complete, valid task. Falling back to it saves the whole
+            # (expensive) generation instead of discarding it at the last step.
+            logger.warning(
+                "Final turn returned no parseable JSON (likely a 'no changes needed' "
+                "prose reply); falling back to the last valid task JSON from an "
+                f"earlier turn. Response preview: {response_text[:200]}"
+            )
+            task_data = last_valid_task_data
+
         if task_data is None:
             error_msg = f"Failed to parse JSON from response.output_text. Response preview: {response_text[:500]}"
             logger.error(error_msg)

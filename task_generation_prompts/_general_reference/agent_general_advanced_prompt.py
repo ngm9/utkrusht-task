@@ -1,21 +1,26 @@
-# GENERIC AGENT-ENGINEERING REFERENCE PROMPT (competency-neutral, INTERMEDIATE).
+# GENERIC AGENT-ENGINEERING REFERENCE PROMPT (competency-neutral, ADVANCED).
 # Reference-only: the prompt-generator pins this as the TOP structural template
 # for ALL agent competencies (Multi-Agent Systems, Production Agent Engineering,
 # Tool Use for Agents, Context Engineering). It defines NO PROMPT_REGISTRY, so it
 # never resolves to a competency / is never used to generate a task directly.
 # Derived from the corrected production_agent baseline (regenerate after editing it).
 
-# task_generation_prompts/Intermediate/production_agent_engineering_intermediate_prompt/production_agent_engineering_intermediate_prompt.py
+# task_generation_prompts/Advanced/production_agent_engineering_advanced_prompt/production_agent_engineering_advanced_prompt.py
 #
 # CURATED task-generation prompt module for AI-agent BUILD-IT tasks.
-# Competency: "Agent Engineering"  ·  Proficiency: INTERMEDIATE
+# Competency: "Agent Engineering"  ·  Proficiency: ADVANCED
+#
+# Derived from agent_general_intermediate_prompt.py — same structure and the same
+# five readiness invariants, re-calibrated for ADVANCED and with the strictest
+# solution-withholding rules (see "## DO NOT LEAK ..." and "## OPEN-ENDEDNESS").
+# Keep the two files in step: a structural fix to one usually belongs in both.
 #
 # DROP-IN for infra/utils.py::_build_prompt_registry. The loader filesystem-walks
-# task_generation_prompts/<Level>/<slug>/<slug>.py (level "Intermediate" IS in the
+# task_generation_prompts/<Level>/<slug>/<slug>.py (level "Advanced" IS in the
 # walk: infra/utils.py:55) and calls registry.update(PROMPT_REGISTRY). Contract
 # (do NOT change without updating the loader):
 #   * Export a top-level dict named exactly  PROMPT_REGISTRY.
-#   * Key it exactly "Agent Engineering (INTERMEDIATE)" — the
+#   * Key it exactly "Agent Engineering (ADVANCED)" — the
 #     "<name> (<PROFICIENCY-UPPER>)" string get_task_prompt_by_technology_stack
 #     builds + sorts from the competency (infra/utils.py:449-451).
 #   * Value is a LIST of prompt strings, replayed as sequential user turns
@@ -39,7 +44,7 @@
 # competencies — the gen-LLM must NOT emit it. is_task_hollow requires only
 # title-or-name + question + code_files (evaluator.py:78-86).
 
-PROMPT_AGENT_GENERIC_INTERMEDIATE_CONTEXT = """
+PROMPT_AGENT_GENERIC_ADVANCED_CONTEXT = """
 Let me provide you with some context about the company and role.
 
 Company Context:
@@ -58,8 +63,8 @@ employer's domain. You are generating an assessment for a senior engineer who ha
 actually shipped production agents — calibrate accordingly.
 """
 
-PROMPT_AGENT_GENERIC_INTERMEDIATE_INPUT_AND_ASK = """
-You are generating ONE realistic, INTERMEDIATE "build-it" assessment task
+PROMPT_AGENT_GENERIC_ADVANCED_INPUT_AND_ASK = """
+You are generating ONE realistic, ADVANCED "build-it" assessment task
 for a Agent Engineering candidate. The candidate clones a real agent
 repository, sets their own API key in `.env`, runs `./run.sh`, and writes
 ~80-150 lines of code inside it using real agent frameworks. This is a coding
@@ -67,10 +72,13 @@ session, NOT a write-a-memo / essay / quiz exercise. Debugging is just a
 build-it variant with a planted bug; the skill under test is architecture and
 operational JUDGMENT, never framework trivia.
 
-CALIBRATION: this sits ABOVE a standard intermediate task (it probes a genuine
-senior decision, not just framework wiring) but BELOW a full senior-IC advanced
-task — scope it to ONE clear senior decision (at most two tightly-related ones),
-never a sprawling multi-subsystem platform.
+CALIBRATION: this IS the full senior-IC bar. The candidate should have to make
+2-3 interacting production decisions whose TRADEOFFS conflict — where satisfying
+one naively (redact everything, retry forever, cache aggressively) breaks
+another (debuggability, cost ceiling, freshness). The senior signal is which
+tradeoff they choose and how they defend it, NOT whether they can wire a
+framework. Still ONE coherent work item on ONE repo — depth of judgment, never a
+sprawling multi-subsystem platform or a whole agent framework rebuilt.
 
 INPUT COMPETENCIES:
 {competencies}
@@ -82,10 +90,11 @@ INPUT REAL-WORLD SCENARIOS:
 {real_world_task_scenarios}
 
 TIME EXPECTATION:
-The task must fit in {minutes_range} for a strong INTERMEDIATE candidate. Budget it
-as: ~5-10 min setup (clone, .env, ./run.sh) + ~5-15 min reading/experimenting +
-20-30 min writing code. Hold "candidate writes" to 1-2 stub files, roughly
-60-150 lines, isolating ONE senior decision.
+The task must fit in {minutes_range} for a strong ADVANCED candidate. Budget it
+as: ~5-10 min setup (clone, .env, ./run.sh) + ~10-20 min reading/experimenting
+(diagnosis is a larger share of the work at this level — the candidate is not
+told where the problem is) + 25-35 min writing code. Hold "candidate writes" to
+2-3 stub files, roughly 100-200 lines, carrying 2-3 interacting decisions.
 
 QUESTION CALIBRATION SIGNAL:
 {question_prompt}
@@ -125,7 +134,7 @@ Honor the pinned **Stack** exactly — the candidate is told the framework up fr
 
 Before generating, briefly internalize:
 1. The scenario you are building (the provided one if present, else your own) and
-   why it fits this competency's archetype + an INTERMEDIATE agent task.
+   why it fits this competency's archetype + an ADVANCED agent task.
 2. The agent's TASK FAMILY (web service / agent-as-service / agent CLI-or-loop /
    agent-as-library / backing-store / graph-orchestration) — this dictates the
    run.sh readiness probe.
@@ -133,9 +142,9 @@ Before generating, briefly internalize:
    stubbed to create the senior decision.
 """
 
-PROMPT_AGENT_GENERIC_INTERMEDIATE_INSTRUCTIONS = """
+PROMPT_AGENT_GENERIC_ADVANCED_INSTRUCTIONS = """
 ## GOAL
-Generate ONE INTERMEDIATE Agent Engineering "build-it" task: a real,
+Generate ONE ADVANCED Agent Engineering "build-it" task: a real,
 runnable agent repository that is deliberately incomplete. It ships broken agent
 code plus candidate stubs that raise `NotImplementedError`, and the candidate
 makes it production-safe by filling those stubs and fixing the planted flaws.
@@ -289,7 +298,7 @@ code, and NOT as a generation-time pytest gate.
   TASKS listed in `real_world_task_scenarios` (the de-dup block) — keep diverse.
 
 ## COMPETENCY SCOPE (center the chosen scenario on a senior decision drawn here)
-Agent Engineering at INTERMEDIATE covers the full agent lifecycle:
+Agent Engineering at ADVANCED covers the full agent lifecycle:
 - Architecture & orchestration: API layer, orchestrator, tools, workers, queues,
   datastores; ReAct, planner-executor, reflection/repair, multi-agent.
 - Multi-step planning, task decomposition, bounded reasoning loops.
@@ -387,6 +396,62 @@ The `code_files` are CANDIDATE-FACING and must be solution-free:
 - The full solution, root causes, and expected fixes go ONLY in the `answer`
   field (evaluator-facing), never in `code_files`, `README.md`, or comments.
 
+## OPEN-ENDEDNESS (ADVANCED — strictest level; this is what separates it)
+GOLDEN RULE: underspecify the SOLUTION, never the PROBLEM. The symptom stays
+crisp, reproducible and fair. Everything about the "how" is withheld. Stripping
+detail off the PROBLEM makes the task ambiguous and unfair — that is NOT this.
+
+Withhold on EVERY channel, not just the README:
+- Stubs: bare signature + one line naming the SYMPTOM. No shape, no keys, no
+  enum vocabulary, no field list. The candidate designs the data.
+- Policy constants: absent, not defaulted. Confidence floors, retry/timeout
+  budgets, freshness windows, cost ceilings and status enums are the
+  candidate's to choose and defend. A "reasonable-looking" default in config
+  silently answers the question you meant to ask.
+- Objectives: the symptom and how to reproduce it — never a build checklist.
+- Tips: few or none, and oriented at where to LOOK, never at the shape of the fix.
+- Definitions/hints: omit the solution's concepts. A hint may point at the
+  symptom; it must not name the building blocks of the fix.
+- Design space: shape the scenario so SEVERAL defensible architectures pass.
+  If exactly one design can satisfy your invariants, the task is too closed —
+  loosen the invariants to outcomes, not mechanisms.
+
+Invariants state OUTCOMES ("no PII reaches the log sink", "the loop terminates",
+"correlation survives"), never mechanisms ("call redact_for_log before
+write_tool_log"). The candidate ALWAYS receives a runnable test suite under
+`invariants/` — never ship a task with no way to self-check. What moves out of
+sight is only the subset that would hand over a withheld decision; see
+"## SPLITTING THE TESTS".
+
+## SPLITTING THE TESTS (ADVANCED — required)
+A candidate-facing test that hard-codes the answer cancels every other
+withholding rule above. If the stub says only "return a record safe to log" but
+the test lists the exact four values to strip and the exact six fields to keep,
+the candidate designs nothing — they transcribe two lists. Split them:
+
+`invariants/test_*.py` — SHIPPED to the candidate. These prove the bug is REAL
+and let the candidate self-check. They must:
+- assert the SYMPTOM and the OUTCOME, never the mechanism;
+- DERIVE their expected values at runtime instead of naming them. Read
+  `fixtures/*.jsonl` and assert that no value found there appears in the log or
+  reply — do NOT write a literal PII_VALUES list;
+- avoid asserting the shape the candidate is meant to design: no required key
+  lists, no exact enum/status strings, no field inventories;
+- fail before the fix and pass after it, for ANY defensible implementation.
+
+`grading/test_*.py` — emitted under `"hidden_tests"`, NEVER shipped. These carry
+the precise acceptance bar that cannot be derived without knowing the answer:
+which operational fields must SURVIVE redaction, exact status values, ordering
+or idempotency guarantees, threshold behaviour at the boundary.
+
+Rule of thumb: if a check can be computed from the fixtures, it belongs in
+`invariants/` (visible). If stating it would hand over a decision the stub left
+open, it belongs in `grading/` (hidden).
+
+Both sets are real pytest and must run offline under the same deterministic
+fixture model (AGENT_TEST_MODE) — hidden does NOT mean unrunnable. `run.sh` must
+NOT depend on either.
+
 ## OUTPUT ENVELOPE — EMIT EXACTLY THESE TOP-LEVEL KEYS (this is paramount)
 Output a SINGLE raw JSON object with EXACTLY these keys and no others:
 - `"name"`: string, task name in kebab-case (e.g. "harden-support-reply-agent").
@@ -402,6 +467,10 @@ Output a SINGLE raw JSON object with EXACTLY these keys and no others:
 - `"outcomes"`: string/array describing what a strong submission demonstrates.
 - `"pre_requisites"`: string/array of assumed knowledge, tools, frameworks.
 - `"short_overview"`: string/array summarizing the task.
+- `"hidden_tests"`: object mapping file path -> full file contents. GRADER-ONLY
+  tests, stripped before the candidate repo is built and uploaded to the answer
+  repo instead. REQUIRED at this level (see "## SPLITTING THE TESTS"). Use paths
+  under `grading/` so they cannot collide with `invariants/`.
 
 Use these EXACT keys. Do NOT use synonyms: not `task_title`/`heading` for `title`,
 not `files`/`repository_structure`/`repo` for `code_files`, not `context`/`prompt`
@@ -471,13 +540,25 @@ up. Failures in the evidence must be plausible consequences of the planted flaws
 exposing the problem indirectly without handing over the answer. Include the
 single discriminating fixture that separates a senior fix from a shortcut.
 
-## DIFFICULTY CALIBRATION (INTERMEDIATE)
-Isolate ONE senior decision (at most two tightly-related ones) into a coherent
-work item — NOT several stacked concerns and NOT a whole platform. The candidate
-writes ~80-150 lines using real frameworks. Pitch it harder than a standard
-intermediate task (it must probe real production judgment) but easier than a
-full senior-IC advanced task (no multi-subsystem sprawl). Solvable within
-{minutes_range}.
+## DIFFICULTY CALIBRATION (ADVANCED)
+Build ONE coherent work item carrying 2-3 INTERACTING production decisions —
+decisions that pull against each other, so the candidate must pick a tradeoff
+and live with it. The candidate writes ~100-200 lines using real frameworks.
+Depth over breadth: still one repo, one domain, one incident — NOT several
+stacked features and NOT a whole platform. Solvable within {minutes_range}.
+
+What makes this ADVANCED rather than INTERMEDIATE:
+- The naive fix is VISIBLY wrong on a second axis. Redact everything and you
+  destroy incident correlation; retry forever and you blow the cost ceiling;
+  cache hard and you serve stale entitlements. Plant that tension deliberately.
+- The candidate DIAGNOSES where the problem lives. Do not point at the file.
+- There is no single blessed architecture — several defensible designs pass the
+  invariants, and the choice itself is the signal.
+- Failure modes are partial and operational (degraded tool, slow provider,
+  poisoned context), not a crash with a clean stack trace.
+
+What does NOT make it ADVANCED (avoid these): more files, more frameworks, more
+invariants, longer READMEs, or exotic API trivia. Volume is not difficulty.
 
 ## REQUIRED OUTPUT EXAMPLE SHAPE (schema only — replace all values; every literal
 ## brace inside file contents must be escaped as the candidate needs)
@@ -533,7 +614,7 @@ full senior-IC advanced task (no multi-subsystem sprawl). Solvable within
 - `outcomes` must include one bullet on production-clean code (naming, error
   handling, logging, structure).
 - Never leak the reference answer into code_files.
-- Keep it INTERMEDIATE, build-it, and solvable in {minutes_range}.
+- Keep it ADVANCED, build-it, and solvable in {minutes_range}.
 """
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -614,10 +695,10 @@ loop+cost task.
 
 # Shared base, replayed as sequential user turns; the per-competency archetype
 # is appended LAST so each competency gets a shape-specialized variant.
-_BASE_INTERMEDIATE = [
-    PROMPT_AGENT_GENERIC_INTERMEDIATE_CONTEXT,
-    PROMPT_AGENT_GENERIC_INTERMEDIATE_INPUT_AND_ASK,
-    PROMPT_AGENT_GENERIC_INTERMEDIATE_INSTRUCTIONS,
+_BASE_ADVANCED = [
+    PROMPT_AGENT_GENERIC_ADVANCED_CONTEXT,
+    PROMPT_AGENT_GENERIC_ADVANCED_INPUT_AND_ASK,
+    PROMPT_AGENT_GENERIC_ADVANCED_INSTRUCTIONS,
 ]
 
 _ARCHETYPE_BY_COMPETENCY = {
