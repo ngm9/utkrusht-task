@@ -67,7 +67,11 @@ key as null.
       [2] "Every submission is processed exactly once, scored results are published downstream, failed messages route to a dead-letter topic, and the entire pipeline is observable through structured logs."
     NO leading bullet glyphs (•, ‣, ▪, ▶, ◦, ⁃, -, *, –, —). NO numbered
     prefixes ("1. ", "1) ", "(1) "). NO residual Markdown markers like
-    `**Goal**:` or `**Challenge**:` anywhere in the string.
+    `**Goal**:` or `**Challenge**:` anywhere in the string. NO plain-text
+    label prefixes — bullets must NOT start with any word or phrase followed
+    by a colon, such as "Business problem:", "Technical focus:",
+    "Expected outcome:", "Challenge:", "Goal:", "Outcome:", or any similar
+    "Label: ..." pattern. Each bullet must begin with the actual content.
 
 (3) `outcomes` — bullets read by the CANDIDATE at task start. Every
     bullet must (a) be a complete candidate-readable sentence (starts

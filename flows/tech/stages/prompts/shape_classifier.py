@@ -10,15 +10,15 @@ the prompt that is about to be generated as one of:
                        meaningful: a relational/document/key-value DB, a cache,
                        a message queue/broker, a search engine, or any
                        container-orchestrated runtime. The generated prompt
-                       must include ``docker-compose.yml``, ``run.sh``,
-                       ``kill.sh``, and (where relevant) ``init_database.sql``.
+                       must include ``docker-compose.yml``, ``run.sh``, and
+                       (where relevant) ``init_database.sql``. No ``kill.sh``
+                       is needed — E2B sandboxes are destroyed as a whole.
   * ``"non_infra"``  — the task is pure-runtime / language-level / in-process /
                        algorithmic / UI / frontend work that runs locally
                        without external services. The generated prompt must
-                       NOT include docker-compose, init_database.sql, kill.sh,
-                       or any other E2B-infra plumbing; ship a pure local
-                       project using the runtime's native manifest + test
-                       command instead.
+                       NOT include docker-compose, init_database.sql, or any
+                       other E2B-infra plumbing; ship a pure local project
+                       using the runtime's native manifest + test command instead.
 
 Why this lives here (and not in ``infra/classifier/``):
   The existing ``infra/classifier`` package decides ``template_id`` and
@@ -58,67 +58,98 @@ class ClassifyTaskShapeSignature(dspy.Signature):
 
     OUTPUT VALUES — return exactly one of:
 
-      • ``"infra"``     The task NEEDS an external service to be meaningful:
-                        a relational/document/key-value DB (PostgreSQL, MySQL,
-                        MongoDB, Redis), a message queue or broker (Kafka,
-                        RabbitMQ, SQS), a search engine (Elastic, OpenSearch),
-                        or any other long-running container-orchestrated
-                        service. Pattern examples: "PostgreSQL query
-                        optimization", "Kafka consumer hardening", "Redis
-                        cache invalidation", "Mongo aggregation pipeline".
-                        AGENT example: an agent / RAG task that needs a
-                        self-hosted vector DB (pgvector, Qdrant, Weaviate,
-                        Milvus) or a tool / MCP server it must boot and call.
+      • ``"infra"``     The task involves ANY external service, database, cache,
+                        message broker, search engine, or container-orchestrated
+                        runtime that the candidate's code must connect to.
+                        Pattern examples: "PostgreSQL query optimisation",
+                        "Kafka consumer hardening", "Redis cache invalidation",
+                        "Mongo aggregation pipeline", "EF Core + SQL Server",
+                        "shipment scan API backed by a DB", any scenario where
+                        the fix/feature touches real persistence or messaging.
+                        AGENT example: agent/RAG that needs a self-hosted
+                        vector DB (pgvector, Qdrant, Weaviate, Milvus) or a
+                        tool/MCP server it must boot and call.
 
-      • ``"non_infra"`` The task is pure-runtime / language-level / in-process
-                        / algorithmic / UI / frontend work that runs locally
-                        without any external service. Pattern examples: "React
-                        hook composition", "Next.js Server Component
-                        conversion", "TypeScript type design", "Java
-                        concurrency primitives", "Node.js stream backpressure",
-                        "algorithm + data structure".
-                        AGENT example: an in-process AI agent — tool dispatch,
-                        multi-agent orchestration, context assembly, or a
-                        prompt / eval harness — that calls an LLM over an API key.
-                        The LLM is an external API, NOT a container to boot.
+      • ``"non_infra"`` The task is pure-runtime / language-level / in-process /
+                        algorithmic / UI / frontend work that runs entirely
+                        locally without any external service.
+                        Pattern examples: "React hook composition", "TypeScript
+                        type design", "Java concurrency primitives", "Node.js
+                        stream backpressure", "algorithm + data structure".
+                        AGENT example: an in-process AI agent (tool dispatch,
+                        multi-agent orchestration, context assembly, prompt/eval
+                        harness) that calls an LLM over an API key only —
+                        the LLM is a remote API, NOT a container to boot.
 
-    Decision rules (in priority order):
+    ═══════════════════════════════════════════════════════════════════
+    DECISION RULES  (apply in strict priority order — stop at first match)
+    ═══════════════════════════════════════════════════════════════════
 
-      0. If ``user_directive`` is non-empty, it is an AUTHORITATIVE human
-         instruction and OUTRANKS every rule below. When the directive
-         explicitly asks for deployment, containerization, Docker /
-         docker-compose, an external service / datastore, or otherwise
-         describes infra-shaped work → ``infra``. When it explicitly asks for
-         a pure local / in-process / no-container task → ``non_infra``. Only
-         fall through to the rules below when the directive is empty or says
-         nothing about task shape.
+      0. ``user_directive`` override — HIGHEST PRIORITY.
+         If non-empty it is an authoritative human instruction and OUTRANKS
+         every rule below. Apply it literally:
+           • Mentions deployment / containerisation / docker-compose /
+             external service / datastore → ``infra``.
+           • Explicitly asks for a pure local / in-process / no-container
+             task → ``non_infra``.
+         Only fall through to rules 1–5 when the directive is empty or
+         silent on task shape.
 
-      1. If the SCENARIO text explicitly requires connecting to a DB / cache /
-         queue / external broker (mentions a service hostname, a docker
-         compose file, an ``init_*.sql``, a connection URI, or names a
-         datastore as the system under test) → ``infra``.
+      1. ANY external data-store or service mentioned → ALWAYS ``infra``.
+         This rule is NON-NEGOTIABLE. Ask yourself: "Would the candidate's
+         code FAIL or be meaningless if a particular service were not
+         running?" If the answer is YES for any service in the scenario or
+         scope, classify as ``infra`` immediately — do not proceed to other
+         rules.
 
-      2. An LLM or model reached over an API key is NOT infra — there is
-         nothing for run.sh to boot. An AGENT task (tool use, multi-agent
-         orchestration, context engineering, agent eval) is ``infra`` ONLY if it
-         ALSO needs a self-hosted datastore / vector-DB / tool-or-MCP server /
-         broker as the system under test; otherwise it is ``non_infra``.
+         Services that trigger this rule:
+           • Relational databases — PostgreSQL, MySQL, MariaDB, MSSQL,
+             SQL Server, Oracle, CockroachDB, Citus, SQLite when used
+             via a server (not in-memory/embedded).
+           • Document / key-value / cache stores — MongoDB, Redis,
+             Memcached, DynamoDB, Cassandra, Couchbase, Valkey.
+           • Search engines — Elasticsearch, OpenSearch, Solr, Typesense.
+           • Time-series / analytics — InfluxDB, TimescaleDB, ClickHouse.
+           • Vector databases — pgvector, Qdrant, Weaviate, Milvus,
+             ChromaDB, Pinecone, FAISS (self-hosted).
+           • Message queues / event brokers — Kafka, RabbitMQ, ActiveMQ,
+             NATS, SQS, SNS, Azure Service Bus, Google Pub/Sub, Celery
+             (with broker), BullMQ, Sidekiq.
+           • Any other long-running process the candidate code connects to
+             (session store, blob-storage emulator, SMTP server, etc.).
 
-      3. If the competency_scope is centred on browser/UI/component/hook/state
-         patterns, framework-internal APIs (React, Next.js, Vue, Svelte),
-         pure language features (Java concurrency, Python typing, Node
-         streams) or in-process algorithms → ``non_infra``.
+         Also classify as ``infra`` when the scenario involves:
+           • Docker, docker-compose, Kubernetes, Helm, Dockerfile.
+           • Connection strings, DATABASE_URL, REDIS_URL, DB_HOST, or any
+             service URI the application reads at runtime.
+           • "spin up / boot / start the database / service / broker".
+           • EF Core (or any ORM) accessing a real DB — even if tests
+             might use an in-memory fallback, the production context
+             requires a live DB, so the task is infra-shaped.
 
-      4. When in doubt — the scenario is observable via in-process tests,
-         has no docker-compose or service hostname, and the scope is
-         language-/framework-centric — choose ``non_infra``. The downstream
-         non-infra path is the safer default: an incorrectly-classified
-         "infra" task ships unusable docker-compose plumbing, while an
-         incorrectly-classified "non_infra" task is just a local project.
+      2. LLM-as-API is NOT infra.
+         Calling an LLM (OpenAI, Anthropic, Gemini, Bedrock, Vertex AI)
+         over an API key is NOT a container to boot and does NOT make a
+         task infra. An agent/RAG task is ``infra`` ONLY when it ALSO
+         needs a self-hosted datastore / vector-DB / tool server / broker
+         as the system under test; otherwise it is ``non_infra``.
 
-    Output a SHORT, specific ``reason`` (≤ 240 chars) that cites the strongest
-    piece of evidence — the exact phrase in scope or scenario that drove the
-    decision. Do not restate the decision rules.
+      3. Pure language / framework / UI / algorithmic work → ``non_infra``.
+         If the competency scope is centred on browser/UI/component/hook/
+         state patterns, framework-internal APIs (React, Next.js, Vue,
+         Svelte), pure language features (concurrency primitives, typing,
+         streams, algorithms) or in-process data structures — AND no
+         external service from rule 1 is present — choose ``non_infra``.
+
+      4. When genuinely uncertain — lean toward ``infra``.
+         An unnecessary docker-compose file is a minor inconvenience.
+         A ``non_infra`` task that actually needs a live database will
+         fail completely for the candidate. Only choose ``non_infra`` when
+         you are CONFIDENT no external service is needed.
+
+    Output a SHORT, specific ``reason`` (≤ 240 chars) that cites the
+    strongest piece of evidence — the exact phrase in scope or scenario
+    that drove the decision. Do not restate the decision rules.
     """
 
     competencies: str = dspy.InputField(

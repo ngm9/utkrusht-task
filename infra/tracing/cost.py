@@ -17,7 +17,7 @@ from typing import Iterator, Optional
 # so any external importer of ``cost.PRICING`` keeps working, but the actual
 # lookup goes through ``price_per_million`` which warns on an unknown model
 # instead of silently undercounting it.
-from infra.pricing import PRICING, PRICING_DEFAULT, price_per_million  # noqa: F401
+from infra.pricing import PRICING, PRICING_DEFAULT, cost_usd, price_per_million  # noqa: F401
 
 # Canonical pipeline-stage order for the cost/time table (matches the timeline).
 STAGE_ORDER = [
@@ -57,21 +57,23 @@ def compute_cost(traces_dir) -> Optional[dict]:
     if not calls.exists():
         return None
 
-    agg: dict[str, list] = {}  # stage -> [in, out, usd]
-    tin = tout = 0
+    agg: dict[str, list] = {}  # stage -> [in, out, usd, cached]
+    tin = tout = tcached = 0
     tusd = 0.0
     for rec in _iter_jsonl(calls):
         usage = rec.get("usage") or {}
         i = int(usage.get("input_tokens") or 0)
         o = int(usage.get("output_tokens") or 0)
-        pin, pout = price_per_million(rec.get("model"))
-        usd = i / 1_000_000 * pin + o / 1_000_000 * pout
-        a = agg.setdefault(rec.get("stage") or "?", [0, 0, 0.0])
+        c = int(usage.get("cached_tokens") or 0)
+        usd = cost_usd(rec.get("model"), i, o, c)
+        a = agg.setdefault(rec.get("stage") or "?", [0, 0, 0.0, 0])
         a[0] += i
         a[1] += o
         a[2] += usd
+        a[3] += c
         tin += i
         tout += o
+        tcached += c
         tusd += usd
     if not agg:
         return None
@@ -84,12 +86,14 @@ def compute_cost(traces_dir) -> Optional[dict]:
     def _order(s: str) -> int:
         return STAGE_ORDER.index(s) if s in STAGE_ORDER else len(STAGE_ORDER)
 
+    _empty = [0, 0, 0.0, 0]
     rows = [
         {
             "stage": s,
-            "usd": round(agg.get(s, [0, 0, 0.0])[2], 4),
-            "input_tokens": agg.get(s, [0, 0, 0.0])[0],
-            "output_tokens": agg.get(s, [0, 0, 0.0])[1],
+            "usd": round(agg.get(s, _empty)[2], 4),
+            "input_tokens": agg.get(s, _empty)[0],
+            "output_tokens": agg.get(s, _empty)[1],
+            "cached_tokens": agg.get(s, _empty)[3],
             "duration_ms": durations.get(s),
         }
         for s in sorted(set(agg) | set(durations), key=_order)
@@ -99,6 +103,7 @@ def compute_cost(traces_dir) -> Optional[dict]:
         "total_tokens": tin + tout,
         "input_tokens": tin,
         "output_tokens": tout,
+        "cached_tokens": tcached,
         "by_stage": rows,
         "estimated": True,
     }

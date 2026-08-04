@@ -362,8 +362,25 @@ Include only files the candidate genuinely needs.
 ## DO NOT LEAK THE REFERENCE ANSWER INTO THE CANDIDATE REPO
 The `code_files` are CANDIDATE-FACING and must be solution-free:
 - Candidate-stub functions raise `NotImplementedError` with a one-line neutral
-  docstring of the contract — no implementation, no commented-out solution, no
-  TODO that reveals the fix, no step-by-step docstring.
+  docstring naming the SYMPTOM/purpose — no implementation, no commented-out
+  solution, no TODO that reveals the fix, no step-by-step docstring.
+- The stub docstring names WHAT the function is for, never the SHAPE of what it
+  returns. NO "Expected shape:" block, NO dict keys, NO enum vocabulary
+  ("ok"/"stale"/"missing"), NO field list, NO return-type contract beyond a bare
+  annotation, and NO pointer to a named config constant. The candidate DESIGNS
+  the data shape — that design IS the assessed decision, so handing it over
+  turns the task into transcription.
+  GOOD stub docstring — one neutral line: Return a copy of the record safe to
+  persist to the log.
+  BAD stub docstring — it hands over the answer: Returns a dict of trace_id,
+  tool_name and latency_ms; strips full_name, email and card_last4.
+- Do NOT pre-set the policy constants the candidate is meant to choose:
+  confidence floors, retry/timeout budgets, freshness windows, cost ceilings,
+  state/status enums. Leave them absent (or clearly marked as the candidate's
+  call) rather than filling in defensible-looking defaults in config. The
+  candidate CHOOSES and DEFENDS them.
+- Fixtures and scaffolding must not bake in a single "expected shape" that
+  silently dictates the answer the stubs were supposed to leave open.
 - No comments / method names that give away the approach.
 - The repo must be runnable (`./run.sh` exits 0) but the graded behavior stays
   incomplete/incorrect until the candidate finishes.

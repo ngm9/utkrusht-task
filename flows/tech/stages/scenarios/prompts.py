@@ -152,7 +152,17 @@ WHAT TO GENERATE:
 - Combine 3-4 closely-related concepts that all serve that one problem.
 - The scenario should feel like a task for a mid-senior developer.
 - Max 4 bullet points in the "Your Task" section — keep it tightly scoped.
-- Keep the entire scenario under 250 words.
+- Keep the entire scenario under 320 words.
+
+THE EXISTING CODE MUST FEEL REAL (this is separate from scope — do both):
+- Describe the "Current Implementation" as living inside a larger,
+  professionally-structured system with multiple files/modules and consistent
+  conventions — not one isolated broken function in a vacuum. The candidate
+  should feel like they are debugging a real teammate's well-written code,
+  not staring at an obviously-contrived toy snippet.
+- The ONE problem being tested should still be tightly scoped (see above) —
+  "the surrounding code is realistic" and "the fix is narrowly scoped" are
+  not in tension; a real codebase can absolutely have one focused issue.
 
 DO NOT OVER-SCOPE (this is the #1 reason INTERMEDIATE scenarios get rejected):
 - Don't bundle several independent subsystems into one task — e.g. connection
@@ -177,7 +187,13 @@ ALLOWED CONCEPTS (pick a few that serve ONE problem):
 - Comprehensive testing strategies
 
 EXAMPLE OF A WELL-CALIBRATED INTERMEDIATE SCENARIO:
-**Current Implementation:** A SaaS analytics dashboard's GET /api/reports/daily endpoint takes 8 seconds because it runs 3 sequential queries against a PostgreSQL events table (50M rows) with no indexes on event_type or created_at, and opens a new synchronous psycopg2 connection per request.
+**Current Implementation:** A SaaS analytics dashboard service is organized into a
+routes layer, a repository layer, and a handful of shared query-builder helpers used
+across several report endpoints — clean, conventional structure throughout. Buried in
+that structure, the GET /api/reports/daily endpoint takes 8 seconds because its
+repository method runs 3 sequential queries against a PostgreSQL events table (50M
+rows) with no indexes on event_type or created_at, and opens a new synchronous
+psycopg2 connection per request instead of using the pool the rest of the service relies on.
 **Your Task:**
 - Add composite indexes on (event_type, created_at) and (created_at).
 - Combine the 3 sequential queries into a single CTE-based query.
@@ -185,6 +201,162 @@ EXAMPLE OF A WELL-CALIBRATED INTERMEDIATE SCENARIO:
 **Success Criteria:** Response time drops from 8s to under 800ms, and the connection pool eliminates per-request connection overhead.""",
 
     "ADVANCED": """PROFICIENCY LEVEL: ADVANCED (6+ years of experience — senior IC scope)
+TIME LIMIT: 45-55 minutes
+
+WHAT TO GENERATE:
+- Cross-cutting production-grade work on a realistic system: architecture,
+  reliability, security, and operability woven together into ONE coherent
+  problem — not a checklist of unrelated hardening items.
+- Each scenario should feel like an on-call or platform-review ticket for a
+  senior engineer who owns this system in production — multiple interacting
+  concerns, but ONE coherent problem statement.
+- The existing system MUST read as professionally built and already in
+  production use — multiple files/modules/services with real conventions —
+  never a toy or a from-scratch build. The candidate is improving something
+  real people already depend on, not bootstrapping a project.
+- Max 7 bullet points in the "Your Task" section
+- Keep the entire scenario under 400 words
+- Pin the primary stack/framework in the scenario header when relevant, e.g.
+  `**Stack:** AWS CDK (TypeScript) + DynamoDB + Lambda`
+
+ALLOWED CONCEPTS (combine several per scenario — that is the point of ADVANCED):
+- System/architecture design under real constraints and trade-offs
+- Multi-environment or multi-tenant safety (isolation, naming collisions,
+  blast-radius containment, promotion between environments)
+- Security and least-privilege by design (scoped permissions, secrets
+  handling, defense in depth) — not a bolt-on afterthought
+- Data lifecycle and consistency guarantees (retention, backup/recovery,
+  idempotency, concurrent-write safety)
+- Scalability and performance under realistic load, with measurable targets
+- Observability: structured tracing/metrics/alerting wired through the
+  actual failure path, not just added as logging
+- Failure-mode handling: retries, backoff, graceful degradation, safe
+  rollback, dead-letter/DLQ behaviour
+- API/contract or infra-as-code design that must evolve safely over time
+
+FORBIDDEN — DO NOT include any of these:
+- One-line bug fixes, single-function tweaks, or "fix the typo" tasks
+- Tutorial-style "build your first X" prompts
+- "Set up the project from scratch" without an existing, running system
+- Conceptual / trivia questions about tool or framework internals
+- Anything that does NOT take place in a live, multi-component system
+- Long, unfocused enumerations that mix unrelated subsystems just to look big
+
+QUALITY BAR (read carefully — this is what the evaluator enforces):
+- The scenario must describe a CONCRETE failure mode or platform-review
+  finding (an error, an incident, a review comment, a metric) and the
+  resulting real-world impact (outage, data loss, security exposure, cost
+  overrun, failed deployment).
+- The "Your Task" must demand an ARCHITECTURAL FIX across the system, not a
+  one-file patch.
+- The "Success Criteria" must be MEASURABLE and/or objectively checkable:
+  a specific behavior now holds, a specific failure mode is eliminated, a
+  specific threshold is met (latency, cost, error rate, permission scope).
+  No soft "the system is more robust".
+- The scenario must reveal trade-offs the candidate has to make (safety vs
+  velocity, cost vs redundancy, strictness vs flexibility) — the goal is to
+  see their judgement, not just whether they read the spec.
+
+DOMAINS (use varied ones across the set):
+fintech, healthcare, logistics, e-commerce, SaaS, edtech, travel, food
+delivery, media/streaming, HR/recruiting, real estate, IoT.
+
+EXAMPLE OF A WELL-CALIBRATED ADVANCED SCENARIO:
+**Stack:** AWS CDK (TypeScript) + DynamoDB + Lambda + API Gateway
+
+**Current Implementation:** A healthcare scheduling platform's appointment API is
+defined as a single CDK stack deployed to both a `dev` and a `staging` AWS account
+from the same codebase. The DynamoDB table uses a fixed physical name, so deploying
+`staging` after `dev` collides. A platform review also flagged that every Lambda's
+IAM role grants `dynamodb:*` on `*` instead of table-scoped access, the table name
+is hardcoded inside the handler instead of passed as configuration, and every
+environment destroys its data on stack replacement — including staging, which
+holds real patient-facing data.
+
+**Your Task:**
+- Ensure dev and staging can coexist in the same account without a naming collision.
+- Scope every function's DynamoDB access to only the actions and resources it needs.
+- Remove the hardcoded table name from the Lambda handlers.
+- Make data-retention behavior differ appropriately between a throwaway and a
+  production-like environment.
+
+**Success Criteria:** Both environments deploy from the same stack definition without
+collision; no IAM policy grants a wildcard action on a wildcard resource; the handler
+reads its table name from configuration; the throwaway environment's data is deleted
+on stack replacement while the production-like environment's data is retained.""",
+
+}
+
+
+# ============================================================================
+# PROFICIENCY GUARDRAILS — AGENT competencies, INTERMEDIATE
+# ----------------------------------------------------------------------------
+# The generic INTERMEDIATE block tells the generator to combine "4-5 concepts"
+# with a DB-optimization example. For AGENT competencies each such concept
+# (typed tool-schema validation, idempotency, retry/backoff, tracing, async
+# orchestration) is itself a substantial production change, so the aggregate
+# lands at ADVANCED scope and the scope critic rejects it. This agent-flavored
+# block constrains an INTERMEDIATE agent task to ONE focused change, the same
+# way the ADVANCED block is already agent-specific.
+# ============================================================================
+
+AGENT_INTERMEDIATE_GUARDRAIL = """PROFICIENCY LEVEL: INTERMEDIATE (3-5 years of experience) — AGENT ENGINEERING
+TIME LIMIT: 30-40 minutes
+
+WHAT TO GENERATE:
+- ONE focused fix to a single broken agent behavior — NOT a production overhaul.
+- Pick EXACTLY ONE primary concern and build the whole task around it. Do NOT
+  combine several agent concerns into one scenario — that is the #1 failure mode.
+- The scenario should read like ONE focused ticket for a mid-level agent engineer.
+- Max 3 bullet points in the "Your Task" section.
+- Keep the entire scenario under 180 words.
+- "Your Task" bullets state the SYMPTOM and the desired OUTCOME — never the
+  mechanism. Do NOT name the schema/library/pattern/config the fix should use;
+  the candidate chooses the how (the task stage withholds solutions at
+  INTERMEDIATE+). Success Criteria stay concrete and measurable.
+
+PICK EXACTLY ONE PRIMARY CONCERN (optionally ONE small supporting tweak, no more):
+- Enforce a typed tool-output / LLM-response schema and validate it before use
+- Make a single side-effecting tool idempotent with a request key
+- Replace sequential tool/agent calls with one concurrent gather
+- Add a bounded retry + timeout policy for ONE class of tool call
+- Require explicit user confirmation before a single side-effecting tool runs
+- Add a short TTL cache for ONE repeated read-only tool
+- Add structured trace fields (trace_id, tool name, latency) to an existing path
+
+FORBIDDEN — DO NOT do any of these (they make the task ADVANCED, not INTERMEDIATE):
+- Bundling schema design + retries + caching + idempotency + tracing together
+- Multi-subsystem rewrites, orchestration redesigns, or "production hardening" sweeps
+- More than ~2 distinct code concerns total
+- Anything that reads like a senior on-call ticket (that is the ADVANCED level)
+
+EXAMPLE OF A WELL-CALIBRATED INTERMEDIATE AGENT SCENARIO:
+**Current Implementation:** A returns agent behind `POST /api/agent/returns` calls
+`create_return_label(order_id, reason)` straight from free-form LLM output. Traces show
+`VALIDATION_ERROR: order_id required` and occasional duplicate labels because the model
+sometimes emits a malformed, unvalidated tool call.
+**Your Task:**
+- Ensure a malformed tool call can never reach the tool — it is stopped before
+  execution with a structured, actionable error.
+- Ensure malformed or repeated model output cannot produce a duplicate return label.
+**Success Criteria:** Malformed tool calls are rejected before execution with a structured
+error, and no `VALIDATION_ERROR` or duplicate-label traces appear in a 50-request test run."""
+
+
+# ============================================================================
+# PROFICIENCY GUARDRAILS — AGENT competencies, ADVANCED
+# ----------------------------------------------------------------------------
+# Moved out of PROFICIENCY_GUARDRAILS["ADVANCED"] so that dict entry could
+# become a stack-agnostic ADVANCED block (system design / security / data
+# lifecycle / observability for non-agent domains — infra, backend, etc.).
+# Before this split, EVERY non-agent ADVANCED competency silently fell back
+# to the INTERMEDIATE guardrail (see get_proficiency_guardrails), because the
+# only ADVANCED block that existed was agent-specific. Agent competencies at
+# ADVANCED still route here via is_agent_competency(); everything else now
+# gets a real ADVANCED guardrail instead of an INTERMEDIATE one.
+# ============================================================================
+
+AGENT_ADVANCED_GUARDRAIL = """PROFICIENCY LEVEL: ADVANCED (6+ years of experience — senior IC scope) — AGENT ENGINEERING
 TIME LIMIT: 45-55 minutes
 
 WHAT TO GENERATE:
@@ -197,6 +369,10 @@ WHAT TO GENERATE:
 - Keep the entire scenario under 400 words
 - Pin a primary framework in the scenario header when relevant, e.g.
   `**Stack:** LangGraph + LiteLLM (Anthropic primary, OpenAI fallback)`
+- "Your Task" bullets state failure symptoms and desired OUTCOMES — never the
+  mechanism. Do NOT name the file, function, library, or pattern the fix
+  should use; the candidate chooses the architecture (the task stage
+  withholds solutions at ADVANCED). Success Criteria stay measurable.
 
 ALLOWED CONCEPTS (combine many per scenario — that is the point of ADVANCED):
 - Production agent architecture: orchestrator + tool services + data stores
@@ -251,73 +427,22 @@ store the final assistant message; there is no `trace_id`, no prompt version,
 and no per-tool latency. Tickets are 5–20 turns deep.
 
 **Your Task:**
-- Bound the LangGraph loop (max 6 model calls per ticket) and surface a
-  clear `handoff_to_human` exit.
-- Implement `enforce_cost_ceiling()` in `agent/policy.py` — projected per-call
-  cost is rejected PRE-CALL (no swallowing in a try/except).
-- Configure LiteLLM router so primary 5xx falls back to the secondary model
-  with a logged `model_used` and reason.
-- Add structured traces (`trace_id`, prompt version, tool name, latency,
-  tokens, cost, fallback path) without storing full ticket bodies.
-- Add a 10-case golden eval in `tests/test_golden.py` and a per-ticket cost
-  assertion ≤ $0.05.
+- Ensure no ticket can consume unbounded model work — runaway conversations
+  must end in a clean, observable human handoff.
+- Ensure a call projected to blow the per-ticket cost budget is never sent,
+  and the rejection is visible rather than swallowed.
+- Ensure a primary-model outage does not stop replies, and every reply
+  records which model produced it and why.
+- Make every request traceable end-to-end (prompt version, tool activity,
+  latency, tokens, cost) without storing full ticket bodies.
+- Ensure regressions in reply quality or per-ticket cost are caught by a
+  repeatable eval run before they reach production.
 
 **Success Criteria:** Loop terminates in ≤ 6 model calls; on primary 529 the
 router uses the secondary and a reply is produced; projected >$0.05 calls
 are blocked pre-call; ≥ 8/10 fixture tickets get a non-empty, on-policy
 reply; trace_id ties one request end-to-end from ingress to tool call to
-final response.""",
-}
-
-
-# ============================================================================
-# PROFICIENCY GUARDRAILS — AGENT competencies, INTERMEDIATE
-# ----------------------------------------------------------------------------
-# The generic INTERMEDIATE block tells the generator to combine "4-5 concepts"
-# with a DB-optimization example. For AGENT competencies each such concept
-# (typed tool-schema validation, idempotency, retry/backoff, tracing, async
-# orchestration) is itself a substantial production change, so the aggregate
-# lands at ADVANCED scope and the scope critic rejects it. This agent-flavored
-# block constrains an INTERMEDIATE agent task to ONE focused change, the same
-# way the ADVANCED block is already agent-specific.
-# ============================================================================
-
-AGENT_INTERMEDIATE_GUARDRAIL = """PROFICIENCY LEVEL: INTERMEDIATE (3-5 years of experience) — AGENT ENGINEERING
-TIME LIMIT: 30-40 minutes
-
-WHAT TO GENERATE:
-- ONE focused fix to a single broken agent behavior — NOT a production overhaul.
-- Pick EXACTLY ONE primary concern and build the whole task around it. Do NOT
-  combine several agent concerns into one scenario — that is the #1 failure mode.
-- The scenario should read like ONE focused ticket for a mid-level agent engineer.
-- Max 3 bullet points in the "Your Task" section.
-- Keep the entire scenario under 180 words.
-
-PICK EXACTLY ONE PRIMARY CONCERN (optionally ONE small supporting tweak, no more):
-- Enforce a typed tool-output / LLM-response schema and validate it before use
-- Make a single side-effecting tool idempotent with a request key
-- Replace sequential tool/agent calls with one concurrent gather
-- Add a bounded retry + timeout policy for ONE class of tool call
-- Require explicit user confirmation before a single side-effecting tool runs
-- Add a short TTL cache for ONE repeated read-only tool
-- Add structured trace fields (trace_id, tool name, latency) to an existing path
-
-FORBIDDEN — DO NOT do any of these (they make the task ADVANCED, not INTERMEDIATE):
-- Bundling schema design + retries + caching + idempotency + tracing together
-- Multi-subsystem rewrites, orchestration redesigns, or "production hardening" sweeps
-- More than ~2 distinct code concerns total
-- Anything that reads like a senior on-call ticket (that is the ADVANCED level)
-
-EXAMPLE OF A WELL-CALIBRATED INTERMEDIATE AGENT SCENARIO:
-**Current Implementation:** A returns agent behind `POST /api/agent/returns` calls
-`create_return_label(order_id, reason)` straight from free-form LLM output. Traces show
-`VALIDATION_ERROR: order_id required` and occasional duplicate labels because the model
-sometimes emits a malformed, unvalidated tool call.
-**Your Task:**
-- Define a typed schema for the `create_return_label` arguments (`order_id`, `reason`).
-- Validate the LLM's tool call against it and reject/repair malformed calls before the tool runs.
-**Success Criteria:** Malformed tool calls are rejected before execution with a structured
-error, and no `VALIDATION_ERROR` or duplicate-label traces appear in a 50-request test run."""
+final response."""
 
 
 # ============================================================================
@@ -759,7 +884,12 @@ SCENARIO_EVAL_SCHEMA = {
 PROFICIENCY_LIMITS = {
     "BEGINNER": {"max_words": 150, "max_bullets": 2, "max_chars": 1200},
     "BASIC":    {"max_words": 200, "max_bullets": 3, "max_chars": 1800},
-    "INTERMEDIATE": {"max_words": 300, "max_bullets": 5, "max_chars": 3000},
+    # max_words/max_chars bumped modestly (300->340, 3000->3400) to give the
+    # richer "existing system is realistic, multi-file, well-structured"
+    # Current Implementation description room; max_bullets is unchanged
+    # since that governs Your Task scope (still ONE coherent problem), not
+    # description length.
+    "INTERMEDIATE": {"max_words": 340, "max_bullets": 5, "max_chars": 3400},
     "ADVANCED":  {"max_words": 450, "max_bullets": 7, "max_chars": 4500},
 }
 
@@ -793,34 +923,21 @@ def is_agent_competency(competency_hint: str) -> bool:
 def get_proficiency_guardrails(proficiency: str, competency_hint: str = "") -> str:
     """Return the guardrails block for the given proficiency level.
 
-    The ADVANCED block is agent-engineering-specific. To avoid "ADVANCED
-    silently means agent", a non-agent ADVANCED competency falls back to the
-    INTERMEDIATE guardrail rather than the agent block. When ``competency_hint``
-    is empty the legacy behaviour is preserved (backward-compatible).
-
-    The INTERMEDIATE block is non-agent-flavored (it tells the generator to
-    combine 4-5 concepts, which over-scopes for agent competencies). Agent
-    competencies at INTERMEDIATE therefore route to a dedicated, tighter
-    agent block so the generator and the scope critic agree on "ONE focused
-    change". When ``competency_hint`` is empty the legacy behaviour is kept.
+    PROFICIENCY_GUARDRAILS["ADVANCED"] and ["INTERMEDIATE"] are stack-agnostic
+    (system design / security / data lifecycle / observability, or general
+    optimization work respectively). Agent competencies get dedicated, more
+    agent-flavored blocks at BOTH levels instead — the generic INTERMEDIATE
+    block over-scopes for agents (4-5 concepts is ADVANCED-scope for a single
+    agent behavior), and agents have production concerns (cost ceilings,
+    tool-schema validation, prompt-injection defense) that don't fit the
+    generic ADVANCED block. When ``competency_hint`` is empty, the generic
+    block is used for both levels (legacy/unknown-competency behaviour).
     """
-    if (
-        proficiency == "ADVANCED"
-        and competency_hint
-        and not is_agent_competency(competency_hint)
-    ):
-        _log.warning(
-            "ADVANCED guardrail is agent-specific; competency %r is non-agent — "
-            "falling back to INTERMEDIATE guardrail.",
-            competency_hint,
-        )
-        return PROFICIENCY_GUARDRAILS["INTERMEDIATE"]
-    if (
-        proficiency == "INTERMEDIATE"
-        and competency_hint
-        and is_agent_competency(competency_hint)
-    ):
-        return AGENT_INTERMEDIATE_GUARDRAIL
+    is_agent = bool(competency_hint) and is_agent_competency(competency_hint)
+    if proficiency == "ADVANCED":
+        return AGENT_ADVANCED_GUARDRAIL if is_agent else PROFICIENCY_GUARDRAILS["ADVANCED"]
+    if proficiency == "INTERMEDIATE":
+        return AGENT_INTERMEDIATE_GUARDRAIL if is_agent else PROFICIENCY_GUARDRAILS["INTERMEDIATE"]
     return PROFICIENCY_GUARDRAILS.get(proficiency, PROFICIENCY_GUARDRAILS["BASIC"])
 
 

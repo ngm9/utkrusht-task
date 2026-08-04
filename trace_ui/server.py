@@ -509,7 +509,7 @@ class RunRequest(BaseModel):
     count: int = 2
     env: str = "dev"
     instructions: str = ""           # AUTHORITATIVE free-text directive (replaces infra/non_infra force)
-    llm_provider: str = "anthropic"  # anthropic (Claude) | glm (GLM via OpenRouter)
+    llm_provider: str = "anthropic"  # anthropic (Claude) | glm (GLM via OpenRouter) | openai (gpt-5.5)
 
 
 def _spawn_pipeline(cmd: list[str]) -> None:
@@ -539,7 +539,7 @@ def api_launch(req: RunRequest) -> JSONResponse:
     if any(any(ord(ch) < 32 for ch in n) for n in names):
         raise HTTPException(status_code=400, detail="competency name contains invalid characters")
     count = req.count if isinstance(req.count, int) and 1 <= req.count <= 20 else 2
-    llm_provider = req.llm_provider if req.llm_provider in ("anthropic", "glm") else "anthropic"
+    llm_provider = req.llm_provider if req.llm_provider in ("anthropic", "glm", "openai") else "anthropic"
     # Free-text directive (replaces the old infra/non_infra force). Capped so a
     # pathological paste can't blow the argv limit; passed as argv (no shell).
     instructions = (req.instructions or "").strip()[:4000]
@@ -587,7 +587,7 @@ def api_resume(run_id: str, req: ResumeRequest) -> JSONResponse:
     prof = (summary.get("proficiency") or manifest.get("proficiency") or "").upper()
     env = (summary.get("env") or manifest.get("env") or "dev")
     env = env if env in ("dev", "prod") else "dev"
-    provider = summary.get("llm_provider") if summary.get("llm_provider") in ("anthropic", "glm") else "anthropic"
+    provider = summary.get("llm_provider") if summary.get("llm_provider") in ("anthropic", "glm", "openai") else "anthropic"
     instructions = (summary.get("instructions") or "").strip()[:4000]
     count = summary.get("count")
     count = count if isinstance(count, int) and 1 <= count <= 20 else 2

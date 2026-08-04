@@ -23,7 +23,7 @@ and fields have problems. All checks are read-only — nothing is written.
 | `criterias` | Non-empty, each entry has competency_id/name/proficiency; no duplicates; all competency_ids exist in `competencies` table |
 | `pre_requisites` | 2–3 items, each ≤ 120 chars |
 | `answer` | Non-empty string |
-| `is_shared_infra_required` + `template_id` | If True → template_id must be non-null AND exist in `templates` table; if False → template_id must be null |
+| `is_shared_infra_required` + `template_id` | Orthogonal (template_id = base runtime image; is_shared_infra_required = needs shared services). A set template_id must exist in `templates` (never dangling); if is_shared_infra_required is True the template_id must be present. A non-infra task MAY carry a base template_id — that is not a failure |
 
 **Skipped intentionally:** `eval_info`, `solutions`, `deployment_info`, `readme_content`
 
@@ -128,7 +128,8 @@ Based on failures, suggest next steps:
 | `question` too long and/or has a numbered spec-list / code fence | Question was written (or content-quality-rewritten) as a numbered requirements spec instead of scenario+ask prose — usually correlates with being well over 1500 chars | Rewrite as two-part plain prose: one scenario/symptom paragraph, one direct imperative ask. Preserve every concrete fact (exact colors/thresholds/field names/behavior) — only the spec-sheet packaging goes, not the content |
 | `question` has setup/install/run instructions leaked in | Generator folded README-style onboarding text ("run ./run.sh", "npm install", "docker-compose up", "git clone", ".env" setup, "see the README") into the candidate-facing question | Delete the setup sentence(s) only; leave the rest of the scenario+ask untouched. That content belongs in the README, not here |
 | `criterias` competency_id not in DB | FK dangling — competency was deleted | Investigate in Supabase dashboard |
-| `infra_template` mismatch | `is_shared_infra_required` flipped after creation without nulling `template_id` | Manual update on affected rows |
+| `infra_template` dangling | `template_id` points at a template not in the `templates` table | Investigate — the template was deleted/renamed, or the row has a stale id |
+| `infra_template` missing | `is_shared_infra_required=True` but `template_id` is null | Set the base template so the task can boot its services |
 
 ### 5 — Exit code
 

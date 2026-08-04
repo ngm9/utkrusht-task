@@ -275,11 +275,12 @@ def main() -> int:
                          "generated task and can force an infra-shaped task without a "
                          "separate flag. Replaces the old --task-shape/--infra-kind.")
     ap.add_argument("--llm-provider", default=os.getenv("LLM_PROVIDER", "anthropic"),
-                    choices=["anthropic", "glm"],
+                    choices=["anthropic", "glm", "openai"],
                     help="LLM backend for the Claude-role calls (task-gen, classifier): "
-                         "'anthropic' (Claude via Portkey, default) or 'glm' (GLM via "
-                         "OpenRouter — needs OPENROUTER_API_KEY). The OpenAI answer-code + "
-                         "eval-judge steps are unaffected.")
+                         "'anthropic' (Claude via Portkey, default), 'glm' (GLM via "
+                         "OpenRouter — needs OPENROUTER_API_KEY), or 'openai' (gpt-5.5 via "
+                         "Portkey — needs OPENAI_API_KEY). The OpenAI answer-code + "
+                         "eval-judge steps already always use OpenAI regardless of this flag.")
     ap.add_argument("--resume-from", default=None,
                     choices=["scenarios", "prompt", "tasks"],
                     help="Skip earlier stages and REUSE their existing artifacts (input "
@@ -498,7 +499,12 @@ def main() -> int:
             t = f"{r['duration_ms'] / 1000:.1f}s" if r.get("duration_ms") is not None else "-"
             print(f"   {r['stage']:<14} {'$' + format(r['usd'], '.4f'):>9} {tks:>9,} {t:>8}")
         print(f"   {'TOTAL':<14} {'$' + format(cost['total_usd'], '.4f'):>9} {cost['total_tokens']:>9,} {total:>6.1f}s")
-        print("   (cost ≈ estimated from token usage × model pricing)")
+        _cached = cost.get("cached_tokens") or 0
+        if _cached:
+            print(f"   (cost ≈ estimated from token usage × model pricing; "
+                  f"{_cached:,} input tokens served from cache at a discount)")
+        else:
+            print("   (cost ≈ estimated from token usage × model pricing)")
 
     print(f"\n   Stage 4 outcome: {task_outcome}")
     print(f"   Logs: {combo_dir}")

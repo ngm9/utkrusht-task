@@ -37,6 +37,7 @@ from flows.tech.stages.prompts.input_files import build_detailed_skill_signal
 from flows.tech.stages.prompts.retriever import retrieve_references, RetrievalResult
 from flows.tech.stages.prompts.shape_classifier import ShapeDecision, classify_task_shape
 from flows.tech.stages.prompts.validator import ValidationResult, validate_prompt_file
+from flows.tech.stages.generate.runtime_resolver import resolve_plan
 
 load_dotenv()
 
@@ -56,10 +57,13 @@ load_dotenv()
 # anthropic/claude-haiku-4-5 by default, openrouter/<glm> when LLM_PROVIDER=glm.
 DEFAULT_RUNTIME_MODEL = os.getenv("PROMPT_GENERATOR_MODEL", "openai/gpt-5.5")
 DEFAULT_COMPILE_MODEL = os.getenv("PROMPT_GENERATOR_COMPILE_MODEL") or resolve_dspy_model("prompt_compile")
+# The advisory verify step is evaluative, not creative — run it on a cheap model
+# (nano) instead of the strong runtime model. Override via PROMPT_VERIFIER_MODEL.
+DEFAULT_VERIFY_MODEL = os.getenv("PROMPT_VERIFIER_MODEL", "openai/gpt-5.4-nano")
 
 
-def configure_dspy(model: Optional[str] = None, mode: str = "runtime") -> None:
-    """Wire DSPy to the right LLM provider.
+def _build_lm(model: str) -> "dspy.LM":
+    """Build a DSPy LM for ``model`` with the right provider routing.
 
     Routing logic:
       - Models prefixed `openrouter/...`  → OpenRouter direct (uses OPENROUTER_API_KEY)
@@ -67,14 +71,7 @@ def configure_dspy(model: Optional[str] = None, mode: str = "runtime") -> None:
 
     OpenRouter is for cheap/free open-source models (DeepSeek, Qwen, Gemma).
     Portkey is for OpenAI/Anthropic models routed through our existing gateway.
-
-    Args:
-        model: explicit model override; takes precedence over `mode` defaults.
-        mode:  "runtime" (default, strong model) or "compile" (cheap model).
     """
-    if model is None:
-        model = DEFAULT_COMPILE_MODEL if mode == "compile" else DEFAULT_RUNTIME_MODEL
-
     # GPT-5 family (gpt-5, gpt-5.4, gpt-5-codex, ...) only accepts
     # temperature=1 — litellm rejects any other value. Detect by substring
     # so future point-releases (gpt-5.5 etc.) are handled automatically.
@@ -90,32 +87,50 @@ def configure_dspy(model: Optional[str] = None, mode: str = "runtime") -> None:
                 "Get a key at https://openrouter.ai/keys"
             )
         bare_model = model[len("openrouter/"):]
-        lm = dspy.LM(
+        return dspy.LM(
             model=f"openrouter/{bare_model}",
             api_key=or_key,
             api_base="https://openrouter.ai/api/v1",
             max_tokens=16000,
             temperature=temperature,
         )
-    else:
-        api_key = os.getenv("OPENAI_API_KEY")
-        portkey_key = os.getenv("PORTKEY_API_KEY")
-        if not api_key:
-            raise RuntimeError("Missing OPENAI_API_KEY in environment.")
 
-        from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
+    api_key = os.getenv("OPENAI_API_KEY")
+    portkey_key = os.getenv("PORTKEY_API_KEY")
+    if not api_key:
+        raise RuntimeError("Missing OPENAI_API_KEY in environment.")
 
-        provider = "anthropic" if "anthropic/" in model or "claude" in model else "openai"
-        lm = dspy.LM(
-            model=model,
-            api_key=api_key,
-            api_base=PORTKEY_GATEWAY_URL,
-            extra_headers=createHeaders(provider=provider, api_key=portkey_key),
-            max_tokens=16000,
-            temperature=temperature,
-        )
+    from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
 
-    dspy.settings.configure(lm=lm)
+    provider = "anthropic" if "anthropic/" in model or "claude" in model else "openai"
+    return dspy.LM(
+        model=model,
+        api_key=api_key,
+        api_base=PORTKEY_GATEWAY_URL,
+        extra_headers=createHeaders(provider=provider, api_key=portkey_key),
+        max_tokens=16000,
+        temperature=temperature,
+    )
+
+
+def build_verify_lm() -> "dspy.LM":
+    """LM for the advisory prompt-VERIFY step. Verification is evaluative, not
+    creative, so it runs on a cheap model (``gpt-5.4-nano`` by default) instead
+    of the strong runtime model — override via ``PROMPT_VERIFIER_MODEL``."""
+    return _build_lm(DEFAULT_VERIFY_MODEL)
+
+
+def configure_dspy(model: Optional[str] = None, mode: str = "runtime") -> None:
+    """Wire DSPy to the right LLM provider (see :func:`_build_lm`).
+
+    Args:
+        model: explicit model override; takes precedence over `mode` defaults.
+        mode:  "runtime" (default, strong model) or "compile" (cheap model).
+    """
+    if model is None:
+        model = DEFAULT_COMPILE_MODEL if mode == "compile" else DEFAULT_RUNTIME_MODEL
+
+    dspy.settings.configure(lm=_build_lm(model))
 
     # Capture the DSPy/litellm completions into the pipeline trace sink (no-op
     # unless PIPELINE_TRACING_ENABLED). DSPy bypasses the OpenAI-SDK trace_client
@@ -180,8 +195,7 @@ class GeneratePromptSignature(dspy.Signature):
           ### Docker-compose Instructions
           ### <init_database.sql / Redis Configuration / etc.> Instructions
           ### Run.sh Instructions
-      ## kill.sh file instructions
-      ### Dockerfile Instructions          (omit if no app container)
+          ### Dockerfile Instructions          (omit if no app container)
       <"The output should be a valid json schema:" bullet list of files>
       ## Code file requirements
       ## .gitignore INSTRUCTIONS
@@ -228,11 +242,6 @@ class GeneratePromptSignature(dspy.Signature):
         same user/database.
       - "**SECURITY-CRITICAL**: ports MUST be bound to localhost only using
         `127.0.0.1:<port>:<port>`" — for every datastore exposed to the host
-      - The 9-numbered-step `## kill.sh file instructions` block — copy its
-        shape (stop containers, remove volumes, remove networks, force-remove
-        images, `docker system prune -a --volumes -f`, `rm -rf /root/task`,
-        "|| true" for idempotency, print logs at every step, final
-        "Cleanup completed successfully!" message)
       - "Candidates are permitted and encouraged to use any external resources
         they find helpful, including but not limited to Google, Stack Overflow,
         <stack> documentation, and AI-powered tools, agentic IDEs, or Large
@@ -263,6 +272,13 @@ class GeneratePromptSignature(dspy.Signature):
     Access`, or `Performance Issues` as separate sections. The README must
     NOT contain `<DROPLET_IP>` placeholders or any database-connection
     details (host, port, username, password, client-tool suggestions).
+    Anywhere connection details DO legitimately appear (docker-compose
+    healthchecks, run.sh readiness probes, How to Verify commands), the host
+    must use `localhost` — the task runs inside an E2B sandbox where
+    datastore ports are bound to `127.0.0.1` and the candidate connects from
+    the sandbox terminal (e.g. `redis-cli -h localhost -p 6379`,
+    `psql -h localhost -p 5432`). Never use a droplet IP or any remote-host
+    placeholder — there is no droplet.
 
     Section size + framing rules — the generated prompt's README.md
     INSTRUCTIONS section MUST embed ALL of the following so the downstream
@@ -283,15 +299,45 @@ class GeneratePromptSignature(dspy.Signature):
           – Task Overview: 3-4 meaningful sentences. No bullet list.
             Describes the business scenario, current state, and why the
             problem matters. NEVER empty. NO bold time-budget callouts.
-          – Objectives:    4-6 bullets max.
+          – Objectives:    BASIC/BEGINNER 4-6 bullets max; INTERMEDIATE/ADVANCED
+            3-4 bullets max (fewer, tighter is better).
           – Helpful Tips:  4-5 bullets max.
-          – How to Verify: 4-6 bullets max.
+          – How to Verify: 3-5 bullets max.
 
       • Per-section framing rules the generated prompt MUST include:
-          – Objectives: "Frame objectives around outcomes rather than
-            specific technical implementations. Objectives describe the
-            'what' and 'why', never the 'how'." Each bullet states an
-            observable end-state, not a step or an API/library to use.
+          – Objectives (PROFICIENCY-CONDITIONAL — branch on the `proficiency`
+            input; the two levels are deliberately different):
+
+              · BASIC / BEGINNER — objectives MAY be explicit and directive.
+                Each is a full, context-rich sentence stating what is broken or
+                missing, its observable impact, and what a resolved state looks
+                like. Being concrete about WHAT to achieve is fine and expected
+                at this level (still don't paste the literal answer). This is
+                the correct style for BASIC — do not make BASIC open-ended.
+                GOOD (basic): 'The product search endpoint returns results in
+                4-6 seconds under normal load; after your changes it should
+                respond in under 500ms for typical query patterns.'
+
+              · INTERMEDIATE / ADVANCED — objectives MUST be concise and
+                OPEN-ENDED. Each states ONE desired outcome in a single short
+                line (roughly 8-16 words), one deliverable each. Describe the
+                'what' and 'why', NEVER the 'how': do NOT name the API, library,
+                framework, pattern, algorithm, or config knob — and do NOT name
+                any file, file path, directory, function, method, class,
+                variable, table, or ANY other direct code reference. The
+                candidate must discover both the mechanism AND where to change
+                it. Do NOT pad into two-clause 'after your changes…' sentences,
+                and do NOT collapse into a bare two-word label.
+                BAD (too terse, no context): 'Improve query performance.'
+                BAD (too wordy / two clauses): 'The product search endpoint
+                returns results in 4-6 seconds under normal load; after your
+                changes it should respond in under 500ms for typical queries.'
+                BAD (names a file / code): 'Fix the lifecycle rule in main.tf so
+                transitions apply to closed objects.'
+                GOOD (concise, open-ended): 'Bring product-search latency down
+                to a responsive level under normal load.'
+                GOOD (concise, open-ended): 'Ensure duplicate messages do not
+                trigger duplicate downstream side effects.'
           – Helpful Tips: "Provide practical guidance without revealing
             specific implementations." Each bullet starts with an action
             word: "Consider", "Think about", "Explore", "Review",
@@ -390,6 +436,23 @@ class GeneratePromptSignature(dspy.Signature):
     (e.g. "(3-5 years experience)", "intermediate-level optimization") —
     do NOT add a separate `## PROFICIENCY BOUNDARY` section.
 
+    Code complexity + starter-code VOLUME MUST scale with proficiency. The
+    generated prompt MUST instruct the task-gen LLM accordingly (branch on the
+    `proficiency` input):
+      - BASIC / BEGINNER — a small, focused starter codebase is appropriate:
+        a handful of files with one clear area to fix. Keep the surface area
+        small and the reasoning shallow.
+      - INTERMEDIATE / ADVANCED — the starter codebase MUST be substantial and
+        realistic, NOT a toy snippet. Require MULTIPLE interacting modules /
+        files in a real project layout, with non-trivial existing logic the
+        candidate must read and reason about before changing, and changes that
+        span MORE THAN ONE file. Do NOT ship only a small set of code or a
+        single short file at these levels — the volume and intricacy of the
+        starter code should reflect 3-5+ years of experience. Higher
+        proficiency means a LARGER, more interconnected codebase and deeper
+        reasoning, never merely a trickier one-liner. The candidate should have
+        to navigate a meaningful codebase, not just edit one obvious spot.
+
     ─────────────────────────────────────────────────────────────────────────
     HARD CONSTRAINT #5 — Python module structure
     ─────────────────────────────────────────────────────────────────────────
@@ -430,22 +493,24 @@ class GeneratePromptSignature(dspy.Signature):
       (a) `task_shape == "infra"` → the scenario needs an external service
           (DB / cache / queue / broker / search). The generated prompt MUST
           include `docker-compose.yml` for the datastore(s) the scenario
-          actually exercises, `run.sh` using `docker compose up -d`, and
-          `kill.sh` using `docker compose down`. Decide the specific
-          datastores by READING the scenario text in `detailed_skill_signal`
-          — do not invent extras. The `datastores` input list (if provided)
-          is informational only. `run.sh` is a READINESS/self-check, NOT the
-          grader: it brings the datastore(s) up, waits for health, verifies the
-          starter compiles/loads with the runtime's BUILD command (e.g.
-          `cargo build`, `go build`, `npm ci && npm run build`, an import
-          smoke), then exits 0 — on the UNSOLVED starter. It MUST NOT run the
-          grader test suite (designed to fail until the candidate solves the
-          task); the candidate/grader runs the tests separately.
+          actually exercises and `run.sh` using `docker compose up -d`.
+          No `kill.sh` is needed — E2B sandboxes are destroyed as a whole
+          when the session ends, so container cleanup is automatic.
+          Decide the specific datastores by READING the scenario text in
+          `detailed_skill_signal` — do not invent extras. The `datastores`
+          input list (if provided) is informational only. `run.sh` is a
+          READINESS/self-check, NOT the grader: it brings the datastore(s)
+          up, waits for health, verifies the starter compiles/loads with the
+          runtime's BUILD command (e.g. `cargo build`, `go build`,
+          `npm ci && npm run build`, an import smoke), then exits 0 — on the
+          UNSOLVED starter. It MUST NOT run the grader test suite (designed
+          to fail until the candidate solves the task); the candidate/grader
+          runs the tests separately.
 
       (b) `task_shape == "non_infra"` → pure-runtime / language-level /
           algorithmic / async-concurrency / in-process / UI / frontend
           work. The generated prompt MUST NOT include `docker-compose.yml`,
-          `init_database.sql`, `kill.sh`, or any datastore configuration.
+          `init_database.sql`, or any datastore configuration.
           Ship the task as a local project using the runtime's native
           package manifest (e.g. `package.json`, `pyproject.toml`,
           `pom.xml`, `Cargo.toml`, `build.gradle`) plus source + tests,
@@ -490,9 +555,9 @@ class GeneratePromptSignature(dspy.Signature):
       • `persona="frontend"` → runtime-native manifest, no Docker,
         browser-side only.
       • `persona="backend"` + scenario does NOT need an external service
-        (per the rule above) → no Docker, no compose, no `kill.sh`. `run.sh`
-        is optional — the candidate runs the task locally with the runtime's
-        native test command against the runtime's native manifest.
+        (per the rule above) → no Docker, no compose. `run.sh` is optional —
+        the candidate runs the task locally with the runtime's native test
+        command against the runtime's native manifest.
       • `persona="sdet"` → test suite shape; template ships the runner.
 
     ─────────────────────────────────────────────────────────────────────────
@@ -520,6 +585,71 @@ class GeneratePromptSignature(dspy.Signature):
       - "LLM-free" / "no API key" applies ONLY to the generation-time READINESS
         GATE (which imports the package + validates fixtures/schemas without a
         key). It MUST NOT be generalized to the task itself.
+
+    ─────────────────────────────────────────────────────────────────────────
+    HARD CONSTRAINT #9 — OPEN-ENDEDNESS scales with `proficiency`
+    (agent-engineering competencies only — same scope as #8)
+    ─────────────────────────────────────────────────────────────────────────
+    For agent-engineering competencies, how much of the SOLUTION the task hands
+    over is decided by the `proficiency` input alone — there is no separate
+    flag, mirroring how the README Objectives rules in #2 already branch on
+    proficiency.
+
+    GOLDEN RULE (applies at every level): underspecify the SOLUTION, never the
+    PROBLEM. The Task Overview / symptom stays crisp, fair, and reproducible.
+    Only the "how" — objectives-as-steps, solution-shaped tips, the exact
+    verify cases, return shapes, enum vocabularies, thresholds — is what higher
+    proficiency withholds. Stripping detail off the PROBLEM makes a task
+    ambiguous and unfair, which is NOT the goal.
+
+      (a) BASIC / BEGINNER → SPECIFIED / closed. Today's baseline: the README
+          still obeys #2, but the task MAY hand over the contract —
+          starter-stub docstrings MAY state the expected return shape / enum
+          values, Objectives MAY read as an explicit checklist, Helpful Tips
+          MAY nudge toward the solution shape, How to Verify MAY name the
+          exact cases, and policy constants (thresholds, retry/timeout
+          budgets, state/status enums) MAY be pre-set in config. The scenario
+          MAY have a single intended solution.
+
+      (b) INTERMEDIATE / ADVANCED → OPEN / underspecified. The generated
+          prompt MUST instruct the downstream task-gen LLM to WITHHOLD the
+          solution on every channel, STRICTER than the #2 baseline:
+
+            • Starter stubs: emit a BARE signature + a one-line purpose that
+              names the SYMPTOM only. NO "Expected shape:" block, NO dict
+              keys, NO enum vocabulary ("ok"/"stale"/"missing"), NO
+              return-type contract, NO reference to a named config constant.
+              The candidate DESIGNS the data shape.
+            • Policy constants: do NOT pre-set the decision values (confidence
+              floors, retry/timeout budgets, freshness windows, state/status
+              enums). The candidate CHOOSES and DEFENDS them. The scaffold and
+              fixtures MUST NOT bake in a single "expected shape".
+            • Objectives: state the symptom + how to reproduce it — NOT a
+              step checklist of what to build.
+            • Helpful Tips: few or none; orient to the symptom / where to
+              look, NEVER the shape of the fix.
+            • How to Verify: describe the observable end-state only, NOT the
+              exact fixtures / cases to feed.
+            • Definitions / hints: OMIT the solution's concepts; a hint may
+              point at the symptom, never name the building blocks of the fix.
+            • Problem design space: shape a scenario that admits SEVERAL
+              defensible architectures — the candidate's chosen tradeoff is
+              the signal, so do not pre-decide it for them.
+
+    Scope note: this constraint governs whether the generated prompt NARRATES
+    the answer. The candidate ALWAYS receives a runnable `invariants/` suite —
+    never emit a task the candidate cannot self-check.
+
+    At ADVANCED only, the test suite is SPLIT (see the "SPLITTING THE TESTS"
+    section of the ADVANCED agent reference): checks that can be derived from
+    the fixtures stay in `invariants/` (shipped), while checks that would hand
+    over a decision the stub deliberately left open — which operational fields
+    must survive, exact status strings, boundary thresholds — move to
+    `grading/` under the optional `hidden_tests` envelope key, which the
+    pipeline strips from the candidate repo and uploads to the answer repo.
+    A candidate-facing test that hard-codes the answer cancels every other
+    withholding rule here, which is why the split exists. INTERMEDIATE and
+    below ship a single visible suite — do NOT split below ADVANCED.
 
     ─────────────────────────────────────────────────────────────────────────
     SOFT GUIDANCE — Scenario sourcing
@@ -569,10 +699,10 @@ class GeneratePromptSignature(dspy.Signature):
     proficiency: str = dspy.InputField(desc="Target proficiency level (BASIC/BEGINNER/INTERMEDIATE)")
     task_shape: str = dspy.InputField(
         desc='Authoritative infra decision: exactly "infra" or "non_infra". '
-             '"infra" → MUST include docker-compose / kill.sh / run.sh for the '
-             "scenario's datastores. \"non_infra\" → MUST NOT include any "
-             "docker-compose / init_database.sql / kill.sh — ship a pure local "
-             "project using the runtime's native manifest + test command. "
+             '"infra" → MUST include docker-compose + run.sh for the scenario\'s '
+             'datastores (no kill.sh — E2B sandboxes are destroyed as a whole). '
+             '"non_infra" → MUST NOT include docker-compose or init_database.sql — '
+             "ship a pure local project using the runtime's native manifest + test command. "
              "See HARD CONSTRAINT #7 for the full rules."
     )
     runtime: str = dspy.InputField(
@@ -641,9 +771,9 @@ class VerifyPromptSignature(dspy.Signature):
 
          When `task_shape == "non_infra"`:
            - REJECT if the prompt ships a `docker-compose.yml`,
-             `init_database.sql`, `kill.sh`, or any datastore service
-             definition. Non-infra tasks MUST be pure local projects using
-             the runtime's native manifest + test command.
+             `init_database.sql`, or any datastore service definition.
+             Non-infra tasks MUST be pure local projects using the
+             runtime's native manifest + test command.
 
          When `task_shape == "infra"`:
            - REJECT if the prompt is missing a `docker-compose.yml` for the
@@ -675,13 +805,12 @@ class VerifyPromptSignature(dspy.Signature):
                 `## README.md INSTRUCTIONS`,
                 `## REQUIRED OUTPUT JSON STRUCTURE`,
                 `## CRITICAL REMINDERS` (or `## CRITICAL NOTES`).
-              The INFRA-ONLY sections `## Infrastructure Requirements` and
-              `## kill.sh file instructions` are REQUIRED only when
-              `task_shape == "infra"`. For `task_shape == "non_infra"` these
-              two sections MUST be ABSENT — a non-infra prompt that includes
-              them is a violation of HARD CONSTRAINT #7 (no docker-compose,
-              no kill.sh for pure-local projects). Do not flag their absence
-              on the non_infra path.
+              The INFRA-ONLY section `## Infrastructure Requirements` is
+              REQUIRED only when `task_shape == "infra"`. For
+              `task_shape == "non_infra"` this section MUST be ABSENT — a
+              non-infra prompt that includes it is a violation of HARD
+              CONSTRAINT #7 (no docker-compose for pure-local projects).
+              Do not flag its absence on the non_infra path.
            c. The README uses a drift name like "Guidance", "Tips" (without
               "Helpful"), "Hints", or "Recommendations" instead of the
               canonical `Helpful Tips`.
@@ -728,8 +857,8 @@ class VerifyPromptSignature(dspy.Signature):
     task_shape: str = dspy.InputField(
         desc='Authoritative infra decision: "infra" or "non_infra". Gate the '
              "STRUCTURE MISMATCH check on this value — non_infra must NOT ship "
-             "docker-compose/kill.sh, infra MUST include docker-compose for the "
-             "scenario's datastores."
+             "docker-compose/init_database.sql, infra MUST include docker-compose "
+             "for the scenario's datastores (no kill.sh required in either case)."
     )
     runtime: str = dspy.InputField(
         desc="Primary language runtime of the matched template (e.g. python, node)"
@@ -811,6 +940,11 @@ class PromptGeneratorAgent(dspy.Module):
                 "PROMPT_VERIFIER_ENABLED", "true"
             ).strip().lower() not in ("false", "0", "no", "off")
         self.verifier_enabled = verifier_enabled
+        # The verify step runs on a cheap model (nano) via a per-call
+        # dspy.context override, so it doesn't share the strong runtime LM.
+        # Built lazily on first use so construction never triggers an LM build
+        # (and never fails when the verifier is disabled).
+        self._verify_lm = None
 
     def load_compiled_demos(self, compiled_path: str) -> int:
         """Load few-shot demos from a compile.py output JSON into the generator.
@@ -921,10 +1055,11 @@ class PromptGeneratorAgent(dspy.Module):
             logger.info("  → reason     = %s", shape_decision.reason)
         task_shape = shape_decision.task_shape
 
-        # Resolver is still a no-op at prompt-gen time. The LLM honours
-        # `task_shape` directly (HARD CONSTRAINT #7), so runtime / persona /
-        # frameworks stay empty. For a FORCED infra task we DO seed `datastores`
-        # with the chosen service so the generated prompt boots it.
+        # Runtime / persona / frameworks stay empty for non-infra tasks — the
+        # LLM honours `task_shape` directly (HARD CONSTRAINT #7). For infra
+        # tasks STEP 3.5 resolves the template so the prompt LLM gets real
+        # values. For a FORCED infra task we seed `datastores` with the chosen
+        # service so the generated prompt boots it.
         template = None
         persona = ""
         runtime = ""
@@ -932,6 +1067,35 @@ class PromptGeneratorAgent(dspy.Module):
         cap_datastores: list[str] = [_infra_service] if _infra_service else []
         if _infra_service:
             logger.info("  → forced-infra service hint: datastores=%s", cap_datastores)
+
+        if task_shape == "infra":
+            logger.info("STEP 3.5 — resolving template plan for infra task")
+            try:
+                _plan = resolve_plan(competencies)
+                if _plan.template is not None:
+                    runtime = _plan.template.primary_runtime
+                    persona = _plan.match.persona or ""
+                    cap_frameworks = _plan.template.capabilities.get("frameworks", [])
+                    # keep the forced-infra service hint if the template
+                    # declares no datastores of its own
+                    _tpl_datastores = _plan.template.capabilities.get("datastores", [])
+                    cap_datastores = _tpl_datastores or cap_datastores
+                    template = _plan.template
+                    logger.info(
+                        "  → template resolved: runtime=%s persona=%s "
+                        "frameworks=%s datastores=%s",
+                        runtime, persona, cap_frameworks, cap_datastores,
+                    )
+                else:
+                    logger.info(
+                        "  → no template resolved for infra task "
+                        "(no_match or build failed) — runtime/frameworks stay empty"
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "STEP 3.5: resolve_plan raised unexpectedly: %s "
+                    "— continuing with empty template info", exc
+                )
 
         # ─── STEP 4: retriever (reference prompts) ────────────────────
         logger.info("STEP 4 / retriever.py — running fallback ladder "
@@ -1027,21 +1191,27 @@ class PromptGeneratorAgent(dspy.Module):
                              rationale_preview[:400].replace("\n", " "))
 
             if self.verifier_enabled:
-                logger.info("  calling Review (ChainOfThought)...")
-                verify_out = self.verify(
-                    new_prompt_file=new_prompt,
-                    primary_directive=directive,
-                    competencies=comp_str,
-                    task_shape=task_shape,
-                    runtime=runtime,
-                    frameworks=frameworks_json,
-                    datastores=datastores_json,
-                    persona=persona,
-                    reference_prompts=refs_text,
-                    similar_tasks=tasks_text,
-                    competency_scopes=scopes_str,
-                    detailed_skill_signal=skill_signal,
-                )
+                if self._verify_lm is None:
+                    self._verify_lm = build_verify_lm()
+                logger.info("  calling Review (ChainOfThought) on %s...",
+                            DEFAULT_VERIFY_MODEL)
+                # Run the advisory verify on the cheap model, leaving the strong
+                # runtime LM configured for generate.
+                with dspy.context(lm=self._verify_lm):
+                    verify_out = self.verify(
+                        new_prompt_file=new_prompt,
+                        primary_directive=directive,
+                        competencies=comp_str,
+                        task_shape=task_shape,
+                        runtime=runtime,
+                        frameworks=frameworks_json,
+                        datastores=datastores_json,
+                        persona=persona,
+                        reference_prompts=refs_text,
+                        similar_tasks=tasks_text,
+                        competency_scopes=scopes_str,
+                        detailed_skill_signal=skill_signal,
+                    )
                 logger.info("    Review done — passes=%s feedback=%d chars",
                             verify_out.passes, len(verify_out.feedback or ""))
                 if verify_out.feedback:

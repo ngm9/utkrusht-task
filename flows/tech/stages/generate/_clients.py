@@ -63,4 +63,4 @@ openai_via_portkey = trace_client(
     provider="openai",
 )
 
-ANSWER_CODE_MODEL = os.getenv("ANSWER_CODE_MODEL", "gpt-5.5")
+ANSWER_CODE_MODEL = os.getenv("ANSWER_CODE_MODEL", "gpt-5.4-nano")

@@ -727,6 +727,10 @@ def generate_scenarios_for_competencies(
 
         for ev in evals:
             idx = ev.get("scenario_index", -1)
+            # Eval prompt labels scenarios "Scenario 1, Scenario 2..." so the LLM
+            # returns 1-based indices despite the schema saying 0-based. Normalise.
+            if idx >= 1:
+                idx -= 1
             if 0 <= idx < len(unique) and ev.get("pass", False):
                 passing_scenarios.append(unique[idx])
                 logger.info(f"\n{sep}\n✓ PASSED scenario {idx+1}:\n{sep}\n{unique[idx]}\n{sep}")
