@@ -300,8 +300,12 @@ def main() -> int:
     ap.add_argument("--competency", help="substring match on any criterias[*].name")
     ap.add_argument("--limit", type=int)
     ap.add_argument("--skip-github", action="store_true", help="skip repo/gist reachability")
+    ap.add_argument("--json", action="store_true",
+                    help="emit machine JSON instead of the human report (single object for "
+                         "--task-id, else an array). Same exit code.")
     a = ap.parse_args()
 
+    import json
     import os
     import requests
     from infra.e2b.supabase_helpers import init_supabase
@@ -327,7 +331,10 @@ def main() -> int:
                    for c in (r.get("criterias") or []) if isinstance(c, dict))
         ]
     if not rows:
-        print(f"No matching tasks in {a.env}.")
+        if a.json:
+            print(json.dumps(None if a.task_id else []))
+        else:
+            print(f"No matching tasks in {a.env}.")
         return 0
 
     known_competency_ids = {
@@ -343,11 +350,13 @@ def main() -> int:
     token = os.getenv("GITHUB_GIST_TOKEN") or os.getenv("GITHUB_UTKRUSHTAPPS_TOKEN")
     if token:
         session.headers["Authorization"] = f"Bearer {token}"
-    elif not a.skip_github:
+    elif not a.skip_github and not a.json:
         print("WARNING: no GitHub token in env — reachability checks may 404 on private repos.\n")
 
+    _VERDICT = {PASS: "pass", WARN: "warn", FAIL: "fail"}
     n_pass = n_warn = n_fail = 0
     failure_counts: dict[str, int] = {}
+    reports = []   # one machine record per task (for --json)
 
     for row in rows:
         results = audit_row(row, known_competency_ids, known_template_ids, session, a.skip_github)
@@ -361,12 +370,33 @@ def main() -> int:
             n_pass += 1
 
         title = ((row.get("task_blob") or {}).get("title") or "<no title>")
-        print(f"{_MARK[worst]}  task_id: {row['task_id']}   title: {title!r}")
-        for field, level, msg in results:
-            print(f"      {_MARK[level]}  {field:<18} {msg}")
+        reports.append({
+            "task_id": row["task_id"],
+            "title": title,
+            "verdict": _VERDICT[worst],
+            "checks": {
+                "pass": sum(1 for _, lv, _ in results if lv == PASS),
+                "warn": sum(1 for _, lv, _ in results if lv == WARN),
+                "fail": sum(1 for _, lv, _ in results if lv == FAIL),
+            },
+            "failures": [{"field": f, "detail": m} for f, lv, m in results if lv == FAIL],
+            "warnings": [{"field": f, "detail": m} for f, lv, m in results if lv == WARN],
+            "fields": {f: {"level": _VERDICT[lv], "detail": m} for f, lv, m in results},
+        })
+
+        if not a.json:
+            print(f"{_MARK[worst]}  task_id: {row['task_id']}   title: {title!r}")
+            for field, level, msg in results:
+                print(f"      {_MARK[level]}  {field:<18} {msg}")
+            print()
+        for field, level, _ in results:
             if level == FAIL:
                 failure_counts[field] = failure_counts.get(field, 0) + 1
-        print()
+
+    if a.json:
+        # single object when a specific task was requested, else the array
+        print(json.dumps(reports[0] if a.task_id else reports, indent=2))
+        return 1 if n_fail else 0
 
     print("=" * 64)
     print(f"SUMMARY  {len(rows)} tasks   ✓ {n_pass} pass   ⚠ {n_warn} warn   ✗ {n_fail} fail")

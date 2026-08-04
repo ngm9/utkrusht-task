@@ -46,29 +46,28 @@ If `$ARGUMENTS` is provided, treat it as the task UUID and run single-task mode.
 
 ```bash
 # All ready tasks in dev (default)
-python task_audit.py --env dev
+.venv/bin/python .claude/skills/task-audit/scripts/task_audit.py --env dev
 
 # All ready tasks in prod
-python task_audit.py --env prod
+.venv/bin/python .claude/skills/task-audit/scripts/task_audit.py --env prod
 
 # Single task
-python task_audit.py --env dev --task-id <uuid>
+.venv/bin/python .claude/skills/task-audit/scripts/task_audit.py --env dev --task-id <uuid>
 
 # Only tasks that are enabled (is_enabled=True)
-python task_audit.py --env dev --enabled
+.venv/bin/python .claude/skills/task-audit/scripts/task_audit.py --env dev --enabled
 
 # Only tasks for a specific competency (substring match, case-insensitive)
-python task_audit.py --env dev --competency "React"
-python task_audit.py --env dev --competency "Java"
+.venv/bin/python .claude/skills/task-audit/scripts/task_audit.py --env dev --competency "React"
 
 # Combine filters — enabled React tasks only
-python task_audit.py --env dev --enabled --competency "React"
+.venv/bin/python .claude/skills/task-audit/scripts/task_audit.py --env dev --enabled --competency "React"
 
 # Skip GitHub API calls (faster for large batches)
-python task_audit.py --env dev --skip-github
+.venv/bin/python .claude/skills/task-audit/scripts/task_audit.py --env dev --skip-github
 
 # Limit rows (useful for a quick sample)
-python task_audit.py --env dev --limit 20
+.venv/bin/python .claude/skills/task-audit/scripts/task_audit.py --env dev --limit 20
 ```
 
 **Filter notes:**
@@ -76,7 +75,9 @@ python task_audit.py --env dev --limit 20
 - `--competency` filters client-side after fetch (substring match on any `criterias[*].name`). Use the competency name or a keyword, e.g. `"React"` matches `"ReactJs"`, `"React Native"`, `"React + TypeScript"` etc.
 - Both filters can be combined freely with `--task-id`, `--limit`, `--skip-github`
 
-Run from `D:\Utkrushta_task\` (the project root where `task_audit.py` lives).
+Run from the repo root with the venv python — the script lives at
+`.claude/skills/task-audit/scripts/task_audit.py` and resolves the repo root and
+`.env` itself, so the CWD only needs to be somewhere inside the repo.
 
 **Required env vars** (read from `.env` automatically):
 - `SUPABASE_URL_APTITUDETESTSDEV` / `SUPABASE_API_KEY_APTITUDETESTSDEV` (dev)

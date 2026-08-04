@@ -58,8 +58,14 @@ def _validate_environment() -> None:
                    'task-gen LLM. Evals, the E2B gate, repos, gist and Supabase all '
                    'run as normal. Use to rescue a task whose generation succeeded '
                    'but whose run died afterwards, without paying for generation twice.')
+@click.option('--scenario-file',
+              type=click.Path(exists=True, path_type=Path), default=None,
+              help='Path to a text file holding ONE human-selected scenario. When '
+                   'given, generation locks to exactly this scenario (skips the pool '
+                   'lookup + auto-rotation) — the human-in-the-loop selection hook. '
+                   'Omit for the normal auto-rotation over the pool.')
 def generate_tasks(competency_file: Path, background_file: Path, scenarios_file: Path,
-                   env: str, from_task_json: Path | None):
+                   env: str, from_task_json: Path | None, scenario_file: Path | None):
     """
     Generate intelligent assessment tasks OR deploy existing tasks to droplets.
 
@@ -130,8 +136,18 @@ def generate_tasks(competency_file: Path, background_file: Path, scenarios_file:
 
         _validate_environment()
 
+        # Human-in-the-loop: a selected scenario locks generation to exactly
+        # that scenario (via create_task's selected_scenarios hook).
+        selected_scenarios = None
+        if scenario_file is not None:
+            text = Path(scenario_file).read_text(encoding="utf-8").strip()
+            if text:
+                selected_scenarios = [text]
+                print(f" Human-selected scenario: locked ({len(text)} chars)")
+
         with trace_run(run_id):
             result = create_task(competency_file, background_file, scenarios_file, env,
+                                 selected_scenarios=selected_scenarios,
                                  seed_candidate=seed_candidate)
         _trace_result.update(
             outcome="created",

@@ -25,6 +25,7 @@ from pathlib import Path
 
 import click
 
+from flows.tech.stages.prompts import corpus
 from flows.tech.stages.prompts.agent import (
     PromptGeneratorAgent,
     configure_dspy,
@@ -48,23 +49,16 @@ AGENT_OUTPUT_ROOT = _REPO_ROOT / "data" / "generated" / "agent_prompts"
 logger = logging.getLogger("prompt_generator")
 
 
-def _slugify_filename(competency_names: list[str]) -> str:
-    """Build the prompt filename from competency names: 'python_sql' for Python+SQL."""
-    parts = []
-    for name in competency_names:
-        s = name.lower()
-        s = re.sub(r"\.js\b", "js", s)
-        s = re.sub(r"\s*[-/&]\s*", "_", s)
-        s = re.sub(r"[\s.]+", "_", s)
-        s = re.sub(r"[^a-z0-9_]", "", s)
-        s = re.sub(r"_+", "_", s).strip("_")
-        parts.append(s)
-    return "_".join(parts)
-
-
 def _expected_path(competency_names: list[str], proficiency: str) -> Path:
+    """On-disk path for a generated prompt: ``<Level>/<slug>/<slug>.py``.
+
+    The slug comes from ``corpus.slug_for`` — the SAME function the corpus keys
+    rows on, deliberately. The retriever matches references by filename tokens,
+    so a materialised approved prompt only resolves like a curated one if both
+    names are built identically; two copies of this regex would drift silently.
+    """
     folder = LEVEL_FOLDERS[proficiency.upper()]
-    slug = f"{_slugify_filename(competency_names)}_{proficiency.lower()}_prompt"
+    slug = corpus.slug_for(competency_names, proficiency)
     return AGENT_OUTPUT_ROOT / folder / slug / f"{slug}.py"
 
 
@@ -275,6 +269,13 @@ def cli(name, proficiency, env, dry_run, force, max_iterations, model, compiled_
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(final_source, encoding="utf-8")
     click.echo(f"\n Wrote: {output_path}")
+
+    # ...and to the durable corpus. output_path is the container's disposable
+    # writable layer — a redeploy wipes it. Saved as an unproven `candidate`;
+    # it becomes a retriever reference only once a task built from it ships
+    # (see prompts/corpus.py). Best-effort: never fail a generation over this.
+    if corpus.save_candidate(names, proficiency_upper, final_source, env=env):
+        click.echo(f" Saved to prompt corpus: {corpus.slug_for(names, proficiency_upper)} (candidate)")
 
     if result.bootstrap_mode:
         click.echo(f" Note: Bootstrap mode (no exact reference). Manual review recommended.")

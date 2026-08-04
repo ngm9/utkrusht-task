@@ -32,7 +32,7 @@ from typing import Dict, List, Optional
 from infra.evals import MAX_EVAL_RETRIES, EvalGateError, LLMOutputTruncated
 from infra.github_utils import create_github_template_repo, slugify
 from infra.logger_config import logger
-from infra.llm_provider import make_llm_client, resolve_model
+from infra.llm_provider import resolve_model
 from infra.classifier.runtime import Competency
 from infra.schemas import ANSWER_CODE_SCHEMA
 from infra.tracing import set_attempt, set_task_id, trace_stage
@@ -52,6 +52,7 @@ from infra.utils import (
 
 from flows.tech.stages.generate._clients import (
     ANSWER_CODE_MODEL,
+    openai_client,
     openai_via_portkey,
 )
 from flows.tech.stages.generate.evaluator import (
@@ -84,6 +85,7 @@ from flows.tech.stages.generate.persistence import (
     upload_answer_files_to_repo,
     upload_files_to_github,
 )
+from flows.tech.stages.prompts.corpus import approve_for_task
 from flows.tech.stages.generate.runtime_resolver import (
     InfraTemplateMissingError,
     require_infra_template,
@@ -917,8 +919,13 @@ def create_task(
                             f"cheaper model '{_gen_model}' instead of '{_TASK_GEN_MODEL}'"
                         )
                     with trace_stage("task_gen"):
+                        # ponytail: openai_client routes both models this call
+                        # ever uses — primary (claude-opus) and repair
+                        # (claude-sonnet) are both claude-role. Add a
+                        # per-provider client factory only if a gpt-* repair
+                        # model is ever introduced (would need openai_via_portkey).
                         candidate = generate_task_with_code(
-                            make_llm_client(), input_data,
+                            openai_client, input_data,
                             feedback=feedback,
                             model=_gen_model,
                         )
@@ -1449,6 +1456,14 @@ def create_task(
                 [c.get("competency_id") for c in task_data["criterias"] if c.get("competency_id")],
                 env=env,
             )
+
+            # The task shipped (passed the E2B gate + evals, artifacts exist), so
+            # the prompt behind it has earned reference status — promote it to
+            # `approved` in the corpus, making it retrievable for future
+            # generations of this combo instead of falling to the generic
+            # skeleton forever. No-op when the prompt came from the curated tree.
+            # Best-effort (see corpus.py) — never fails a shipped task.
+            approve_for_task(task_data["criterias"], task_id, env=env)
 
             task_data.update(ready_row)
             task_data["task_id"] = task_id

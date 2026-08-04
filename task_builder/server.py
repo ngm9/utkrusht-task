@@ -20,17 +20,16 @@ import asyncio
 import json
 import logging
 import os
-from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, Header, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from sse_starlette.sse import EventSourceResponse
 
 from flows.tech.stages.input_files.generator import init_supabase as _init_competency_supabase
-from task_builder.jobs import JobStatus, enqueue_job
+from task_builder.jobs import JobStatus, enqueue_job, enqueue_prepare_job
 from task_builder.conversation import apply_turn, build_bot_client
 from task_builder.conversation_repo import (
     create_conversation,
@@ -38,14 +37,14 @@ from task_builder.conversation_repo import (
     mark_submitted,
     save_session,
 )
+from task_builder.logging_setup import configure_logging
 from task_builder.slots import SessionState, TaskBrief
+from task_builder.suggestions import suggest_instructions
 
+configure_logging()
 logger = logging.getLogger("task_builder.server")
 
 app = FastAPI(title="Task Builder")
-
-_STATIC_DIR = Path(__file__).parent / "static"
-app.mount("/static", StaticFiles(directory=_STATIC_DIR), name="static")
 
 # v1 default env. Override per request via the body, or set
 # TASK_BUILDER_ENV to flip the global default.
@@ -57,20 +56,40 @@ _DEFAULT_ENV = os.environ.get("TASK_BUILDER_ENV", "dev")
 # task_builder`` against localhost but DO NOT deploy without the env var set.
 _INTERNAL_TOKEN = os.environ.get("INTERNAL_PROXY_TOKEN", "").strip()
 
-# Paths that bypass the internal-token check. Static + health are needed for
-# container liveness probes and for the legacy static UI direct test path.
-_PUBLIC_PATHS = ("/api/health", "/static", "/")
+# CORS: the UI is a separate frontend service/origin now, so the browser needs
+# CORS headers to call this API cross-origin. Comma-separated allow-list;
+# default "*" is safe because every /api/* call is still gated by
+# INTERNAL_PROXY_TOKEN (a header token, not cookies).
+_CORS_ORIGINS = [
+    o.strip() for o in os.environ.get("CORS_ALLOW_ORIGINS", "*").split(",") if o.strip()
+] or ["*"]
+
+# Paths that bypass the internal-token check — health for liveness probes and
+# "/" for a plain service descriptor.
+_PUBLIC_PATHS = ("/api/health", "/")
 
 
 @app.middleware("http")
 async def _enforce_internal_token(request: Request, call_next):
-    """Reject /api/* requests lacking a valid X-Internal-Token header.
+    """Reject /api/* requests lacking a valid access token.
 
-    The Next.js admin proxy stamps the header on every forwarded request;
-    direct browser hits do not, so they 403. The check is opt-in via the
-    INTERNAL_PROXY_TOKEN env var — leaving it empty (local dev) disables the
-    middleware entirely so contributors can hit the UI directly.
+    Accepted forms:
+    * ``X-Internal-Token`` header — stamped by the Next.js admin proxy, or
+      sent directly by the static UI (which prompts once and stores the
+      token in localStorage).
+    * ``?access_token=`` query param — fallback for the SSE endpoint, since
+      ``EventSource`` cannot set request headers.
+
+    The check is opt-in via the INTERNAL_PROXY_TOKEN env var — leaving it
+    empty (local dev) disables the middleware entirely so contributors can
+    hit the UI directly.
     """
+    # CORS preflight (OPTIONS) carries no token; never block it. The CORS
+    # middleware (registered outermost, below) normally answers preflight
+    # before this runs — this OPTIONS skip is a safety net.
+    if request.method == "OPTIONS":
+        return await call_next(request)
+
     if not _INTERNAL_TOKEN:
         return await call_next(request)
 
@@ -81,7 +100,11 @@ async def _enforce_internal_token(request: Request, call_next):
     if not path.startswith("/api/"):
         return await call_next(request)
 
-    provided = request.headers.get("x-internal-token") or ""
+    provided = (
+        request.headers.get("x-internal-token")
+        or request.query_params.get("access_token")
+        or ""
+    )
     if provided != _INTERNAL_TOKEN:
         return JSONResponse(
             status_code=403,
@@ -91,9 +114,27 @@ async def _enforce_internal_token(request: Request, call_next):
     return await call_next(request)
 
 
+# Registered AFTER the token middleware so it sits OUTERMOST in the stack
+# (Starlette applies the last-added middleware first) — CORS then answers the
+# preflight OPTIONS before the token check can 403 it.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_CORS_ORIGINS,
+    allow_credentials=False,  # auth is a custom header token, not cookies
+    allow_methods=["*"],
+    allow_headers=["*"],  # includes X-Internal-Token, X-Testmaker-Id, Content-Type
+)
+
+
 @app.get("/")
-def index() -> FileResponse:
-    return FileResponse(_STATIC_DIR / "index.html")
+def index() -> dict[str, str]:
+    """Plain service descriptor — the UI is a separate frontend service now."""
+    return {
+        "service": "task-builder-api",
+        "status": "ok",
+        "health": "/api/health",
+        "docs": "/docs",
+    }
 
 
 _GREETING = (
@@ -115,6 +156,23 @@ class ChatRequest(BaseModel):
 @app.get("/api/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/api/suggest-instructions")
+def api_suggest_instructions(names: str = "", proficiency: str = "BASIC") -> JSONResponse:
+    """LLM-written instruction directives for the review step, rendered as
+    clickable chips. ``names`` is comma-separated. Soft-errors (503 + empty
+    list) so the review step degrades to a plain textarea."""
+    parsed = [n.strip() for n in (names or "").split(",") if n.strip()]
+    if not parsed:
+        raise HTTPException(status_code=400, detail="at least one competency name is required")
+    try:
+        suggestions = suggest_instructions(parsed, proficiency)
+    except Exception as exc:  # noqa: BLE001 — soft so the review step still works
+        logger.warning("suggest-instructions failed", exc_info=True,
+                       extra={"operation": "suggest_instructions", "error_msg": str(exc)})
+        return JSONResponse({"suggestions": [], "error": str(exc)}, status_code=503)
+    return JSONResponse({"suggestions": suggestions})
 
 
 @app.get("/api/greeting")
@@ -271,37 +329,97 @@ def chat(req: ChatRequest, env: str = _DEFAULT_ENV) -> dict:
     }
 
 
-class GenerateRequest(BaseModel):
+class PrepareRequest(BaseModel):
     session_id: str
     env: str = "dev"
 
 
+class GenerateRequest(BaseModel):
+    session_id: str
+    env: str = "dev"
+    # Optional AUTHORITATIVE free-text directive collected in the review step
+    # (e.g. "make it infra — include a Redis dependency + Dockerfile"). Passed
+    # to the prompt stage's --instructions.
+    instructions: str = ""
+    # Optional human-picked scenario text (from GET /api/scenarios). Locks the
+    # task to exactly this scenario. Empty → the pipeline auto-rotates the pool.
+    selected_scenario: str = ""
+    # True when the pool was already built by POST /api/prepare — the generate
+    # run then skips stages 00–02 and reuses the on-disk inputs + DB scenarios.
+    scenarios_prepared: bool = False
+
+
+def _brief_payload(session: SessionState) -> dict:
+    """Serialize a session brief into the orchestrator payload shape."""
+    payload = session.brief.model_dump()
+    # The input_files stage takes a comma-joined competency string; stash the
+    # names list separately for the orchestrator.
+    payload["competency_names"] = payload.get("competencies", [])
+    payload["proficiency"] = (payload.get("proficiency") or "BASIC").upper()
+    return payload
+
+
+def _require_complete_session(env: str, session_id: str) -> SessionState:
+    if env not in ("dev", "prod"):
+        raise HTTPException(status_code=400, detail="env must be 'dev' or 'prod'")
+    session = load_session(env, session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Unknown session")
+    if not session.brief.is_complete():
+        raise HTTPException(status_code=400, detail="Brief is not complete")
+    return session
+
+
+@app.post("/api/prepare")
+def prepare(req: PrepareRequest) -> dict:
+    """Phase 1: build the scenario pool (preflight → input_files → scenarios)
+    for a complete brief, so the UI can show scenarios for selection. Returns
+    the `job_id` (SSE stream key); on completion the UI calls GET /api/scenarios.
+    """
+    session = _require_complete_session(req.env, req.session_id)
+    job_id = enqueue_prepare_job(
+        brief=_brief_payload(session), env=req.env, conversation_id=req.session_id,
+    )
+    return {"run_id": job_id, "job_id": job_id}
+
+
+@app.get("/api/scenarios")
+def scenarios(session_id: str, env: str = _DEFAULT_ENV) -> dict[str, Any]:
+    """Return the candidate scenario pool for a session's brief combo (from the
+    `generated_scenarios` DB table). Empty list when nothing has been generated
+    yet — the UI then falls back to auto-rotation."""
+    from flows.tech.stages.scenarios.repository import load_scenarios_for_combo
+    from infra.utils import build_scenario_key
+
+    session = _require_complete_session(env, session_id)
+    level = (session.brief.proficiency or "BASIC").upper()
+    competencies = [{"name": n, "proficiency": level} for n in session.brief.competencies]
+    combo_key = build_scenario_key(competencies)
+    try:
+        pool = load_scenarios_for_combo(env, combo_key, level)
+    except Exception as exc:  # noqa: BLE001 — soft so the review step still works
+        logger.warning("scenarios load failed", exc_info=True,
+                       extra={"operation": "load_scenarios", "error_msg": str(exc)})
+        return {"scenarios": [], "combo_key": combo_key, "error": str(exc)}
+    return {"scenarios": pool, "combo_key": combo_key}
+
+
 @app.post("/api/generate")
 def generate(req: GenerateRequest) -> dict:
-    """Enqueue a pipeline run for a session whose brief is complete.
+    """Phase 2: enqueue a pipeline run for a session whose brief is complete.
 
     Returns the `job_id` (which becomes the SSE stream key). The actual
     work runs in an in-process background thread (task_builder.jobs) — this
     endpoint never blocks on the pipeline.
     """
-    if req.env not in ("dev", "prod"):
-        raise HTTPException(status_code=400, detail="env must be 'dev' or 'prod'")
-
-    session = load_session(req.env, req.session_id)
-    if session is None:
-        raise HTTPException(status_code=404, detail="Unknown session")
-    if not session.brief.is_complete():
-        raise HTTPException(status_code=400, detail="Brief is not complete")
-
-    brief_payload = session.brief.model_dump()
-    # Stash the competency names list separately for the orchestrator —
-    # the input_files stage takes a comma-joined string.
-    brief_payload["competency_names"] = brief_payload.get("competencies", [])
-    brief_payload["proficiency"] = (brief_payload.get("proficiency") or "BASIC").upper()
+    session = _require_complete_session(req.env, req.session_id)
 
     job_id = enqueue_job(
-        brief=brief_payload, env=req.env,
+        brief=_brief_payload(session), env=req.env,
         conversation_id=req.session_id,
+        instructions=req.instructions,
+        selected_scenario=req.selected_scenario,
+        scenarios_prepared=req.scenarios_prepared,
     )
     mark_submitted(req.env, req.session_id)
     return {"run_id": job_id, "job_id": job_id}
