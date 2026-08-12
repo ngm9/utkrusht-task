@@ -267,6 +267,243 @@ def _finish(result: SandboxEvalResult) -> SandboxEvalResult:
 
 
 # ---------------------------------------------------------------------------
+# The non-infra gate — pure-local projects (no template, no run.sh).
+#
+# Non-infra tasks used to skip the gate entirely on the rationale "nothing to
+# build in the sandbox". That is false: there IS something to run — install the
+# project's deps and let its own suite collect. Without this, a starter whose
+# tests cannot even be collected (missing bundler config, unparseable
+# component) ships GREEN, because the LLM task/code evals only READ the code,
+# they never execute it. That is exactly how a Vue task shipped with no
+# vite.config.js and a suite that collected 0 tests.
+# ---------------------------------------------------------------------------
+
+# marker -> (base template, install cmd, test cmd, classifier kind).
+# A ``*.ext`` marker matches any file with that suffix (C# has no fixed
+# manifest filename — the project file is named after the project).
+_NON_INFRA_STACKS: tuple[tuple[str, str, str, str, str], ...] = (
+    ("package.json", "utkrusht-node-base", "npm install", "npm test", "node"),
+    ("requirements.txt", "utkrusht-python-base",
+     "pip install --break-system-packages -r requirements.txt",
+     "python -m pytest -q --tb=short", "pytest"),
+    ("*.csproj", "utkrusht-dotnet-base", "dotnet restore",
+     "dotnet test --nologo", "dotnet"),
+    ("go.mod", "utkrusht-go-base", "go mod download", "go test ./... -count=1", "generic"),
+    ("Cargo.toml", "utkrusht-rust", "cargo fetch", "cargo test", "generic"),
+)
+
+# Substrings that mean "the suite never got off the ground" — a config or
+# dependency problem, not a by-design failing assertion.
+_HARNESS_ERRORS: tuple[str, ...] = (
+    "failed to parse source",      # e.g. .vue with no @vitejs/plugin-vue registered
+    "cannot find module",
+    "cannot find package",
+    "transform failed",
+    "no test suite found",
+    "no test files found",
+)
+
+
+# "Skipped: 5" (dotnet) or "5 skipped" (pytest/vitest). Zero must NOT match.
+_SKIPPED_RE = re.compile(r"Skipped:\s*([1-9]\d*)|\b([1-9]\d*) skipped", re.IGNORECASE)
+
+
+def _require_red_starter(exit_code: int, output: str) -> Optional[SandboxEvalResult]:
+    """Reject a starter that has nothing for the candidate to solve.
+
+    A generated task ships UNSOLVED: its own suite must fail. Two ways that
+    silently breaks, both of which look like a healthy run to an exit-code
+    check, and both of which a generator will reach for when told "your project
+    does not compile":
+
+      * every test passes  -> nothing to solve
+      * tests are skipped   -> a skipped test grades nothing, so the guarantee
+                               it encodes is never checked
+
+    Returns an override result, or None when the starter is legitimately red.
+    """
+    if exit_code == 0:
+        return SandboxEvalResult(
+            passed=False, verdict="already_green",
+            detail="the starter's own test suite passes with no failures — "
+                   "there is nothing for the candidate to solve.",
+            stdout_tail=output[-2000:])
+    match = _SKIPPED_RE.search(output)
+    if match:
+        count = match.group(1) or match.group(2)
+        return SandboxEvalResult(
+            passed=False, verdict="tests_skipped",
+            detail=f"{count} test(s) are disabled with a skip attribute — a "
+                   "skipped test grades nothing, so the behaviour it describes "
+                   "is never verified. Ship them enabled and failing.",
+            stdout_tail=output[-2000:])
+    return None
+
+
+def _detect_non_infra_stack(names: set[str]):
+    """Pick the stack from the manifest the task actually ships."""
+    for marker, template, install_cmd, test_cmd, kind in _NON_INFRA_STACKS:
+        if marker.startswith("*."):
+            suffix = marker[1:]
+            matched = any(n.endswith(suffix) for n in names)
+        else:
+            matched = any(n == marker or n.endswith(f"/{marker}") for n in names)
+        if matched:
+            return marker, template, install_cmd, test_cmd, kind
+    return None
+
+
+def _classify_dotnet(exit_code: int, output: str) -> SandboxEvalResult:
+    """Map a ``dotnet test`` run to a gate verdict.
+
+    ``dotnet test`` exits 1 BOTH when the project fails to compile and when
+    tests merely fail, so the exit code alone cannot separate "starter is
+    broken" from "starter is red by design" — the output has to be read.
+    A compile error means the candidate could never run the suite at all.
+    """
+    low = output.lower()
+    if "error cs" in low or "msb1003" in low or "msb1011" in low:
+        return SandboxEvalResult(
+            passed=False, verdict="collection_error",
+            detail="the project does not compile — `dotnet test` could not "
+                   "build the suite, so the candidate cannot run it.",
+            stdout_tail=output[-2000:])
+    if "no test is available" in low:
+        return SandboxEvalResult(
+            passed=False, verdict="no_tests",
+            detail="`dotnet test` found no tests — the task ships no runnable tests.",
+            stdout_tail=output[-2000:])
+    # "Passed!"/"Failed!" is the per-assembly summary — its presence proves the
+    # suite actually built and executed, which is all this gate asks for.
+    if "passed!" in low or "failed!" in low or exit_code in (0, 1):
+        return SandboxEvalResult(
+            passed=True, verdict="ok",
+            detail="test suite built and executed",
+            stdout_tail=output[-1000:])
+    return SandboxEvalResult(
+        passed=False, verdict="test_run_error",
+        detail=f"`dotnet test` exited with code {exit_code} — the suite did "
+               "not run cleanly.",
+        stdout_tail=output[-2000:])
+
+
+def _classify_test_run(exit_code: int, output: str) -> SandboxEvalResult:
+    """Map a non-pytest runner (vitest/jest/go/cargo) to a gate verdict.
+
+    Same contract as ``_classify_pytest``: a generated starter ships by-design
+    FAILING tests, so red is a PASS here. The gate fails only when the suite
+    could not be collected or run at all.
+    """
+    low = output.lower()
+    for needle in _HARNESS_ERRORS:
+        if needle in low:
+            return SandboxEvalResult(
+                passed=False, verdict="collection_error",
+                detail=("the test suite could not be collected — the starter is "
+                        "missing config or a dependency needed to parse its own "
+                        f"sources ({needle!r})."),
+                stdout_tail=output[-2000:])
+    # vitest prints "Tests  no tests" when a file failed to collect.
+    if "tests  no tests" in low:
+        return SandboxEvalResult(
+            passed=False, verdict="no_tests",
+            detail="the runner collected 0 tests — the task ships no runnable tests.",
+            stdout_tail=output[-2000:])
+    if exit_code in (0, 1):
+        return SandboxEvalResult(
+            passed=True, verdict="ok",
+            detail="test suite collected and executed",
+            stdout_tail=output[-1000:])
+    return SandboxEvalResult(
+        passed=False, verdict="test_run_error",
+        detail=f"the test runner exited with code {exit_code} — the suite did "
+               "not run cleanly.",
+        stdout_tail=output[-2000:])
+
+
+def run_non_infra_gate(code_files: dict) -> SandboxEvalResult:
+    """Install a pure-local task's deps and prove its own suite can run.
+
+    Returns a normal ``SandboxEvalResult``; a skip never blocks a task (an
+    unrecognised stack or an E2B outage must not fail generation).
+    """
+    if not code_files:
+        return _finish(SandboxEvalResult(
+            skipped=True, verdict="no_code",
+            detail="no code_files to evaluate — gate skipped"))
+
+    names = {str(n) for n in code_files}
+    stack = _detect_non_infra_stack(names)
+    if stack is None:
+        return _finish(SandboxEvalResult(
+            skipped=True, verdict="no_stack",
+            detail="no recognised manifest (package.json / requirements.txt / "
+                   "go.mod / Cargo.toml) — nothing to install or run"))
+    marker, template, install_cmd, test_cmd, kind = stack
+
+    from e2b import Sandbox
+
+    logger.info(f"{_GATE} {'─' * 60}")
+    logger.info(f"{_GATE} non-infra gate — manifest={marker} template={template} "
+                f"files={len(code_files)}")
+
+    t0 = time.time()
+    try:
+        sb = Sandbox.create(template=template, timeout=_SANDBOX_TIMEOUT_S)
+    except Exception as exc:  # noqa: BLE001 — infra failure must not fail the task
+        logger.warning(f"{_GATE} could not boot {template}: {exc}")
+        return _finish(SandboxEvalResult(
+            skipped=True, verdict="infra_error",
+            detail=f"sandbox boot failed: {exc}"))
+    logger.info(f"{_GATE} sandbox up ({time.time() - t0:.1f}s)")
+
+    try:
+        for path, content in code_files.items():
+            dest = f"{_TASK_DIR}/{str(path).lstrip('/')}"
+            sb.files.write(dest, content if isinstance(content, str) else str(content))
+        logger.info(f"{_GATE} wrote {len(code_files)} code file(s) to {_TASK_DIR}")
+
+        ts = time.time()
+        code, out, err = _run(sb, install_cmd, cwd=_TASK_DIR, timeout=300)
+        logger.info(f"{_GATE} install ({install_cmd!r})… "
+                    f"{'ok' if code == 0 else f'FAILED exit={code}'} "
+                    f"({time.time() - ts:.1f}s)")
+        if code != 0:
+            _log_output("install output", out + err)
+            return _finish(SandboxEvalResult(
+                passed=False, verdict="install_failed",
+                detail=f"`{install_cmd}` failed on the clean starter.",
+                stdout_tail=(out + err)[-3000:]))
+
+        ts = time.time()
+        code, out, err = _run(sb, test_cmd, cwd=_TASK_DIR, timeout=300)
+        combined = out + "\n" + err
+        logger.info(f"{_GATE} test ({test_cmd!r})… exit={code} "
+                    f"({time.time() - ts:.1f}s)")
+        _log_output("test output", combined)
+        if kind == "pytest":
+            result = _classify_pytest(code, combined)
+        elif kind == "dotnet":
+            result = _classify_dotnet(code, combined)
+        else:
+            result = _classify_test_run(code, combined)
+
+        # Applied only on the non-infra path: the legacy/run.sh gate keeps its
+        # own contract. A suite that built and ran is necessary but not
+        # sufficient — it also has to leave the candidate something to do.
+        if result.passed:
+            override = _require_red_starter(code, combined)
+            if override is not None:
+                return _finish(override)
+        return _finish(result)
+    finally:
+        try:
+            sb.kill()
+        except Exception as exc:  # noqa: BLE001 — teardown must never fail the gate
+            logger.warning(f"{_GATE} sandbox teardown failed: {exc}")
+
+
+# ---------------------------------------------------------------------------
 # Legacy build/test/compile path — kept for tasks that don't yet ship run.sh.
 # Every new build-it task (per docs/plans/2026-05-27-ai-engineering-task-
 # category.html) ships run.sh, so this path shrinks over time. It is NOT
