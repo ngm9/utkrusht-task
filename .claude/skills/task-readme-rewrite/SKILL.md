@@ -1,6 +1,6 @@
 ---
 name: task-readme-rewrite
-description: Use when a task README (repo README.md + Supabase readme_content + gist) reveals the planted defects, the fix, the rules the candidate is meant to derive, or enumerates the instances they are meant to discover (the third leak — name the class, never the members), or when two sibling tasks share the same objectives — to reframe it open-ended in the style that matches the task's shape (team observations for repair tasks; plain goal statements plus probe-style verification for design/build tasks), produce a before/after review doc in the Utkrusht house style, and, once approved, push the rewrite to all five targets (repo README, Supabase readme_content, gist, task_blob.question, and task_blob.short_overview). Also use when a task's in-product description (question) or Problem Statement card (short_overview) states the requirements or mechanisms rather than the outcome, or in scan mode to find which tasks across dev/prod have README leaks and need the same treatment.
+description: Use when a task README (repo README.md + Supabase readme_content + gist) reveals the planted defects, the fix, the rules the candidate is meant to derive, or enumerates the instances they are meant to discover (the third leak — name the class, never the members), or when two sibling tasks share the same objectives — to reframe it open-ended in the style that matches the task's shape (team observations for repair tasks; plain goal statements plus probe-style verification for design/build tasks), produce a before/after review doc in the Utkrusht house style, and, once approved, push the rewrite to all five targets (repo README, Supabase readme_content, gist, task_blob.question, and task_blob.short_overview). Also use when a task's in-product description (question) or Problem Statement card (short_overview) states the requirements or mechanisms rather than the outcome, or when a candidate-facing surface is already open-ended and non-leaking but is not in the shape/framing this skill prescribes (e.g. per-line Objectives instead of one shared class-level vocabulary, an Overview that isn't the four-sentence scenario structure, a short_overview whose third bullet doesn't state evaluation criteria) and should be reframed to match the house style anyway, or in scan mode to find which tasks across dev/prod have README leaks and need the same treatment.
 ---
 
 # Task README Rewrite Skill
@@ -14,6 +14,20 @@ the candidate.
 **What "open-ended" means depends on the task's shape** — see *Task shape decides the
 style* below. Get that call right first; the section rules branch on it, and applying the
 wrong branch makes a README longer and *more* revealing, not less.
+
+**Conformance, not just leaks (reviewer directive 2026-09-18).** Leaks are the floor, not
+the whole job. Whenever you read a task's candidate-facing surfaces — README (Overview,
+Objectives, Tips, Verify), `question`, `short_overview`, `title`, `hints`, `outcomes` —
+check them against the exact shape and framing this skill prescribes for the task's shape,
+**not only** for whether they leak. A section can be perfectly open-ended and non-leaking
+and still be in the wrong shape: Objectives phrased per-line instead of on one shared
+class-level vocabulary, an Overview that isn't the four-sentence scenario structure, a
+`short_overview` whose third bullet restates bullet 2 instead of stating evaluation
+criteria, surfaces that don't reuse the same class words. When that happens, **reframe it
+to fully match the house style anyway**, and if a required framing element is missing,
+draft it. This holds even when `readme_scan.py` reports `clean` — the scanner catches
+leaks, not shape drift. Reference the approved READMEs (`35bd49ee` for ADVANCED) as the
+target shape. As always: draft → show the before/after → push only on approval.
 
 Two modes:
 
@@ -717,6 +731,13 @@ you picked and why before drafting. Every section rule below branches on this, s
 call produces a confident rewrite in the wrong style. If the task genuinely straddles both
 (a brownfield rework with planted defects *and* a standard to reach), say so and ask —
 do not average the two styles together.
+
+Then do the **conformance pass** (see *Conformance, not just leaks* up top): for each
+surface, ask not only "does it leak?" but "is it in the shape this skill prescribes for the
+called shape?" A surface that is open-ended and `clean` on the scanner can still be in the
+wrong shape — reframe it to match the reference (`35bd49ee` for ADVANCED) anyway, and draft
+any required framing element that is missing. List which surfaces you are changing for
+conformance vs. for a leak, so the reviewer sees both.
 
 ### 2. Draft the rewrite — README, `question` **and** `short_overview`
 
