@@ -203,11 +203,14 @@ CONTENT_QUALITY_RESPONSE_SCHEMA = {
                     "pre_requisites": {
                         "type": ["array", "null"],
                         "description": (
-                            "Same rules as outcomes: task-anchored, "
-                            "candidate-readable sentences, no glyphs/markers. "
-                            "No count cap."
+                            "Exactly 2–3 concise bullets. Each bullet covers "
+                            "ONE item (a runtime/tool, env setup step, or key "
+                            "knowledge area). Each bullet ≤ 120 chars. "
+                            "No glyphs, no sub-lists, no padding."
                         ),
                         "items": {"type": "string"},
+                        "minItems": 2,
+                        "maxItems": 3,
                     },
                     "question": {
                         "type": ["string", "null"],

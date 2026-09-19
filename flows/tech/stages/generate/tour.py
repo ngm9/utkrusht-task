@@ -48,8 +48,8 @@ from infra.logger_config import logger
 # names in _clients.py: `openai_via_portkey` IS the OpenAI/GPT client;
 # `openai_client` is Anthropic-via-Portkey (only used here if someone
 # overrides TOUR_MODEL to a claude-* id).
-TOUR_MODEL = os.getenv("TOUR_MODEL", "gpt-5.5")
-TOUR_JUDGE_MODEL = os.getenv("TOUR_JUDGE_MODEL", "gpt-5.5")
+TOUR_MODEL = os.getenv("TOUR_MODEL", "gpt-5.4-nano")
+TOUR_JUDGE_MODEL = os.getenv("TOUR_JUDGE_MODEL", "gpt-5.4-nano")
 MAX_TOUR_EVAL_RETRIES = int(os.getenv("MAX_TOUR_EVAL_RETRIES", "3"))
 _MAX_TOKENS = 4000
 

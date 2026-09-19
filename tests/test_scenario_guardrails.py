@@ -8,6 +8,7 @@ now route to a dedicated, single-concern agent block via
 call, so they stay in agreement.
 """
 from flows.tech.stages.scenarios.prompts import (
+    AGENT_ADVANCED_GUARDRAIL,
     AGENT_INTERMEDIATE_GUARDRAIL,
     PROFICIENCY_GUARDRAILS,
     get_proficiency_guardrails,
@@ -51,5 +52,15 @@ def test_agent_basic_is_unchanged():
 
 
 def test_agent_advanced_still_uses_agent_advanced_block():
-    # ADVANCED already is agent-specific; agent hint keeps that block.
-    assert get_proficiency_guardrails("ADVANCED", competency_hint=AGENT_HINT) == PROFICIENCY_GUARDRAILS["ADVANCED"]
+    # Agent competencies at ADVANCED get the dedicated agent block; the
+    # generic ADVANCED entry is for non-agent stacks.
+    block = get_proficiency_guardrails("ADVANCED", competency_hint=AGENT_HINT)
+    assert block == AGENT_ADVANCED_GUARDRAIL
+    assert block != PROFICIENCY_GUARDRAILS["ADVANCED"]
+
+
+def test_agent_guardrails_forbid_mechanism_naming():
+    # Open-ended framing: agent "Your Task" bullets must state outcomes, not
+    # the mechanism — both agent blocks carry the rule.
+    for block in (AGENT_INTERMEDIATE_GUARDRAIL, AGENT_ADVANCED_GUARDRAIL):
+        assert "never the" in block and "mechanism" in block

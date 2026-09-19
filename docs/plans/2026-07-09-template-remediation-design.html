@@ -1,0 +1,240 @@
+<title>Template Remediation — Current vs Proposed</title>
+<style>
+:root{
+  --bg:#F6F7F6; --surface:#FFFFFF; --ink:#1B2422; --muted:#5C6864; --line:#DCE3DF;
+  --current:#0F8F7D; --current-ink:#0B6E60; --current-soft:#E3F3EF;
+  --proposed:#B8641F; --proposed-ink:#8F4E17; --proposed-soft:#F7EADA;
+  --risk:#B8402F; --risk-soft:#F8E7E3;
+  --code-bg:#EEF2F0; --code-ink:#20302B;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#14181A; --surface:#1B211F; --ink:#E7ECE9; --muted:#93A19C; --line:#2B3532;
+  --current:#3FC2AC; --current-ink:#79DAC7; --current-soft:#132824;
+  --proposed:#E9A550; --proposed-ink:#F3C083; --proposed-soft:#2B2013;
+  --risk:#F0897A; --risk-soft:#2C1815;
+  --code-bg:#101917; --code-ink:#BFD1CA;
+}}
+:root[data-theme="dark"]{
+  --bg:#14181A; --surface:#1B211F; --ink:#E7ECE9; --muted:#93A19C; --line:#2B3532;
+  --current:#3FC2AC; --current-ink:#79DAC7; --current-soft:#132824;
+  --proposed:#E9A550; --proposed-ink:#F3C083; --proposed-soft:#2B2013;
+  --risk:#F0897A; --risk-soft:#2C1815;
+  --code-bg:#101917; --code-ink:#BFD1CA;
+}
+:root[data-theme="light"]{
+  --bg:#F6F7F6; --surface:#FFFFFF; --ink:#1B2422; --muted:#5C6864; --line:#DCE3DF;
+  --current:#0F8F7D; --current-ink:#0B6E60; --current-soft:#E3F3EF;
+  --proposed:#B8641F; --proposed-ink:#8F4E17; --proposed-soft:#F7EADA;
+  --risk:#B8402F; --risk-soft:#F8E7E3;
+  --code-bg:#EEF2F0; --code-ink:#20302B;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:16px/1.65 ui-sans-serif,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;}
+main{max-width:78ch;margin:0 auto;padding:52px 24px 100px}
+h1,h2,h3{line-height:1.22;text-wrap:balance;font-weight:750;letter-spacing:-.02em;font-stretch:condensed}
+h1{font-size:2.05rem;margin:.3em 0 .25em}
+h2{font-size:1.3rem;margin:2.6em 0 .7em;padding-top:1.2em;border-top:1px solid var(--line)}
+h3{font-size:1rem;margin:1.6em 0 .5em;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+p{margin:.8em 0;max-width:68ch}
+.eyebrow{font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--muted);font-weight:650}
+.lede{font-size:1.08rem;color:var(--muted);max-width:64ch}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.85em;
+  background:var(--code-bg);color:var(--code-ink);padding:.1em .35em;border-radius:4px}
+pre{background:var(--code-bg);color:var(--code-ink);border:1px solid var(--line);
+  border-radius:8px;padding:14px 16px;overflow-x:auto;font-size:.8rem;line-height:1.6;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+pre code{background:none;padding:0;font-size:1em}
+ul,ol{padding-left:1.25em}li{margin:.4em 0}
+.tag{display:inline-flex;align-items:center;gap:.4em;font-size:.7rem;letter-spacing:.08em;
+  text-transform:uppercase;font-weight:700;padding:.28em .7em;border-radius:99px}
+.tag.now{background:var(--current-soft);color:var(--current-ink)}
+.tag.new{background:var(--proposed-soft);color:var(--proposed-ink)}
+.tag.risk{background:var(--risk-soft);color:var(--risk)}
+.legend{display:flex;gap:20px;flex-wrap:wrap;margin:1.4em 0;font-size:.85rem;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:.5em}
+.dot{width:10px;height:10px;border-radius:3px;flex:none}
+.dot.now{background:var(--current)}
+.dot.new{background:var(--proposed)}
+.dot.risk{background:var(--risk)}
+
+/* flow diagram */
+.flow{display:flex;flex-direction:column;gap:0;margin:1.6em 0}
+.fnode{background:var(--surface);border:1.5px solid var(--line);border-radius:10px;
+  padding:13px 16px;font-size:.92rem;position:relative}
+.fnode.now{border-color:var(--current)}
+.fnode.new{border-color:var(--proposed);border-style:dashed}
+.fnode .flabel{font-size:.68rem;letter-spacing:.08em;text-transform:uppercase;font-weight:700;
+  display:block;margin-bottom:.3em}
+.fnode.now .flabel{color:var(--current-ink)}
+.fnode.new .flabel{color:var(--proposed-ink)}
+.fdetail{display:flex;gap:.5em;margin-top:.55em;padding-top:.55em;border-top:1px dashed var(--line);
+  font-size:.83rem;color:var(--muted);line-height:1.5}
+.fdetail .flag{flex:none;font-weight:700;text-transform:uppercase;font-size:.68rem;
+  letter-spacing:.06em;color:var(--muted);padding-top:.15em}
+.farrow{align-self:center;color:var(--muted);font-size:.78rem;padding:3px 0 3px 20px;line-height:1.3}
+.fbranch{display:flex;gap:14px;margin:0 0 0 20px}
+.fbranch>.fcol{flex:1;display:flex;flex-direction:column;gap:8px}
+.fbranch .fhead{font-size:.7rem;letter-spacing:.07em;text-transform:uppercase;font-weight:700;
+  color:var(--muted);margin-bottom:2px}
+@media(max-width:600px){.fbranch{flex-direction:column;margin-left:0}}
+
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.88rem;margin:1em 0}
+th{text-align:left;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);
+  border-bottom:2px solid var(--line);padding:7px 14px 7px 0}
+td{border-bottom:1px solid var(--line);padding:10px 14px 10px 0;vertical-align:top}
+td.now{color:var(--current-ink)}
+td.new{color:var(--proposed-ink)}
+
+.note{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--proposed);
+  border-radius:0 8px 8px 0;padding:14px 16px;margin:1.3em 0;font-size:.93rem}
+.note.risk{border-left-color:var(--risk)}
+.note strong{color:var(--proposed-ink)}
+.note.risk strong{color:var(--risk)}
+
+.gate{background:var(--proposed-soft);border:1.5px dashed var(--proposed);border-radius:10px;
+  padding:16px 18px;margin:1.4em 0}
+.gate h3{margin-top:0;color:var(--proposed-ink);border:none;padding:0}
+
+footer{margin-top:4em;padding-top:1.2em;border-top:1px solid var(--line);font-size:.82rem;color:var(--muted)}
+:focus-visible{outline:2px solid var(--proposed);outline-offset:2px}
+</style>
+<main>
+<p class="eyebrow">Utkrusht · Task Pipeline · Template Resolution</p>
+<h1>When a competency has no template</h1>
+<p class="lede">What the pipeline does today when it can't find infrastructure for a task (like S3), and what we're proposing to add so it can extend or build one <em>as part of the pipeline run</em> — not as a one-off manual fix.</p>
+
+<div class="legend">
+  <span><span class="dot now"></span> exists today</span>
+  <span><span class="dot new"></span> proposed addition</span>
+  <span><span class="dot risk"></span> needs a decision</span>
+</div>
+
+<h2>What happens today</h2>
+<p>Every task needs a real sandbox to run in — a template. When the pipeline generates a task for a competency, it asks an LLM classifier: "does an existing template support this?" For S3, the answer was no, and the pipeline stopped cold.</p>
+
+<div class="flow">
+  <div class="fnode now">
+    <span class="flabel">1 · classify</span>Pipeline asks: does any built template support this competency?
+    <div class="fdetail"><span class="flag">after</span>One quick LLM call reads what every existing template already supports and answers yes/no. The answer gets saved against this exact competency + level, so the next time anyone asks for the same combo, the pipeline doesn't have to ask again — it just replays this same answer.</div>
+  </div>
+  <div class="farrow">↓</div>
+  <div class="fnode now">
+    <span class="flabel">2 · no match</span>Classifier replies: no template fits. Closest is <code>utkrusht-infra</code>, but it's missing <code>s3</code> / <code>aws-s3</code>.
+    <div class="fdetail"><span class="flag">after</span>That "closest template" name is only a <em>guess in a sentence</em> — nothing in the pipeline reads it or acts on it. It's there for a human to notice, not for the pipeline to use.</div>
+  </div>
+  <div class="farrow">↓</div>
+  <div class="fnode now">
+    <span class="flabel">3 · hard stop</span>Pipeline aborts. No GitHub repo, no task row, nothing created. Just a log line.
+    <div class="fdetail"><span class="flag">after</span>Because the saved answer from step 1 says "no" for this combo now, every future attempt to generate an S3 task hits the exact same wall immediately — until a person manually fixes the template and clears that saved answer.</div>
+  </div>
+</div>
+
+<div class="note"><strong>This is on purpose, not a bug.</strong> A past task (RabbitMQ) once got matched to a template that <em>looked</em> right but couldn't actually run it — candidates got a task with nothing working underneath. The hard stop exists specifically to prevent that from happening again. Any fix we add has to keep that promise: never claim a template supports something it doesn't actually run.</p></div>
+
+<h3>Why S3 specifically failed</h3>
+<p><code>utkrusht-infra</code> already runs Postgres, MySQL, MongoDB, Redis, and Elasticsearch inside its sandbox. It does <strong>not</strong> run anything that can act like S3 — no MinIO, no LocalStack. So this isn't a missing checkbox somewhere; the actual capability doesn't exist inside the sandbox yet.</p>
+
+<h3>Does the pipeline already build templates in real time? Yes — for one narrow case</h3>
+<p>There already <em>is</em> a mechanism that builds a template mid-run, without any manual step. It just didn't apply here. The classifier's answer actually carries two different, separate pieces of information, and only one of them the pipeline acts on automatically:</p>
+
+<div class="flow">
+  <div class="fnode now">
+    <span class="flabel">confident match</span>Classifier is sure a specific template fits, and a human has already written that template's build instructions on disk — it just hasn't been built yet.
+    <div class="fdetail"><span class="flag">after</span>The pipeline builds it right then, in the same run (~10 minutes), registers it, and continues — the task that triggered this still finishes in one go.</div>
+  </div>
+  <div class="fnode now">
+    <span class="flabel">no match (S3's case)</span>Classifier isn't sure anything fits, and only offers a <em>guessed name</em> for what might be closest.
+    <div class="fdetail"><span class="flag">after</span>Nothing. The pipeline doesn't check whether that guessed name has build instructions written anywhere, because it never looks at the guess at all — that's the exact gap the proposal below closes.</div>
+  </div>
+</div>
+
+<h2>What we're proposing to add</h2>
+<p>Instead of stopping at "no match," the pipeline gets one more step: a chance to <strong>fix the gap itself</strong>, before giving up — either by teaching an existing template a new trick, or by standing up a new one. Either way, nothing is trusted until it's actually tested.</p>
+
+<div class="flow">
+  <div class="fnode now">
+    <span class="flabel">1 · classify</span>Same as today — ask if any built template supports this competency.
+    <div class="fdetail"><span class="flag">after</span>Unchanged from today: cheap, fast, and the result gets saved per combo.</div>
+  </div>
+  <div class="farrow">↓</div>
+  <div class="fnode now">
+    <span class="flabel">2 · no match</span>Same as today — classifier says no, but names the closest template and what's missing.
+    <div class="fdetail"><span class="flag">after</span>The difference starts here: this time, the "closest template" guess is actually picked up and used, instead of sitting unread in a log line.</div>
+  </div>
+  <div class="farrow">↓ instead of stopping here →</div>
+  <div class="fnode new">
+    <span class="flabel">3 · new — decide how to fix it</span>Is the missing piece a natural fit for the closest template (S3 → add it to the AWS/cloud template), or different enough that it needs its own new template?
+    <div class="fdetail"><span class="flag">after</span>Produces a concrete, written plan — which template to touch (or create) and what exactly needs to be added to it. Nothing has been built yet; this is still just a proposal on paper.</div>
+  </div>
+  <div class="fbranch">
+    <div class="fcol">
+      <div class="fhead">extend existing</div>
+      <div class="fnode new">Write the install steps for the missing service (e.g. add MinIO) into the existing template's build script.</div>
+    </div>
+    <div class="fcol">
+      <div class="fhead">build new</div>
+      <div class="fnode new">Write a whole new template from scratch, same pattern as existing ones.</div>
+    </div>
+  </div>
+  <div class="farrow">↓</div>
+  <div class="fnode new">
+    <span class="flabel">4 · build it for real</span>Actually provision the sandbox image (~10 minutes) — this machinery already exists (it's the same "confident match" builder from above), we're just triggering it from a new place.
+    <div class="fdetail"><span class="flag">after</span>A lock is held for the whole build so two pipeline runs can't try to build the same thing at once. If it crashes partway, it's cleaned up as a failure, not left in a stuck half-built state.</div>
+  </div>
+  <div class="farrow">↓</div>
+  <div class="fnode new">
+    <span class="flabel">5 · prove it works</span>Don't just check the install commands succeeded — actually start the service and confirm it responds (e.g. boot MinIO, then create + list a bucket for real).
+    <div class="fdetail"><span class="flag">after</span>This is the step that decides everything below. Nothing is marked "supported" — and nothing gets to skip the hard stop next time — until this actually passes.</div>
+  </div>
+  <div class="fbranch">
+    <div class="fcol">
+      <div class="fhead">verified ✓</div>
+      <div class="fnode now">Template goes live. The original task (S3) now continues through the normal pipeline.
+        <div class="fdetail"><span class="flag">after</span>The saved "no" answer from step 2 gets thrown out, so the very next competency of this kind — S3 again, or anything else that now fits — gets a fresh, correct "yes" instead of the old cached "no."</div>
+      </div>
+    </div>
+    <div class="fcol">
+      <div class="fhead">failed ✗</div>
+      <div class="fnode now">Falls back to today's behavior — hard stop, nothing created, logged for a human to look at.
+        <div class="fdetail"><span class="flag">after</span>Same safety net as today: no broken template gets registered, no task gets built on top of something that doesn't really work.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<h2>The one decision that matters</h2>
+<p>Steps 3–4 mean something is <strong>writing infrastructure install scripts and actually running them</strong> against a live environment, unattended, at real cost (~10 billed minutes per attempt). That's a bigger deal than everything else we've changed in this pipeline so far — those were all just wording in prompts. This is code that provisions real infrastructure.</p>
+
+<div class="gate">
+<h3>Two ways to gate it</h3>
+<table>
+<tr><th>Option</th><th>How it works</th><th>Trade-off</th></tr>
+<tr>
+  <td><span class="tag new">A · Autonomous</span></td>
+  <td>Pipeline writes the install steps, builds, verifies, and activates the template in one run — no human involved.</td>
+  <td>Fastest path to "S3 just works." Unreviewed provisioning code runs unattended.</td>
+</tr>
+<tr>
+  <td><span class="tag risk">B · Human-gated</span></td>
+  <td>Pipeline writes the install steps and stops — a person reviews and approves. Only then does the real build run.</td>
+  <td>One manual step per <em>new capability</em> (not per task — once S3 exists, every future S3 task just works). Safer.</td>
+</tr>
+</table>
+</div>
+
+<div class="note risk"><strong>Recommendation:</strong> Option B. The pipeline's own design already treats "no template found" as something meant for a human to act on, not something to route around automatically. Writing the fix automatically but requiring a human to press "build" keeps that safety net while still turning a dead-end into a queued, actionable fix instead of a silent log line.</div>
+
+<h2>Side by side</h2>
+<div class="tablewrap"><table>
+<tr><th>Today</th><th>Proposed</th></tr>
+<tr><td class="now">No match → hard stop, nothing created</td><td class="new">No match → attempt a real fix, verify it, only then continue</td></tr>
+<tr><td class="now">Fixing a gap = a human manually edits a template file and rebuilds by hand</td><td class="new">Fixing a gap = pipeline drafts the fix; a human approves the real build</td></tr>
+<tr><td class="now">S3 fails again next time someone asks for it</td><td class="new">S3 (or any future missing capability) gets fixed once, works forever after</td></tr>
+<tr><td class="now">"Missing capability" only exists as a log line</td><td class="new">"Missing capability" becomes a queued, actionable item</td></tr>
+</table></div>
+
+<footer>Source of record: pipeline research into <code>resolve_plan()</code>, <code>require_infra_template()</code>, and <code>build_if_missing()</code> — utkrusht-task repo, 2026-07-09.</footer>
+</main>

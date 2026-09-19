@@ -23,6 +23,17 @@ DEFAULT_PROBE_PORTS = (
     5000,           # Flask preview (the python-sql task's app port)
     7681,           # ttyd browser terminal (template.py)
     8443,           # code-server browser IDE (template.py)
+    4000,           # Firebase Emulator UI (flutter/RN tasks)
+    8001,           # second service (python-ai multi-service tasks)
+    15672,          # RabbitMQ management UI
+    6333,           # Qdrant vector DB HTTP API
+    4566,           # LocalStack AWS services
+    8081,           # secondary app port (e.g. crm-mock in java-base tasks)
+    8082,           # Adminer DB UI
+    5001, 5002,     # multi-service node tasks
+    3001, 3002, 3003,  # multi-service node tasks
+    7001, 7002,     # multi-service node tasks
+    1433,           # MSSQL (dotnet tasks)
 )
 # Generous default for run.sh — first-run image pulls (e.g. pgvector,
 # qdrant) can take a few minutes before compose-up even begins. Override
@@ -251,7 +262,15 @@ def _redact(text: str) -> str:
 
 
 def _port_listening(sb: Sandbox, port: int) -> bool:
-    cmd = f"ss -ltn 'sport = :{port}' 2>/dev/null | grep -q LISTEN"
+    # Use nc -z (TCP connection probe) rather than `ss -ltn` so that docker
+    # NAT-mapped ports are also detected.  When Docker's userland-proxy is
+    # disabled (the E2B template default), docker-compose `ports:` mappings
+    # are implemented via iptables DNAT rules only — no host-level socket is
+    # created, so `ss -ltn` returns nothing even though the port is fully
+    # reachable.  `nc -z` makes an actual TCP connection and therefore works
+    # for both direct host sockets (template services: ttyd/code-server/
+    # Adminer) and docker NAT-mapped ports (task services: 5001, 5002, …).
+    cmd = f"nc -z -w 2 localhost {port} 2>/dev/null"
     try:
         result = sb.commands.run(cmd, timeout=10)
         return result.exit_code == 0

@@ -130,10 +130,18 @@ def _summarize_response(resp: Any) -> dict:
 
     usage = getattr(resp, "usage", None)
     if usage is not None:
+        # Cached (prompt-cache HIT) tokens are a SUBSET of input_tokens. OpenAI
+        # nests them under ``prompt_tokens_details.cached_tokens``; Anthropic
+        # (via Portkey) exposes ``cache_read_input_tokens`` at the top level.
+        details = getattr(usage, "prompt_tokens_details", None)
+        cached = getattr(details, "cached_tokens", None) if details is not None else None
+        if not cached:
+            cached = getattr(usage, "cache_read_input_tokens", None)
         out["usage"] = {
             "input_tokens": getattr(usage, "input_tokens", None)
             or getattr(usage, "prompt_tokens", None),
             "output_tokens": getattr(usage, "output_tokens", None)
             or getattr(usage, "completion_tokens", None),
+            "cached_tokens": int(cached) if cached else 0,
         }
     return out

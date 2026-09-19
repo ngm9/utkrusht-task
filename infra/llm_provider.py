@@ -1,25 +1,31 @@
-"""LLM provider switch — Anthropic (Claude via Portkey) vs GLM (via OpenRouter).
+"""LLM provider switch — Anthropic (Claude via Portkey) vs GLM (via OpenRouter)
+vs OpenAI (via Portkey).
 
 The pipeline historically routed every "thinking" call to Claude through the
 Portkey gateway. This module is the ONE place that decides whether those
-Claude-role calls go to **Anthropic** or to **GLM** (Z.ai) via **OpenRouter**,
-selected at runtime by the ``LLM_PROVIDER`` env var (default ``anthropic``).
+Claude-role calls go to **Anthropic**, to **GLM** (Z.ai) via **OpenRouter**, or
+to **OpenAI**, selected at runtime by the ``LLM_PROVIDER`` env var (default
+``anthropic``).
 
 ``run_pipeline.py --llm-provider`` (which the trace_ui launcher passes through)
-sets ``LLM_PROVIDER`` so every stage subprocess inherits it. The deliberately
-OpenAI steps — answer-code (``gpt-5.x``) and the eval judge (``gpt-5.4-nano``) —
-are NOT routed here; they always use OpenAI.
+sets ``LLM_PROVIDER`` so every stage subprocess inherits it. The separately
+OpenAI-only steps — answer-code (``gpt-5.x``) and the eval judge
+(``gpt-5.4-nano``) — are NOT routed here; they always use OpenAI regardless of
+this switch.
 
 OpenRouter is OpenAI-API-compatible, so a GLM client is a drop-in
 ``openai.OpenAI`` pointed at ``https://openrouter.ai/api/v1`` — every existing
-``chat.completions.create(...)`` call site works unchanged. Both clients are
-wrapped by :func:`infra.tracing.client.trace_client`, so GLM calls are traced
-exactly like the Anthropic ones (the trace card's model field shows which ran).
+``chat.completions.create(...)`` call site works unchanged. All clients are
+wrapped by :func:`infra.tracing.client.trace_client`, so GLM/OpenAI calls are
+traced exactly like the Anthropic ones (the trace card's model field shows
+which ran).
 
 Env:
-    LLM_PROVIDER         "anthropic" (default) | "glm"
+    LLM_PROVIDER         "anthropic" (default) | "glm" | "openai"
     OPENROUTER_API_KEY   required when LLM_PROVIDER=glm
     OPENROUTER_GLM_MODEL GLM slug override (default "z-ai/glm-5.2")
+    OPENAI_API_KEY        required when LLM_PROVIDER=openai
+    OPENAI_TASKGEN_MODEL  GPT slug override (default "gpt-5.5")
 """
 from __future__ import annotations
 
@@ -33,13 +39,17 @@ from infra.tracing.client import trace_client
 
 ANTHROPIC = "anthropic"
 GLM = "glm"
+OPENAI = "openai"
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 # Overridable so a new GLM release is an env change, not a code change.
 DEFAULT_GLM_MODEL = "z-ai/glm-5.2"
+# Overridable so a new GPT release is an env change, not a code change.
+DEFAULT_OPENAI_TASKGEN_MODEL = "gpt-5.5"
 
 # Claude-role -> concrete Anthropic model id. The GLM side collapses every role
-# onto the one flagship GLM model (one strong model, no per-role tiers).
+# onto the one flagship GLM model (one strong model, no per-role tiers). The
+# OpenAI side does the same — one flagship GPT model for every role.
 _ANTHROPIC_MODELS = {
     "primary": "claude-opus-4-8",    # main task-generation call
     "repair": "claude-sonnet-4-6",   # cheaper retry/repair model
@@ -64,14 +74,24 @@ _LLM_TIMEOUT = httpx.Timeout(
 
 def active_provider() -> str:
     """The selected provider: ``"glm"`` when ``LLM_PROVIDER`` is glm/openrouter/
-    z-ai, else ``"anthropic"`` (the default)."""
+    z-ai, ``"openai"`` when it's openai/gpt, else ``"anthropic"`` (the default)."""
     p = (os.getenv("LLM_PROVIDER") or ANTHROPIC).strip().lower()
-    return GLM if p in (GLM, "openrouter", "z-ai", "zai") else ANTHROPIC
+    if p in (GLM, "openrouter", "z-ai", "zai"):
+        return GLM
+    if p in (OPENAI, "gpt"):
+        return OPENAI
+    return ANTHROPIC
 
 
 def glm_model() -> str:
     """The GLM model slug sent to OpenRouter (``OPENROUTER_GLM_MODEL`` override)."""
     return (os.getenv("OPENROUTER_GLM_MODEL") or "").strip() or DEFAULT_GLM_MODEL
+
+
+def openai_taskgen_model() -> str:
+    """The GPT model id used for Claude-role calls under the openai provider
+    (``OPENAI_TASKGEN_MODEL`` override)."""
+    return (os.getenv("OPENAI_TASKGEN_MODEL") or "").strip() or DEFAULT_OPENAI_TASKGEN_MODEL
 
 
 def resolve_model(role: str, *, provider: str | None = None) -> str:
@@ -84,6 +104,8 @@ def resolve_model(role: str, *, provider: str | None = None) -> str:
     provider = provider or active_provider()
     if provider == GLM:
         return glm_model()
+    if provider == OPENAI:
+        return openai_taskgen_model()
     return _ANTHROPIC_MODELS.get(role, _ANTHROPIC_MODELS["primary"])
 
 
@@ -91,11 +113,14 @@ def resolve_dspy_model(role: str, *, provider: str | None = None) -> str:
     """litellm-format model string for a DSPy Claude role (prefix-aware).
 
     ``configure_dspy`` routes any ``openrouter/...`` model straight to OpenRouter,
-    so GLM is returned with that prefix.
+    so GLM is returned with that prefix. Plain (unprefixed) model ids route
+    through Portkey, which is what a bare GPT model id needs.
     """
     provider = provider or active_provider()
     if provider == GLM:
         return f"openrouter/{glm_model()}"
+    if provider == OPENAI:
+        return openai_taskgen_model()
     return _ANTHROPIC_DSPY.get(role, _ANTHROPIC_DSPY["prompt_compile"])
 
 
@@ -129,15 +154,36 @@ def _glm_client() -> openai.OpenAI:
     )
 
 
+def _openai_client() -> openai.OpenAI:
+    """Portkey gateway → OpenAI, for Claude-role calls under the openai provider."""
+    return trace_client(
+        openai.OpenAI(
+            api_key=os.getenv("OPENAI_API_KEY"),
+            base_url=PORTKEY_GATEWAY_URL,
+            default_headers=createHeaders(
+                provider="openai",
+                api_key=os.environ.get("PORTKEY_API_KEY"),
+            ),
+            timeout=_LLM_TIMEOUT,
+        ),
+        provider="openai",
+    )
+
+
 def make_llm_client(*, provider: str | None = None) -> openai.OpenAI:
     """A traced OpenAI-SDK client for the active provider's Claude-role calls.
 
-    Returns the Portkey→Anthropic client by default, or a direct OpenRouter
-    client when GLM is selected. Call sites keep using
-    ``client.chat.completions.create(...)`` unchanged.
+    Returns the Portkey→Anthropic client by default, a direct OpenRouter
+    client when GLM is selected, or a Portkey→OpenAI client when OpenAI is
+    selected. Call sites keep using ``client.chat.completions.create(...)``
+    unchanged.
     """
     provider = provider or active_provider()
-    return _glm_client() if provider == GLM else _anthropic_client()
+    if provider == GLM:
+        return _glm_client()
+    if provider == OPENAI:
+        return _openai_client()
+    return _anthropic_client()
 
 
 def provider_request_kwargs(*, provider: str | None = None) -> dict:

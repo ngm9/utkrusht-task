@@ -56,8 +56,10 @@ def _iter_filesystem_prompts():
     """
     candidates = []
     for level in ("Basic", "Intermediate", "Beginner", "Advanced", "Expert"):
-        candidates.append(_PROMPT_ROOT / level)
+        # Agent-generated first (lower priority); curated nested second (higher priority).
+        # _build_prompt_registry loads this before flat-curated so flat-curated wins overall.
         candidates.append(_AGENT_PROMPTS_ROOT / level)
+        candidates.append(_PROMPT_ROOT / level)
     for level_dir in candidates:
         if not level_dir.exists():
             continue
@@ -97,18 +99,20 @@ def _build_prompt_registry() -> tuple[dict, dict]:
             for key in module.PROMPT_REGISTRY:
                 shape_registry[key] = shape
 
-    # 1) Flat-style modules under <Level>/<file>.py via the existing package walk.
-    for pkg in [_basic_pkg, _inter_pkg, _beginner_pkg]:
-        for _, module_name, _ in pkgutil.iter_modules(pkg.__path__):
-            module = importlib.import_module(f"{pkg.__name__}.{module_name}")
-            _absorb(module)
-    # 2) Per-slug nested modules (curated + agent_generated_prompts) via filesystem walk.
+    # 1) Per-slug nested modules via filesystem walk: agent-generated first (lowest priority),
+    #    then curated nested (medium priority). See _iter_filesystem_prompts for order.
     for path in _iter_filesystem_prompts():
         try:
             module = _load_module_from_path(f"_pg_{path.parent.name}", path)
         except Exception:
             continue
         if module is not None:
+            _absorb(module)
+    # 2) Flat-style curated modules under <Level>/<file>.py — loaded LAST so hand-written
+    #    curated prompts always win over agent-generated ones.
+    for pkg in [_basic_pkg, _inter_pkg, _beginner_pkg]:
+        for _, module_name, _ in pkgutil.iter_modules(pkg.__path__):
+            module = importlib.import_module(f"{pkg.__name__}.{module_name}")
             _absorb(module)
     return registry, shape_registry
 
@@ -317,6 +321,50 @@ def has_shared_infra_files(code_data: Dict) -> bool:
             return True
 
     return False
+
+
+def _code_files_of(code_data: Dict) -> Dict:
+    """Normalise to the flat ``path -> contents`` map (handles the nested shape)."""
+    nested = code_data.get("files") if isinstance(code_data, dict) else None
+    return nested if isinstance(nested, dict) else (code_data if isinstance(code_data, dict) else {})
+
+
+# Filenames that, like docker-compose, DECLARE a backing service the task needs
+# booted. A repo can need the E2B template's shared services (the python-ai base
+# image already ships postgres + redis) WITHOUT shipping a docker-compose — so
+# docker files alone under-detect infra. These are the other unambiguous
+# "infra plumbing" markers the shape classifier itself names (init SQL, the
+# service kill/boot scripts).
+_INFRA_PLUMBING_BASENAMES = {
+    "init_database.sql", "init.sql", "schema.sql", "seed.sql",
+    "kill.sh",
+}
+
+
+def needs_shared_infra(code_data: Dict) -> bool:
+    """Whether the generated task needs a shared backing service to run/grade.
+
+    Broader than :func:`has_shared_infra_files` (docker-only): a task that talks
+    to the template's postgres/redis may ship no docker-compose yet still need
+    those services (e.g. an ``init_database.sql`` it seeds and queries). We treat
+    any declared infra-plumbing file as "needs shared infra".
+
+    NOTE (known gap): a task that reaches a template service purely in code —
+    a psycopg/redis client against a hostname, no SQL/compose shipped — is not
+    detected here and would read as non-infra. The reliable signal for that is
+    empirical: whether the task's suite runs offline (the E2B gate already
+    observes this). Sourcing the flag from the gate's offline/online result is
+    the intended follow-up; this file-level check is the conservative interim
+    that fixes the docker-only under-detection without new false positives.
+    """
+    if has_shared_infra_files(code_data):
+        return True
+    for fname in _code_files_of(code_data):
+        basename = fname.rsplit("/", 1)[-1].lower()
+        if basename in _INFRA_PLUMBING_BASENAMES:
+            return True
+    return False
+
 
 def format_pre_requisites(pre_requisites):
     """
@@ -630,6 +678,19 @@ def generate_task_with_code(
         model_pricing = {"input": _pin, "output": _pout}
         total_input_tokens = 0
         total_output_tokens = 0
+        total_cached_tokens = 0  # prompt-cache HITS (subset of input); billed at a discount
+
+        def _cached_of(u) -> int:
+            """Cached (prompt-cache HIT) tokens from a usage object. OpenAI nests
+            them under prompt_tokens_details.cached_tokens; Anthropic (via Portkey)
+            exposes cache_read_input_tokens. Returns 0 when absent."""
+            if not u:
+                return 0
+            details = getattr(u, "prompt_tokens_details", None)
+            c = getattr(details, "cached_tokens", None) if details is not None else None
+            if not c:
+                c = getattr(u, "cache_read_input_tokens", None)
+            return int(c) if c else 0
 
         # Send prompts one by one using Chat Completions API (universally supported)
         # max_tokens raised 16k -> 32k (F11). At 16k an INTERMEDIATE task with a
@@ -679,11 +740,47 @@ def generate_task_with_code(
             _lo = usage.completion_tokens if usage else 0
             total_input_tokens += _li
             total_output_tokens += _lo
+            total_cached_tokens += _cached_of(usage)
             logger.info("=" * 70)
             logger.info(" Lean Correction Response: ")
             logger.info(response_text)
             logger.info(f" Tokens - Input: {_li:,} | Output: {_lo:,}")
             logger.info("=" * 70)
+
+        # Last turn that produced a complete, parseable task JSON. The final
+        # turn sometimes answers in prose ("already matches — no changes
+        # needed"), which would otherwise throw away a good task generated a
+        # turn earlier. See the fallback next to the JSON parsing below.
+        last_valid_task_data = None
+
+        def _remember_if_task_json(text):
+            """Keep `text` as the last valid task JSON if it parses and looks like a task."""
+            nonlocal last_valid_task_data
+            if not text:
+                return
+            candidate = None
+            try:
+                candidate = json.loads(text.strip())
+            except json.JSONDecodeError:
+                # Fall back to the largest balanced {...} span in the text.
+                brace_count, start_idx = 0, -1
+                for idx, char in enumerate(text):
+                    if char == '{':
+                        if brace_count == 0:
+                            start_idx = idx
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0 and start_idx != -1:
+                            try:
+                                candidate = json.loads(text[start_idx:idx + 1])
+                                break
+                            except json.JSONDecodeError:
+                                continue
+            # `name` + `code_files` are the minimum a usable task carries — this
+            # avoids latching onto some unrelated JSON blob the model emitted.
+            if isinstance(candidate, dict) and "name" in candidate and "code_files" in candidate:
+                last_valid_task_data = candidate
 
         # Base generation (first attempt, or old behavior when lean is off). When
         # lean fired above, this iterates an empty list and is skipped.
@@ -716,6 +813,7 @@ def generate_task_with_code(
                 logger.error(f"No response content from prompt {i}/{len(task_generation_prompts)}")
                 raise RuntimeError(f"Empty response from LLM on prompt {i}")
             messages.append({"role": "assistant", "content": response_text})
+            _remember_if_task_json(response_text)
 
             # Track token usage
             usage = response.usage
@@ -723,7 +821,8 @@ def generate_task_with_code(
             prompt_output = usage.completion_tokens if usage else 0
             total_input_tokens += prompt_input
             total_output_tokens += prompt_output
-            cached_read = getattr(getattr(usage, "prompt_tokens_details", None), "cached_tokens", 0) if usage else 0
+            cached_read = _cached_of(usage)
+            total_cached_tokens += cached_read
             if cached_read:
                 logger.info(f" Cache: {cached_read:,} tokens served from cache (prompt {i})")
 
@@ -762,22 +861,33 @@ def generate_task_with_code(
                 logger.error("No response content on feedback-correction turn")
                 raise RuntimeError("Empty response from LLM on feedback turn")
             messages.append({"role": "assistant", "content": response_text})
+            _remember_if_task_json(response_text)
             usage = response.usage
             total_input_tokens += usage.prompt_tokens if usage else 0
             total_output_tokens += usage.completion_tokens if usage else 0
+            total_cached_tokens += _cached_of(usage)
             logger.info("=" * 70)
             logger.info(" Feedback-correction Response: ")
             logger.info(response_text)
             logger.info("=" * 70)
 
-        # Print cost summary
-        input_cost = (total_input_tokens / 1_000_000) * model_pricing["input"]
+        # Print cost summary. Cached input tokens (a subset of total_input) are
+        # billed at CACHE_READ_MULTIPLIER × the input rate, so discount them
+        # rather than charging every input token at full price.
+        from infra.pricing import CACHE_READ_MULTIPLIER, cost_usd
+        _cached = min(total_cached_tokens, total_input_tokens)
+        _uncached_in = total_input_tokens - _cached
+        input_cost = (
+            _uncached_in / 1_000_000 * model_pricing["input"]
+            + _cached / 1_000_000 * model_pricing["input"] * CACHE_READ_MULTIPLIER
+        )
         output_cost = (total_output_tokens / 1_000_000) * model_pricing["output"]
-        total_cost = input_cost + output_cost
+        total_cost = cost_usd(model, total_input_tokens, total_output_tokens, _cached)
         logger.info("=" * 70)
         logger.info(" API COST SUMMARY")
         logger.info(f" Model: {model}")
-        logger.info(f" Total Input Tokens:  {total_input_tokens:,}")
+        logger.info(f" Total Input Tokens:  {total_input_tokens:,}  "
+                    f"(cached {_cached:,} @ {CACHE_READ_MULTIPLIER:g}×)")
         logger.info(f" Total Output Tokens: {total_output_tokens:,}")
         logger.info(f" Input Cost:  ${input_cost:.4f} (${model_pricing['input']}/M tokens)")
         logger.info(f" Output Cost: ${output_cost:.4f} (${model_pricing['output']}/M tokens)")
@@ -845,6 +955,20 @@ def generate_task_with_code(
                             except json.JSONDecodeError:
                                 continue
         
+        if task_data is None and last_valid_task_data is not None:
+            # The final turn answered in prose instead of re-emitting the task
+            # JSON — the observed shape is the model replying "the task I
+            # generated in the previous turn already matches ...". That is a
+            # no-op refinement, not a failure: an EARLIER turn already produced
+            # a complete, valid task. Falling back to it saves the whole
+            # (expensive) generation instead of discarding it at the last step.
+            logger.warning(
+                "Final turn returned no parseable JSON (likely a 'no changes needed' "
+                "prose reply); falling back to the last valid task JSON from an "
+                f"earlier turn. Response preview: {response_text[:200]}"
+            )
+            task_data = last_valid_task_data
+
         if task_data is None:
             error_msg = f"Failed to parse JSON from response.output_text. Response preview: {response_text[:500]}"
             logger.error(error_msg)
