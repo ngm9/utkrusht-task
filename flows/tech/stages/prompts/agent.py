@@ -37,6 +37,7 @@ from flows.tech.stages.prompts.input_files import build_detailed_skill_signal
 from flows.tech.stages.prompts.retriever import retrieve_references, RetrievalResult
 from flows.tech.stages.prompts.shape_classifier import ShapeDecision, classify_task_shape
 from flows.tech.stages.prompts.validator import ValidationResult, validate_prompt_file
+from flows.tech.stages.generate.runtime_resolver import resolve_plan
 
 load_dotenv()
 
@@ -56,10 +57,13 @@ load_dotenv()
 # anthropic/claude-haiku-4-5 by default, openrouter/<glm> when LLM_PROVIDER=glm.
 DEFAULT_RUNTIME_MODEL = os.getenv("PROMPT_GENERATOR_MODEL", "openai/gpt-5.5")
 DEFAULT_COMPILE_MODEL = os.getenv("PROMPT_GENERATOR_COMPILE_MODEL") or resolve_dspy_model("prompt_compile")
+# The advisory verify step is evaluative, not creative — run it on a cheap model
+# (nano) instead of the strong runtime model. Override via PROMPT_VERIFIER_MODEL.
+DEFAULT_VERIFY_MODEL = os.getenv("PROMPT_VERIFIER_MODEL", "openai/gpt-5.4-nano")
 
 
-def configure_dspy(model: Optional[str] = None, mode: str = "runtime") -> None:
-    """Wire DSPy to the right LLM provider.
+def _build_lm(model: str) -> "dspy.LM":
+    """Build a DSPy LM for ``model`` with the right provider routing.
 
     Routing logic:
       - Models prefixed `openrouter/...`  → OpenRouter direct (uses OPENROUTER_API_KEY)
@@ -67,14 +71,7 @@ def configure_dspy(model: Optional[str] = None, mode: str = "runtime") -> None:
 
     OpenRouter is for cheap/free open-source models (DeepSeek, Qwen, Gemma).
     Portkey is for OpenAI/Anthropic models routed through our existing gateway.
-
-    Args:
-        model: explicit model override; takes precedence over `mode` defaults.
-        mode:  "runtime" (default, strong model) or "compile" (cheap model).
     """
-    if model is None:
-        model = DEFAULT_COMPILE_MODEL if mode == "compile" else DEFAULT_RUNTIME_MODEL
-
     # GPT-5 family (gpt-5, gpt-5.4, gpt-5-codex, ...) only accepts
     # temperature=1 — litellm rejects any other value. Detect by substring
     # so future point-releases (gpt-5.5 etc.) are handled automatically.
@@ -90,32 +87,50 @@ def configure_dspy(model: Optional[str] = None, mode: str = "runtime") -> None:
                 "Get a key at https://openrouter.ai/keys"
             )
         bare_model = model[len("openrouter/"):]
-        lm = dspy.LM(
+        return dspy.LM(
             model=f"openrouter/{bare_model}",
             api_key=or_key,
             api_base="https://openrouter.ai/api/v1",
             max_tokens=16000,
             temperature=temperature,
         )
-    else:
-        api_key = os.getenv("OPENAI_API_KEY")
-        portkey_key = os.getenv("PORTKEY_API_KEY")
-        if not api_key:
-            raise RuntimeError("Missing OPENAI_API_KEY in environment.")
 
-        from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
+    api_key = os.getenv("OPENAI_API_KEY")
+    portkey_key = os.getenv("PORTKEY_API_KEY")
+    if not api_key:
+        raise RuntimeError("Missing OPENAI_API_KEY in environment.")
 
-        provider = "anthropic" if "anthropic/" in model or "claude" in model else "openai"
-        lm = dspy.LM(
-            model=model,
-            api_key=api_key,
-            api_base=PORTKEY_GATEWAY_URL,
-            extra_headers=createHeaders(provider=provider, api_key=portkey_key),
-            max_tokens=16000,
-            temperature=temperature,
-        )
+    from portkey_ai import PORTKEY_GATEWAY_URL, createHeaders
 
-    dspy.settings.configure(lm=lm)
+    provider = "anthropic" if "anthropic/" in model or "claude" in model else "openai"
+    return dspy.LM(
+        model=model,
+        api_key=api_key,
+        api_base=PORTKEY_GATEWAY_URL,
+        extra_headers=createHeaders(provider=provider, api_key=portkey_key),
+        max_tokens=16000,
+        temperature=temperature,
+    )
+
+
+def build_verify_lm() -> "dspy.LM":
+    """LM for the advisory prompt-VERIFY step. Verification is evaluative, not
+    creative, so it runs on a cheap model (``gpt-5.4-nano`` by default) instead
+    of the strong runtime model — override via ``PROMPT_VERIFIER_MODEL``."""
+    return _build_lm(DEFAULT_VERIFY_MODEL)
+
+
+def configure_dspy(model: Optional[str] = None, mode: str = "runtime") -> None:
+    """Wire DSPy to the right LLM provider (see :func:`_build_lm`).
+
+    Args:
+        model: explicit model override; takes precedence over `mode` defaults.
+        mode:  "runtime" (default, strong model) or "compile" (cheap model).
+    """
+    if model is None:
+        model = DEFAULT_COMPILE_MODEL if mode == "compile" else DEFAULT_RUNTIME_MODEL
+
+    dspy.settings.configure(lm=_build_lm(model))
 
     # Capture the DSPy/litellm completions into the pipeline trace sink (no-op
     # unless PIPELINE_TRACING_ENABLED). DSPy bypasses the OpenAI-SDK trace_client
@@ -180,8 +195,7 @@ class GeneratePromptSignature(dspy.Signature):
           ### Docker-compose Instructions
           ### <init_database.sql / Redis Configuration / etc.> Instructions
           ### Run.sh Instructions
-      ## kill.sh file instructions
-      ### Dockerfile Instructions          (omit if no app container)
+          ### Dockerfile Instructions          (omit if no app container)
       <"The output should be a valid json schema:" bullet list of files>
       ## Code file requirements
       ## .gitignore INSTRUCTIONS
@@ -228,11 +242,17 @@ class GeneratePromptSignature(dspy.Signature):
         same user/database.
       - "**SECURITY-CRITICAL**: ports MUST be bound to localhost only using
         `127.0.0.1:<port>:<port>`" — for every datastore exposed to the host
-      - The 9-numbered-step `## kill.sh file instructions` block — copy its
-        shape (stop containers, remove volumes, remove networks, force-remove
-        images, `docker system prune -a --volumes -f`, `rm -rf /root/task`,
-        "|| true" for idempotency, print logs at every step, final
-        "Cleanup completed successfully!" message)
+      - "**CRITICAL — entrypoint/command must not mix forms**: if `entrypoint:`
+        is overridden as a LIST (exec form, e.g. `['/bin/bash', '-lc']`),
+        `command:` MUST ALSO be a LIST with exactly one element holding the
+        full shell script string. NEVER pair a list `entrypoint:` with a
+        STRING `command:` — Compose shell-splits the string into separate
+        tokens before appending them to entrypoint, so only the first word
+        reaches `bash -c` as the script and everything else (flags, paths,
+        `&&`, the rest of the pipeline) becomes bash's positional parameters
+        and is silently dropped (e.g. `mkdir -p /a && tail -f /dev/null`
+        breaks into `mkdir: missing operand`). Simplest safe pattern: omit
+        `entrypoint:` and put the whole invocation as a LIST in `command:`."
       - "Candidates are permitted and encouraged to use any external resources
         they find helpful, including but not limited to Google, Stack Overflow,
         <stack> documentation, and AI-powered tools, agentic IDEs, or Large
@@ -249,6 +269,19 @@ class GeneratePromptSignature(dspy.Signature):
       3. Helpful Tips
       4. How to Verify
 
+    Each of the four MUST be emitted as an actual markdown heading (`## Task
+    Overview`, `## Objectives`, `## Helpful Tips`, `## How to Verify` — `##`
+    or `#`, consistently). The generated prompt's REQUIRED OUTPUT JSON
+    STRUCTURE description for the "README.md" key MUST say so explicitly,
+    e.g. "...containing exactly Task Overview, Objectives, Helpful Tips, and
+    How to Verify in that order, each written as a markdown heading (##
+    Task Overview, ## Objectives, ## Helpful Tips, ## How to Verify) — a
+    plain unmarked text line with the section name is INVALID and counts as
+    a missing section." Without this, the downstream task-gen LLM sometimes
+    emits the four names as bare plain-text lines with no `##`, which renders
+    as an unstructured wall of text with no visual section breaks in the
+    product UI.
+
     CRITICAL — "NOT TO INCLUDE" is an INSTRUCTION, NOT a section. The exclusion
     guidance below is a directive to the task-gen LLM about what to OMIT from the
     README. The generated prompt MUST NOT list "NOT TO INCLUDE in README" (or any
@@ -263,6 +296,13 @@ class GeneratePromptSignature(dspy.Signature):
     Access`, or `Performance Issues` as separate sections. The README must
     NOT contain `<DROPLET_IP>` placeholders or any database-connection
     details (host, port, username, password, client-tool suggestions).
+    Anywhere connection details DO legitimately appear (docker-compose
+    healthchecks, run.sh readiness probes, How to Verify commands), the host
+    must use `localhost` — the task runs inside an E2B sandbox where
+    datastore ports are bound to `127.0.0.1` and the candidate connects from
+    the sandbox terminal (e.g. `redis-cli -h localhost -p 6379`,
+    `psql -h localhost -p 5432`). Never use a droplet IP or any remote-host
+    placeholder — there is no droplet.
 
     Section size + framing rules — the generated prompt's README.md
     INSTRUCTIONS section MUST embed ALL of the following so the downstream
@@ -283,15 +323,189 @@ class GeneratePromptSignature(dspy.Signature):
           – Task Overview: 3-4 meaningful sentences. No bullet list.
             Describes the business scenario, current state, and why the
             problem matters. NEVER empty. NO bold time-budget callouts.
-          – Objectives:    4-6 bullets max.
+            PLAIN LANGUAGE (reviewer decision 2026-09-18): short sentences a
+            non-specialist can follow — no semicolon run-ons chaining three
+            clauses. Introduce each domain term in plain English the first
+            time ('when someone has a health problem during it, that gets
+            written up as an adverse-event report'), prefer everyday verbs
+            ('check', 'look it up', 'hands each report to') over formal ones
+            ('consult', 'delegates'), and never name internal machinery the
+            candidate hasn't met yet — 'the automated checks stayed green'
+            beats 'readiness and the invariant checks stayed green'.
+            Splitting into two short paragraphs at the natural break (what
+            the system is / what the teams reported) is preferred over one
+            dense paragraph.
+          – Objectives:    BASIC/BEGINNER 4-6 bullets max; INTERMEDIATE/ADVANCED
+            3-4 bullets max (fewer, tighter is better).
           – Helpful Tips:  4-5 bullets max.
-          – How to Verify: 4-6 bullets max.
+          – How to Verify: 3-5 bullets max.
 
       • Per-section framing rules the generated prompt MUST include:
-          – Objectives: "Frame objectives around outcomes rather than
-            specific technical implementations. Objectives describe the
-            'what' and 'why', never the 'how'." Each bullet states an
-            observable end-state, not a step or an API/library to use.
+          – Objectives (PROFICIENCY-CONDITIONAL — branch on the `proficiency`
+            input; the two levels are deliberately different):
+
+              · BASIC / BEGINNER — objectives MAY be explicit and directive.
+                Each is a full, context-rich sentence stating what is broken or
+                missing, its observable impact, and what a resolved state looks
+                like. Being concrete about WHAT to achieve is fine and expected
+                at this level (still don't paste the literal answer). This is
+                the correct style for BASIC — do not make BASIC open-ended.
+                GOOD (basic): 'The product search endpoint returns results in
+                4-6 seconds under normal load; after your changes it should
+                respond in under 500ms for typical query patterns.'
+
+              · INTERMEDIATE / ADVANCED — objectives are PLAIN GOAL
+                STATEMENTS, whatever the task's shape (repair or design/build;
+                reviewer decisions 2026-09-15 and 2026-09-18). Each objective
+                is ONE SHORT PLAIN SENTENCE (roughly 5-15 words; shorter is
+                better) naming the outcome the system must achieve — no
+                stakeholder framing ('The on-call engineer expects…'), no
+                'because' clause, no mechanism. Imperative mood is correct
+                and expected. One concern per bullet; split a bullet that
+                bundles two separable concerns.
+                Describe the 'what', NEVER the 'how': do NOT name the API,
+                library, framework, pattern, algorithm, or config knob — and
+                do NOT name any file, file path, directory, function, method,
+                class, variable, table, or ANY other direct code reference.
+                Do NOT describe the CURRENT broken behaviour or use phrasing
+                like "currently does X" / "after your changes" — state the
+                desired end-state as a standing requirement, not a
+                before/after diff. The candidate must discover both the
+                mechanism AND where to change it.
+                Approved reference set (repair, ADVANCED — the target shape
+                at both levels):
+                  'Keep decisions with the people who should make them.'
+                  'Make triage timely and reliable for every team that
+                   depends on it.'
+                  'Keep case records consistent.'
+                  'Make every decision auditable.'
+                Short, verb-led, one class word each, similar length and
+                weight — plus one judgment bullet ('Surface whatever else a
+                safety physician would refuse to sign off on.').
+                BAD (too terse, bare label): 'Improve query performance.'
+                BAD (describes current-vs-after, not standing outcome): 'The
+                product search endpoint returns results in 4-6 seconds under
+                normal load; after your changes it should respond in under
+                500ms for typical queries.'
+                BAD (names a file / code): 'Fix the lifecycle rule in main.tf so
+                transitions apply to closed objects.'
+                BAD (stakeholder-framed — forces the rule out): 'An on-call
+                engineer should be able to trust that a retried message never
+                causes a customer to see the same side effect twice.'
+                GOOD (plain goal statement of the same requirement): 'Keep
+                repeated deliveries from ever producing a duplicate outcome.'
+
+                Still DECIDE THE TASK'S SHAPE first — the objective style no
+                longer branches on it, but How to Verify does (see below):
+                  · REPAIR task — something exists and is broken; the candidate
+                    finds the cause and fixes it.
+                  · DESIGN / BUILD task — nothing is broken in a reportable way;
+                    the candidate builds or reworks something to reach a
+                    standard (greenfield builds, pipeline/architecture design,
+                    "rework X so it is trustworthy").
+
+                THE THIRD LEAK — ENUMERATED INSTANCES. Beyond naming a
+                mechanism or stating the rule, an objective leaks by LISTING
+                THE SPECIFIC THINGS the candidate is supposed to discover.
+                Name the CLASS of concern; never enumerate its instances. The
+                list of instances is the investigation answer key: it tells
+                the candidate exactly which N things to go and check, and
+                finding those N things by reading the code and the data IS
+                the skill being assessed. Two real bullets from a shipped
+                task, and their corrected forms:
+                  BAD:  'Communicate invalid date or lifecycle choices clearly
+                        to users.'
+                        (enumerates the two inputs that need validation)
+                  GOOD: 'Communicate errors in user inputs clearly.'
+                  BAD:  'Preserve accurate money, status, and deletion
+                        semantics in displayed rows.'
+                        (enumerates the three data traps to look for)
+                  GOOD: 'Preserve data semantics in the rows displayed.'
+                The GOOD forms are not vaguer about the OUTCOME — the rows
+                must still be semantically correct, the inputs must still be
+                validated — they only withhold WHICH inputs and WHICH
+                semantics, because working that out from the schema, the seed
+                data and the existing code is the task.
+
+                THE AGENT-PASTE TEST — apply it to EVERY objective. Imagine
+                the bullet is pasted, on its own, into an AI coding agent that
+                has NOT been given the repository. If that agent could already
+                tell you what to implement, the bullet is too specific and
+                must be rewritten. A correct objective leaves the agent unable
+                to act until a person has read the codebase and the data and
+                turned the objective into concrete work — that reading is
+                what separates a candidate who understands the task from one
+                who forwards it. 'Communicate invalid date or lifecycle
+                choices clearly' fails the test (the agent knows: validate
+                date, validate lifecycle). 'Communicate errors in user inputs
+                clearly' passes (the agent cannot know which inputs exist).
+
+                ONE SHARED CLASS VOCABULARY (reviewer decision 2026-09-18) —
+                the objective set is written on a small shared vocabulary of
+                class words (e.g. bounded, consistent, timely, clear,
+                auditable, private, reliable), one class word per bullet:
+                keep the verb, land the bullet on its class word, keep the
+                bullets similar in length and weight so they read as one
+                list. The SAME class words are then reused verbatim in
+                `question` and in `short_overview` bullet 2, so every
+                candidate-facing surface reads as one system rather than
+                three paraphrases of it. Approved set (repair, ADVANCED):
+                  'Uploaded context should stay bounded by the study's
+                   rules, never override them.'
+                  'Participant privacy should hold everywhere the assistant
+                   responds or keeps a record.'
+                  'Refusals should be clear, and point people to the right
+                   next step.'
+                  'Every intervention should stay auditable, without
+                   exposing private details.'
+                — and the matching short_overview bullet 2: 'This repair
+                needs to keep the assistant's behavior bounded by the
+                study's rules, protect participant privacy throughout, and
+                make every refusal and intervention clear and auditable.'
+
+                QUESTION-FORM OBJECTIVES are allowed and encouraged for
+                design/build tasks. An open-ended ask may be phrased as a
+                genuine question that invites the candidate to reason beyond
+                the stated scope:
+                  GOOD: 'What other filters can you think of that may be
+                        appropriate for the use case?'
+                This form is inherently open — it has no single correct
+                completion — and it rewards judgment, which is exactly what a
+                closed instruction cannot measure. Use it for the objective
+                where you most want the candidate to extend the design rather
+                than execute it.
+
+                PROFICIENCY SCALING for these three rules:
+                  · INTERMEDIATE — objectives stay at class level. At most
+                    ONE objective in the whole README may name a specific
+                    instance, and only if the task is genuinely unscopable
+                    without it.
+                  · ADVANCED — STRICT. ZERO enumerated instances anywhere in
+                    the Objectives. EVERY objective must pass the agent-paste
+                    test. Include AT LEAST ONE question-form objective. The
+                    standard at ADVANCED is that a candidate must be able to
+                    derive what needs doing ONLY by reading the objectives,
+                    the code and the data together — the objectives alone
+                    must never be a sufficient instruction to anyone,
+                    human or agent.
+                GOOD (design/build): 'Build a pipeline that makes the overall
+                build process as efficient as possible.'
+                GOOD (design/build): 'Make deployments easy to identify,
+                understand, and recover when needed.'
+                GOOD (design/build): 'Keep services aligned with the shared
+                code they depend on throughout the development process.'
+                GOOD (design/build): 'Ensure deployment configuration is
+                handled securely and reliably.'
+                BAD (design/build, states the rule not the goal): 'A change to
+                one service should create a new image only for that service.'
+                BAD (design/build, stakeholder framing forces the rule out):
+                'The on-call engineer needs deployed images traceable to the
+                exact commit that produced them, because rollback depends on
+                it.'
+                The test is the same at both levels and both shapes: mood is
+                not the lever, SPECIFICITY is. A vague instruction hides more
+                than a precise observation. If a bullet could be pasted into
+                the codebase as the change description, it is too specific.
           – Helpful Tips: "Provide practical guidance without revealing
             specific implementations." Each bullet starts with an action
             word: "Consider", "Think about", "Explore", "Review",
@@ -303,6 +517,42 @@ class GeneratePromptSignature(dspy.Signature):
             not the specific implementation to write." Each bullet is a
             check the candidate can run (test output, response shape,
             latency observation, log line, memory reading).
+            DESIGN / BUILD tasks (see the shape decision in the Objectives
+            rules above) invert
+            this: the bullets name an EXPERIMENT TO RUN and where to look, and
+            MUST NOT state what the correct result is — the candidate judges
+            that against the Objectives. This is the rule most easily got
+            wrong, and getting it wrong silently undoes the whole open-ended
+            README: on a design/build task the pass condition IS the
+            specification the Objectives deliberately withheld, and the
+            candidate reads both sections. Pattern: "<make this change>, and
+            <where to look>", one probe per Objective, in the same order.
+            GOOD (design/build probe): 'Change a single service, run the
+            pipeline, and look at what it actually produced.'
+            GOOD (design/build probe): 'Change only the shared code, and check
+            which services end up affected.'
+            GOOD (design/build probe): 'Make a change that touches no service
+            at all, and see what the pipeline decides to do.'
+            BAD (design/build, states the pass condition): 'A change confined
+            to one service should result in exactly one new image for that
+            service.'
+            BAD (design/build, states the pass condition): 'Each image produced
+            should carry the exact commit identity that produced it.'
+            At most ONE bullet may reference the task environment directly.
+            Before emitting, read the Objectives and How to Verify TOGETHER as
+            a candidate would: between them they must still not give away any
+            rule the candidate is meant to derive.
+            PROBES MUST NOT RESTORE WHAT THE OBJECTIVES WITHHELD. Naming the
+            scenario in a probe is allowed, but if an Objective deliberately
+            says 'preserve data semantics' (withholding money / status /
+            deletion), a probe that says 'compare money values and confirm
+            soft-deleted rows are excluded' has handed the withheld list
+            straight back. Keep probes at the same instance-level as the
+            Objectives: 'compare a few displayed rows with the stored
+            records, and review consistency' names WHERE to look without
+            naming WHICH semantics to check. At ADVANCED this is strict —
+            no probe may enumerate instances the Objectives left for the
+            candidate to discover.
             For tasks that call a real LLM (a `.env.example` declaring
             OPENAI_API_KEY / ANTHROPIC_API_KEY), How to Verify MUST open with a
             GitHub note admonition embedded INSIDE the section as a `>`
@@ -339,14 +589,89 @@ class GeneratePromptSignature(dspy.Signature):
       "name"           — kebab-case GitHub repo name (under 50 chars)
       "title"          — human-readable display name, "<action verb> <subject>"
                          format, 50-80 chars. Different from `name`.
-      "question"       — full candidate-facing task description
+      "question"       — full candidate-facing task description, written as a
+                         scenario paragraph + a direct imperative ask. MUST
+                         NOT leak the answer: no file names or paths (e.g.
+                         `services/api/Dockerfile`), no function/method
+                         references (e.g. `calculateTotal()`), no directory
+                         paths, and no direct solution statements ("the bug
+                         is in...", "you should change...", "change line
+                         42"). The candidate must diagnose WHERE and WHAT is
+                         wrong from the scenario — never be told.
+                         ALTITUDE (applies to every task, and is the rule most
+                         often broken here): `question` is the PRIMARY
+                         candidate-facing description, so a `question` that
+                         enumerates the required behaviours undoes an
+                         open-ended README on its own. State the expectations
+                         at the SAME altitude as the README Objectives, using
+                         the same words — the SAME class words the Objectives
+                         land on (see ONE SHARED CLASS VOCABULARY in the
+                         Objectives rules) — never the mechanisms that satisfy
+                         them. Three moves, plain prose, no bullets: (a) who
+                         the candidate is and what the system is; (b) the
+                         situation — something exists and runs but is not
+                         trusted / not working as needed, and NOTHING about why
+                         or in what way; (c) what the work must achieve, as
+                         outcomes.
+                         GOOD: "...Your job is to rework and extend it so that
+                         the overall build process becomes as efficient as
+                         possible, deployments are easy to identify,
+                         understand, and recover when needed, and services can
+                         progress through the build process independently
+                         wherever possible."
+                         BAD (enumerates the mechanisms): "Build only the
+                         services truly affected by a source change, tag
+                         container images with the exact commit, run unrelated
+                         affected builds concurrently, and perform
+                         main-line-only releases where the deployment target
+                         comes from the secret store."
+                         `question` and the README Objectives must be written
+                         TOGETHER and checked against each other — this is the
+                         field most likely to drift back down into mechanisms.
+                         The ENUMERATED-INSTANCES rule and the AGENT-PASTE
+                         TEST from the Objectives section apply here in full:
+                         `question` names classes of concern ('errors in user
+                         inputs', 'data semantics'), never the instances
+                         ('date or lifecycle', 'money, status, and deletion').
+                         At ADVANCED, `question` must also pass the
+                         agent-paste test — pasted alone into an AI coding
+                         agent without the repo, it must not be a sufficient
+                         instruction to implement anything.
       "code_files"     — object mapping filepath → file contents (verbose
-                         per-file descriptions; see references)
+                         per-file descriptions; see references). Every key the
+                         generated prompt lists in its REQUIRED OUTPUT JSON
+                         STRUCTURE's code_files example MUST be a REAL, concrete
+                         file path with a real extension appropriate to the
+                         selected stack (e.g. `services/api/main.go`,
+                         `src/spark_task/main.py`) — NEVER a placeholder-style
+                         key like `additional_files_as_needed`,
+                         `selected_stack_manifest_and_source`,
+                         `local_config_files`, `supporting_scripts`, or
+                         `or_verify_files`. The downstream task-gen LLM copies
+                         example keys literally into the repo it produces — a
+                         placeholder-style key becomes an actual file with that
+                         literal (nonsensical) name in the candidate's repo. If
+                         the exact file set genuinely cannot be known ahead of
+                         time (e.g. "one file per selected host stack"), mark
+                         that key's line "EXAMPLE ENTRY ONLY — emit the REAL
+                         file(s) for the selected stack using their true names"
+                         and require the downstream LLM to substitute real
+                         names, never emit the placeholder text itself.
       "answer"         — evaluator-facing high-level solution approach
       "definitions"    — object of term → definition pairs
       "hints"          — single line nudging investigation WITHOUT revealing
-                         the fix
-      "outcomes"       — 2-3 lines on measurable expected results
+                         the fix. Name a starting EXPERIENCE, never a
+                         component: 'Start with one request whose answer needs
+                         two sources, and follow it from the question to the
+                         final wording' — not 'Trace how evidence scope,
+                         provenance, and cache identity move through the
+                         layers' (each noun there is a pointer to a file).
+      "outcomes"       — 2-3 lines on measurable expected results, written at
+                         the SAME altitude as the README Objectives (one line
+                         per objective's class of concern, plus the standing
+                         code-quality line) — never a list that enumerates the
+                         seeded contexts or instances the candidate is meant
+                         to discover.
       "pre_requisites" — bullet list of ASSUMED PRIOR KNOWLEDGE / skills the
                          candidate already brings. DECLARATIVE capability phrases
                          ONLY ("Python 3.11 proficiency", "Comfort with…",
@@ -354,8 +679,61 @@ class GeneratePromptSignature(dspy.Signature):
                          key via .env"). NEVER imperative setup/verify steps
                          ("Run…", "Use…", "Test…", "Configure…", "Install…") —
                          those are README How-to-Verify content, not prerequisites.
-      "short_overview" — bullet list summarising business problem + technical
-                         focus + expected outcome
+      "short_overview" — EXACTLY three bullets, one sentence each, in plain
+                         non-technical business English. This is the "Problem
+                         Statement" card the candidate reads BEFORE opening the
+                         task, so it must never out-specify the README.
+                           1. What the SYSTEM is — what it does, for whom, and
+                              the one-line situation with it today. Context,
+                              not a defect list.
+                           2. What the WORK must achieve, opening "This rework
+                              needs to ..." / "This redesign needs to ..." /
+                              "This repair needs to ..." / "This calls for ...".
+                              Written on the SAME class words as the README
+                              Objectives (see ONE SHARED CLASS VOCABULARY in
+                              the Objectives rules) — the card and the README
+                              must sound like one system, not two paraphrases.
+                           3. What separates a strong submission — the
+                              dimensions someone would actually grade on,
+                              closing on whether the design reasoning is sound.
+                              Vary the opener ("A strong submission is judged
+                              on ...", "The quality of a submission is measured
+                              by ...", "What separates a strong submission
+                              is ..."). It must read as EVALUATION CRITERIA,
+                              not a restatement of bullet 2 — the approved
+                              pattern is 'whether these guarantees hold across
+                              <the harder contexts: later turns, failure
+                              paths, bursts> — not just the first request —
+                              and whether the reasoning behind the fix is
+                              sound.'
+                         VOICE — none of the three may be an instruction to the
+                         candidate. If a bullet opens with an imperative verb
+                         ("Rework...", "Make...", "Ensure...", "Build...") or
+                         reads naturally with "You" or "The candidate" inserted
+                         at the front, it is WRONG — restate it as a fact about
+                         the system or the work.
+                         ALTITUDE — bullet 2 states OUTCOMES, never the rules
+                         that achieve them. The voice rule alone does NOT catch
+                         this: a correctly-voiced bullet that simply lists every
+                         requirement is the common failure, and it hands over
+                         the specification on the preview screen.
+                         GOOD (bullet 2): "This rework needs to make the build
+                         process efficient, keep what gets deployed easy to
+                         identify and recover, let unrelated services progress
+                         independently while staying consistent with the shared
+                         code they depend on, and make sure only sound code is
+                         released with its deployment configuration handled
+                         securely."
+                         BAD (right voice, wrong altitude — lists the rules):
+                         "The delivery workflow needs to rebuild only the
+                         services a commit actually affects, produce images
+                         traceable to the exact commit that built them, refresh
+                         every service when shared code changes, and release
+                         only from the main line."
+                         BAD (candidate-directed): "Rework the CI delivery
+                         pipeline for the monorepo."
+                         No backticks, no file paths, no mechanism names, and no
+                         enumeration of the seeded defects.
 
     GOOD (matches curated style):
       "outcomes": "Expected results after completion in 2-3 lines focusing on
@@ -390,6 +768,212 @@ class GeneratePromptSignature(dspy.Signature):
     (e.g. "(3-5 years experience)", "intermediate-level optimization") —
     do NOT add a separate `## PROFICIENCY BOUNDARY` section.
 
+    Code complexity + starter-code VOLUME MUST scale with proficiency. The
+    generated prompt MUST instruct the task-gen LLM accordingly (branch on the
+    `proficiency` input):
+      - BASIC / BEGINNER — a small, focused starter codebase is appropriate:
+        a handful of files with one clear area to fix. Keep the surface area
+        small and the reasoning shallow.
+      - INTERMEDIATE / ADVANCED — the starter codebase MUST be substantial and
+        realistic, NOT a toy snippet. Require MULTIPLE interacting modules /
+        files in a real project layout, with non-trivial existing logic the
+        candidate must read and reason about before changing, and changes that
+        span MORE THAN ONE file. Do NOT ship only a small set of code or a
+        single short file at these levels — the volume and intricacy of the
+        starter code should reflect the level's real seniority (INTERMEDIATE:
+        3-5 years; ADVANCED: 6+ years — never write "3-5+" for ADVANCED). Higher
+        proficiency means a LARGER, more interconnected codebase and deeper
+        reasoning, never merely a trickier one-liner. The candidate should have
+        to navigate a meaningful codebase, not just edit one obvious spot.
+
+    PRODUCTION REALISM at INTERMEDIATE / ADVANCED (the generated prompt MUST
+    embed these as requirements on the task-gen LLM). A candidate at these
+    levels has years of hands-on time in this stack; the task must feel like
+    an afternoon inside a real production repository, not an exercise. Three
+    dimensions, all required:
+
+      (a) DATA — schema and seed content the candidate must actually
+          investigate. This is the most commonly under-built part and the one
+          that most cheapens a task.
+            · Schema: SEVERAL related tables with real foreign keys, indexes,
+              constraints, status/enum columns and audit columns (created_at,
+              updated_at, soft-delete/archived flags) — never one flat table.
+              Name things the way the domain would.
+            · Volume: seed enough rows that the answer CANNOT be seen by
+              eyeballing the seed file — the candidate must query, filter,
+              aggregate or explain-plan to find it. Hundreds to a few thousand
+              rows is the right order of magnitude.
+            · Content: real data is messy, and the mess is where the signal
+              is. Include the awkward cases a production table actually
+              carries — NULLs in nullable columns, duplicate-looking rows that
+              differ in one field, soft-deleted/archived rows that must be
+              excluded, unicode and apostrophes in names, timestamps that span
+              timezone and day boundaries, money as exact decimal (never
+              float), out-of-order or back-dated sequences, and a few rows at
+              the boundary of whatever rule the task is about.
+            · The seeded data must be internally CONSISTENT: foreign keys
+              resolve, totals reconcile, statuses follow a legal lifecycle. A
+              candidate who investigates must find a coherent world, not
+              noise.
+            · Generate the seed programmatically where volume calls for it
+              (a loop/generator in the init script), not by hand-writing
+              thousands of literal INSERT rows.
+
+      (b) SETUP — the project must be configured the way a real one is:
+          dependency manifests with pinned versions, environment/config
+          handling with sane defaults, database init/migration files, service
+          healthchecks, and the conventional project layout for the stack.
+
+      (c) PRODUCTION CONCERNS — pick only the ones the chosen scenario
+          genuinely exercises, and weave them into the existing code rather
+          than bolting them on: pagination over large result sets, N+1 access
+          patterns, transaction boundaries and isolation, partial failure and
+          retry, idempotency, validation at the trust boundary, tenancy or
+          authorization scoping, cache invalidation, timezone and locale
+          handling, money precision, index usage under volume, and migration
+          safety.
+
+      HARD BOUND — realism must not break the readiness gate. Everything above
+      must still install, build, seed and start INSIDE run.sh's time budget on
+      a small sandbox (2 vCPU, ~2 GB RAM). Do NOT actually seed millions of
+      rows, pull heavyweight images, or add dependencies that take minutes to
+      install. A scenario's PROSE may describe a table as having 50M rows in
+      production — that is fictional context for the narrative — but the DB
+      the task actually creates must be seeded in seconds. Realistic SHAPE and
+      realistic MESS are what matter, not raw volume.
+
+    ADVANCED SYSTEM COMPLEXITY (ADVANCED only — applies to EVERY stack, not
+    just AI). PRODUCTION REALISM above makes the code and data feel real; this
+    rule makes the PROBLEM hard in the way a senior engineer's problems are
+    hard. An ADVANCED task must be a real system whose difficulty comes from
+    the interaction of concerns, not from a trickier version of one concern.
+    The generated prompt MUST require the task-gen LLM to build in ALL FIVE
+    of the following, each instantiated for the chosen stack:
+
+      (1) REAL INFRASTRUCTURE, NOT A STAND-IN. The component the task is
+          about must genuinely run: a real vector database, a real message
+          broker with real consumer groups, a real relational database whose
+          query plans can be read, a real CI runner, a real cluster. Never an
+          in-memory dict standing in for the store, a list standing in for
+          the queue, a stubbed model call, or a "simulated" pipeline. This
+          extends the existing no-FakeLLM rule to every kind of
+          infrastructure: if the candidate is being assessed on X, X must be
+          real. Use the datastores and tools the resolved template actually
+          provides — do not invent infrastructure the sandbox lacks.
+
+      (2) A SCOPING AXIS THAT A NAIVE SOLUTION IGNORES. The data or state has
+          a dimension — version, tenant, region, environment, time window,
+          partition, lineage — such that an implementation which ignores it
+          still RUNS and still returns PLAUSIBLE results, but returns the
+          WRONG ones. This is the heart of ADVANCED difficulty: the failure
+          is silent and semantic, not a crash. The candidate must discover
+          the axis exists and design isolation/attribution around it.
+
+      (3) TRACEABILITY. Every output the system produces must be attributable
+          back to the exact inputs it was built from, precisely enough that
+          an auditor could re-derive it: which passages, which offsets, which
+          upstream events, which commit, which manifest. Not "logs exist" —
+          a resolvable, exact provenance chain.
+
+      (4) THE QUALITY GATE IS ITSELF A DELIVERABLE. The task ships (or asks
+          for) an evaluation / verification layer that the candidate must
+          make TRUSTWORTHY, and the task judges that layer as a first-class
+          artefact: it must report distinct failure dimensions SEPARATELY
+          (not one blended score), it must catch a DELIBERATE regression in
+          each dimension, and it must tell a genuine regression from noise.
+          A gate that only says "pass/fail" is a BASIC-level gate.
+          NOTE: this is the task's OWN eval harness that the candidate
+          improves — it is distinct from the pipeline's grading tests
+          (invariants/ + hidden grading/), which remain as specified in the
+          ADVANCED test-split rule.
+
+      (5) REPRODUCIBILITY UNDER RE-RUN. Running the system, and its quality
+          gate, on unchanged code and unchanged data must give the identical
+          verdict. Any source of nondeterminism the stack introduces — model
+          sampling, unordered iteration, wall-clock defaults, unpinned
+          versions, race-prone consumers — is something the candidate must
+          find and control.
+
+      HOW THIS INSTANTIATES — the same five properties, four stacks. Use
+      these as the pattern; pick the stack's own concrete forms:
+        · RAG / Vector DB / AI Evaluation: (1) real vector DB (Qdrant or
+          pgvector) + real embedding + real answer synthesis; (2) documents
+          exist in many VERSIONS across many TENANTS (trials, products,
+          jurisdictions) and each question is scoped to one version in force
+          on a date — retrieval that ignores version/tenant returns fluent,
+          cited, wrong answers; (3) citations resolve to the exact chunk and
+          character span used; (4) an eval suite over a curated question set
+          that reports groundedness and version-attribution as SEPARATE
+          metrics and catches a planted regression in each; (5) same corpus +
+          same code = same scores, so sampling temperature, chunk ordering
+          and embedding version are all pinned.
+        · Event streaming / Kafka: (1) real broker, real consumer groups;
+          (2) events arrive out of order across PARTITIONS and a consumer that
+          ignores partition/offset semantics produces plausible aggregates
+          that are wrong; (3) every derived record carries the offsets it was
+          folded from; (4) a replay harness that separately reports ordering
+          violations vs duplicate-processing vs data loss; (5) replaying the
+          same log yields byte-identical output.
+        · Data platform / PostgreSQL: (1) real database, real EXPLAIN plans;
+          (2) SOFT-DELETED / BACK-DATED / MULTI-TENANT rows that a naive join
+          silently includes or double-counts; (3) every reported total is
+          decomposable to the row ids that produced it; (4) a reconciliation
+          suite reporting row-multiplication vs precision loss vs tenant
+          leakage separately; (5) same seed = same totals, to the cent.
+        · CI/CD / platform: (1) real pipeline runner, real deploy target;
+          (2) a MONOREPO where shared-dependency changes must invalidate every
+          consumer — a pipeline that ignores the dependency graph still goes
+          green while shipping stale builds; (3) every deployed artefact is
+          traceable to the exact commit and inputs; (4) a verification stage
+          reporting build-scope correctness vs traceability vs gating as
+          separate checks; (5) same commit range = same set of built
+          artefacts.
+
+      SCENARIO-STAGE LINK: the ADVANCED scenario guardrail already demands
+      "cross-cutting production-grade work woven into ONE coherent problem".
+      Properties (2)-(5) are HOW that coherence is achieved — they are the
+      threads that tie the concerns together, so a scenario missing them
+      tends to degrade into a checklist of unrelated hardening items. The
+      README still obeys every open-endedness rule above: the five
+      properties are what the SYSTEM must have, and the generated prompt must
+      express them as outcomes at class level (see THE THIRD LEAK), never as
+      the enumerated instances that make them true.
+
+      STILL BOUNDED by the readiness gate: "real infrastructure" means the
+      template's Qdrant/Postgres/broker actually running with a small,
+      internally-consistent, fast-to-seed dataset — never a large corpus,
+      never a heavyweight model download at run.sh time.
+
+      FOCUS — ONE AXIS, NOT A PILE (the generated prompt MUST carry this):
+      the five properties are five ASPECTS of one problem, not five problems,
+      and the scenario stage now enforces exactly that (one scoping axis,
+      3 "Your Task" bullets, 4 at most). The generated prompt must NOT
+      re-expand the scenario at task time. Concretely, the prompt module:
+        - MUST say the task is built around the ONE scoping axis the selected
+          scenario names; traceability is traceability OF that axis, the
+          quality gate measures correctness ALONG it, reproducibility is of
+          that gate. Do not write "combine several concepts" or offer a menu
+          of unrelated failure modes as "suitable combinations".
+        - MUST NOT introduce concerns the scenario does not name: cost /
+          token budgets, latency or p95 targets, canary or blue/green rollout
+          mechanics, prompt-injection hardening, PII redaction, hybrid-search
+          calibration, fail-closed refusal policy, observability dashboards.
+          Each is a separate ADVANCED task. Do not list "latency" or "cost"
+          among the quality-gate dimensions unless the axis IS a measurement.
+        - MUST NOT mandate a fixed file inventory that presupposes those
+          concerns (a rerank module, a cache module, a sparse/hybrid module,
+          a rollout module). The layout follows the scenario: list only the
+          files the selected axis needs, and say so.
+        - Success criteria / outcomes are observable results of the one axis,
+          never SLA-style numeric thresholds — thresholds are policy the
+          candidate chooses and defends.
+      Calibration: a clinical-protocol RAG task is "answers use only the
+      amendment in force for the site on the date; every answer cites the
+      exact passages; the eval reports groundedness and version-attribution
+      separately and catches a planted regression; re-run is identical". It
+      is NOT that plus cost caps, p95, canary, injection and PII. Same rule
+      for Kafka, Postgres, CI/CD and every other stack.
+
     ─────────────────────────────────────────────────────────────────────────
     HARD CONSTRAINT #5 — Python module structure
     ─────────────────────────────────────────────────────────────────────────
@@ -400,8 +984,26 @@ class GeneratePromptSignature(dspy.Signature):
       - Contains placeholders {organization_background}, {role_context},
         {competencies}, {real_world_task_scenarios}, {minutes_range}.
       - Defines PROMPT_REGISTRY = { "<key>": [CONTEXT, INPUT_AND_ASK, INSTRUCTIONS] }
-        where <key> is exactly: 'Name1 (LEVEL), Name2 (LEVEL)' — alphabetically
-        sorted competency names with proficiency in parentheses.
+        where <key> is exactly: 'Name1 (LEVEL), Name2 (LEVEL)' — competency
+        names with proficiency in parentheses, joined by ", " and sorted.
+
+        THE SORT IS PYTHON `sorted()` — CODEPOINT ORDER, NOT CASE-INSENSITIVE
+        ALPHABETICAL. Every uppercase letter sorts BEFORE every lowercase one
+        ('E' is 0x45, 'e' is 0x65). Getting this wrong produces a key that
+        never matches at lookup time, and the whole module is dead on arrival
+        — this is the single most common failure in generated modules.
+        WORKED EXAMPLE (this exact pair has failed repeatedly): comparing
+        "REST APIs" with "ReactJs" — both start "R", then 'E' vs 'e', and
+        'E' < 'e', so "REST APIs" comes FIRST.
+          CORRECT: "NodeJs (INTERMEDIATE), PostgreSQL (INTERMEDIATE), REST APIs (INTERMEDIATE), ReactJs (INTERMEDIATE), TypeScript (INTERMEDIATE)"
+          WRONG:   "NodeJs (INTERMEDIATE), PostgreSQL (INTERMEDIATE), ReactJs (INTERMEDIATE), REST APIs (INTERMEDIATE), TypeScript (INTERMEDIATE)"
+        Do not "fix" this into human alphabetical order — sort the full
+        "Name (LEVEL)" strings exactly as Python's `sorted()` would.
+
+        Use the competency names EXACTLY as given in the input, including
+        casing. Several near-duplicate competencies exist as SEPARATE rows and
+        differ only by case — "TypeScript" vs "Typescript", "MongoDB" vs
+        "MongoDb". Copy the spelling you were given; never normalise it.
 
     ─────────────────────────────────────────────────────────────────────────
     HARD CONSTRAINT #6 — Brace escaping
@@ -430,22 +1032,59 @@ class GeneratePromptSignature(dspy.Signature):
       (a) `task_shape == "infra"` → the scenario needs an external service
           (DB / cache / queue / broker / search). The generated prompt MUST
           include `docker-compose.yml` for the datastore(s) the scenario
-          actually exercises, `run.sh` using `docker compose up -d`, and
-          `kill.sh` using `docker compose down`. Decide the specific
-          datastores by READING the scenario text in `detailed_skill_signal`
-          — do not invent extras. The `datastores` input list (if provided)
-          is informational only. `run.sh` is a READINESS/self-check, NOT the
-          grader: it brings the datastore(s) up, waits for health, verifies the
-          starter compiles/loads with the runtime's BUILD command (e.g.
-          `cargo build`, `go build`, `npm ci && npm run build`, an import
-          smoke), then exits 0 — on the UNSOLVED starter. It MUST NOT run the
-          grader test suite (designed to fail until the candidate solves the
-          task); the candidate/grader runs the tests separately.
+          actually exercises and `run.sh` using `docker compose up -d`.
+          No `kill.sh` is needed — E2B sandboxes are destroyed as a whole
+          when the session ends, so container cleanup is automatic.
+          Decide the specific datastores by READING the scenario text in
+          `detailed_skill_signal` — do not invent extras. The `datastores`
+          input list (if provided) is informational only. `run.sh` is a
+          READINESS/self-check, NOT the grader: it brings the datastore(s)
+          up, waits for health, verifies the starter compiles/loads with the
+          runtime's BUILD command (e.g. `cargo build`, `go build`,
+          `npm ci && npm run build`, an import smoke), then exits 0 — on the
+          UNSOLVED starter. It MUST NOT run the grader test suite (designed
+          to fail until the candidate solves the task); the candidate/grader
+          runs the tests separately.
+
+          THE TWO WAYS run.sh ACTUALLY FAILS THE GATE — both observed on real
+          runs, both must be designed out:
+
+            1. A DEPENDENCY THAT IS IMPORTED BUT NOT DECLARED. Every module
+               referenced anywhere — application code, and especially BUILD
+               CONFIG files like `vite.config.ts`, `jest.config.ts`,
+               `tsconfig` `types`, `next.config.js` — MUST appear in the
+               dependency manifest that installs it. A real failure was
+               `vite.config.ts` importing `@vitejs/plugin-react` while
+               package.json never listed it: install succeeded, the config
+               then failed to resolve, run.sh exited non-zero, and the whole
+               task was thrown away. Before emitting, cross-check EVERY import
+               and plugin reference against the manifests, including workspace
+               packages and `@types/*`.
+
+            2. A STRICT TYPECHECK/BUILD THAT THE UNSOLVED STARTER CANNOT PASS.
+               This is the subtler one. If the starter ships stubs the
+               candidate must implement, and run.sh runs `npm run typecheck` /
+               `tsc --noEmit` / a full build, the stubs fail the compiler and
+               run.sh exits non-zero ON THE STARTER — which is exactly what the
+               gate rejects. Resolve it by making the stubs TYPE-COMPLETE BUT
+               BEHAVIOURALLY INCOMPLETE: they must satisfy the compiler
+               (correct signatures and return types; return an empty
+               collection, a placeholder value, or throw a "not implemented"
+               error) while leaving the actual behaviour for the candidate.
+               That keeps the starter compiling AND keeps the task unsolved.
+               If a strict check still cannot pass on the starter, run.sh must
+               not run that check at all — prefer an install + import/load
+               smoke plus service health over a full typecheck.
+
+          The rule that resolves both: run.sh must exit 0 on the UNSOLVED
+          starter, WITHOUT any candidate stub being filled in. Design the
+          starter so that is true by construction, and say so explicitly in
+          the generated prompt.
 
       (b) `task_shape == "non_infra"` → pure-runtime / language-level /
           algorithmic / async-concurrency / in-process / UI / frontend
           work. The generated prompt MUST NOT include `docker-compose.yml`,
-          `init_database.sql`, `kill.sh`, or any datastore configuration.
+          `init_database.sql`, or any datastore configuration.
           Ship the task as a local project using the runtime's native
           package manifest (e.g. `package.json`, `pyproject.toml`,
           `pom.xml`, `Cargo.toml`, `build.gradle`) plus source + tests,
@@ -490,9 +1129,9 @@ class GeneratePromptSignature(dspy.Signature):
       • `persona="frontend"` → runtime-native manifest, no Docker,
         browser-side only.
       • `persona="backend"` + scenario does NOT need an external service
-        (per the rule above) → no Docker, no compose, no `kill.sh`. `run.sh`
-        is optional — the candidate runs the task locally with the runtime's
-        native test command against the runtime's native manifest.
+        (per the rule above) → no Docker, no compose. `run.sh` is optional —
+        the candidate runs the task locally with the runtime's native test
+        command against the runtime's native manifest.
       • `persona="sdet"` → test suite shape; template ships the runner.
 
     ─────────────────────────────────────────────────────────────────────────
@@ -634,10 +1273,10 @@ class GeneratePromptSignature(dspy.Signature):
     proficiency: str = dspy.InputField(desc="Target proficiency level (BASIC/BEGINNER/INTERMEDIATE)")
     task_shape: str = dspy.InputField(
         desc='Authoritative infra decision: exactly "infra" or "non_infra". '
-             '"infra" → MUST include docker-compose / kill.sh / run.sh for the '
-             "scenario's datastores. \"non_infra\" → MUST NOT include any "
-             "docker-compose / init_database.sql / kill.sh — ship a pure local "
-             "project using the runtime's native manifest + test command. "
+             '"infra" → MUST include docker-compose + run.sh for the scenario\'s '
+             'datastores (no kill.sh — E2B sandboxes are destroyed as a whole). '
+             '"non_infra" → MUST NOT include docker-compose or init_database.sql — '
+             "ship a pure local project using the runtime's native manifest + test command. "
              "See HARD CONSTRAINT #7 for the full rules."
     )
     runtime: str = dspy.InputField(
@@ -706,9 +1345,9 @@ class VerifyPromptSignature(dspy.Signature):
 
          When `task_shape == "non_infra"`:
            - REJECT if the prompt ships a `docker-compose.yml`,
-             `init_database.sql`, `kill.sh`, or any datastore service
-             definition. Non-infra tasks MUST be pure local projects using
-             the runtime's native manifest + test command.
+             `init_database.sql`, or any datastore service definition.
+             Non-infra tasks MUST be pure local projects using the
+             runtime's native manifest + test command.
 
          When `task_shape == "infra"`:
            - REJECT if the prompt is missing a `docker-compose.yml` for the
@@ -740,13 +1379,12 @@ class VerifyPromptSignature(dspy.Signature):
                 `## README.md INSTRUCTIONS`,
                 `## REQUIRED OUTPUT JSON STRUCTURE`,
                 `## CRITICAL REMINDERS` (or `## CRITICAL NOTES`).
-              The INFRA-ONLY sections `## Infrastructure Requirements` and
-              `## kill.sh file instructions` are REQUIRED only when
-              `task_shape == "infra"`. For `task_shape == "non_infra"` these
-              two sections MUST be ABSENT — a non-infra prompt that includes
-              them is a violation of HARD CONSTRAINT #7 (no docker-compose,
-              no kill.sh for pure-local projects). Do not flag their absence
-              on the non_infra path.
+              The INFRA-ONLY section `## Infrastructure Requirements` is
+              REQUIRED only when `task_shape == "infra"`. For
+              `task_shape == "non_infra"` this section MUST be ABSENT — a
+              non-infra prompt that includes it is a violation of HARD
+              CONSTRAINT #7 (no docker-compose for pure-local projects).
+              Do not flag its absence on the non_infra path.
            c. The README uses a drift name like "Guidance", "Tips" (without
               "Helpful"), "Hints", or "Recommendations" instead of the
               canonical `Helpful Tips`.
@@ -793,8 +1431,8 @@ class VerifyPromptSignature(dspy.Signature):
     task_shape: str = dspy.InputField(
         desc='Authoritative infra decision: "infra" or "non_infra". Gate the '
              "STRUCTURE MISMATCH check on this value — non_infra must NOT ship "
-             "docker-compose/kill.sh, infra MUST include docker-compose for the "
-             "scenario's datastores."
+             "docker-compose/init_database.sql, infra MUST include docker-compose "
+             "for the scenario's datastores (no kill.sh required in either case)."
     )
     runtime: str = dspy.InputField(
         desc="Primary language runtime of the matched template (e.g. python, node)"
@@ -876,6 +1514,11 @@ class PromptGeneratorAgent(dspy.Module):
                 "PROMPT_VERIFIER_ENABLED", "true"
             ).strip().lower() not in ("false", "0", "no", "off")
         self.verifier_enabled = verifier_enabled
+        # The verify step runs on a cheap model (nano) via a per-call
+        # dspy.context override, so it doesn't share the strong runtime LM.
+        # Built lazily on first use so construction never triggers an LM build
+        # (and never fails when the verifier is disabled).
+        self._verify_lm = None
 
     def load_compiled_demos(self, compiled_path: str) -> int:
         """Load few-shot demos from a compile.py output JSON into the generator.
@@ -986,10 +1629,11 @@ class PromptGeneratorAgent(dspy.Module):
             logger.info("  → reason     = %s", shape_decision.reason)
         task_shape = shape_decision.task_shape
 
-        # Resolver is still a no-op at prompt-gen time. The LLM honours
-        # `task_shape` directly (HARD CONSTRAINT #7), so runtime / persona /
-        # frameworks stay empty. For a FORCED infra task we DO seed `datastores`
-        # with the chosen service so the generated prompt boots it.
+        # Runtime / persona / frameworks stay empty for non-infra tasks — the
+        # LLM honours `task_shape` directly (HARD CONSTRAINT #7). For infra
+        # tasks STEP 3.5 resolves the template so the prompt LLM gets real
+        # values. For a FORCED infra task we seed `datastores` with the chosen
+        # service so the generated prompt boots it.
         template = None
         persona = ""
         runtime = ""
@@ -997,6 +1641,35 @@ class PromptGeneratorAgent(dspy.Module):
         cap_datastores: list[str] = [_infra_service] if _infra_service else []
         if _infra_service:
             logger.info("  → forced-infra service hint: datastores=%s", cap_datastores)
+
+        if task_shape == "infra":
+            logger.info("STEP 3.5 — resolving template plan for infra task")
+            try:
+                _plan = resolve_plan(competencies)
+                if _plan.template is not None:
+                    runtime = _plan.template.primary_runtime
+                    persona = _plan.match.persona or ""
+                    cap_frameworks = _plan.template.capabilities.get("frameworks", [])
+                    # keep the forced-infra service hint if the template
+                    # declares no datastores of its own
+                    _tpl_datastores = _plan.template.capabilities.get("datastores", [])
+                    cap_datastores = _tpl_datastores or cap_datastores
+                    template = _plan.template
+                    logger.info(
+                        "  → template resolved: runtime=%s persona=%s "
+                        "frameworks=%s datastores=%s",
+                        runtime, persona, cap_frameworks, cap_datastores,
+                    )
+                else:
+                    logger.info(
+                        "  → no template resolved for infra task "
+                        "(no_match or build failed) — runtime/frameworks stay empty"
+                    )
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(
+                    "STEP 3.5: resolve_plan raised unexpectedly: %s "
+                    "— continuing with empty template info", exc
+                )
 
         # ─── STEP 4: retriever (reference prompts) ────────────────────
         logger.info("STEP 4 / retriever.py — running fallback ladder "
@@ -1092,21 +1765,27 @@ class PromptGeneratorAgent(dspy.Module):
                              rationale_preview[:400].replace("\n", " "))
 
             if self.verifier_enabled:
-                logger.info("  calling Review (ChainOfThought)...")
-                verify_out = self.verify(
-                    new_prompt_file=new_prompt,
-                    primary_directive=directive,
-                    competencies=comp_str,
-                    task_shape=task_shape,
-                    runtime=runtime,
-                    frameworks=frameworks_json,
-                    datastores=datastores_json,
-                    persona=persona,
-                    reference_prompts=refs_text,
-                    similar_tasks=tasks_text,
-                    competency_scopes=scopes_str,
-                    detailed_skill_signal=skill_signal,
-                )
+                if self._verify_lm is None:
+                    self._verify_lm = build_verify_lm()
+                logger.info("  calling Review (ChainOfThought) on %s...",
+                            DEFAULT_VERIFY_MODEL)
+                # Run the advisory verify on the cheap model, leaving the strong
+                # runtime LM configured for generate.
+                with dspy.context(lm=self._verify_lm):
+                    verify_out = self.verify(
+                        new_prompt_file=new_prompt,
+                        primary_directive=directive,
+                        competencies=comp_str,
+                        task_shape=task_shape,
+                        runtime=runtime,
+                        frameworks=frameworks_json,
+                        datastores=datastores_json,
+                        persona=persona,
+                        reference_prompts=refs_text,
+                        similar_tasks=tasks_text,
+                        competency_scopes=scopes_str,
+                        detailed_skill_signal=skill_signal,
+                    )
                 logger.info("    Review done — passes=%s feedback=%d chars",
                             verify_out.passes, len(verify_out.feedback or ""))
                 if verify_out.feedback:
@@ -1191,15 +1870,22 @@ class PromptGeneratorAgent(dspy.Module):
     def _build_references_text(retrieval: RetrievalResult) -> str:
         """Concatenate reference prompt sources with headers."""
         parts = []
+        cwd = Path.cwd()
         for path in retrieval.references:
             try:
                 content = path.read_text(encoding="utf-8")
             except Exception as e:
                 parts.append(f"# === {path.name} (could not read: {e}) ===")
                 continue
+            # References from the prompt-corpus cache live in a temp dir outside
+            # the repo; relative_to() raises there, so fall back to the bare path.
+            try:
+                shown = path.relative_to(cwd) if path.is_absolute() else path
+            except ValueError:
+                shown = path
             parts.append(
                 f"# ===== Reference: {path.name} =====\n"
-                f"# Path: {path.relative_to(Path.cwd()) if path.is_absolute() else path}\n\n"
+                f"# Path: {shown}\n\n"
                 f"{content}"
             )
         if not parts:

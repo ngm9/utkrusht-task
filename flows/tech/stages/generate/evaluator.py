@@ -32,10 +32,19 @@ from flows.tech.stages.generate._clients import openai_client
 # so yoe was ALWAYS "" → a deterministic PROFICIENCY FIT failure no retry could
 # fix. Derive it here instead, and keep the time budget in the SAME table so
 # the YoE and the minutes the critic sees always agree.
+# The minutes here MUST match the time a candidate actually gets, which is the
+# task row's ``time_for_task_mins`` — 45 for INTERMEDIATE/ADVANCED. They used to
+# read 20/25, well under the real budget, so the critic rejected perfectly
+# reasonable tasks as "too large to be realistic within the constraint" while the
+# platform was handing candidates more than twice that long. Because Criterion 2
+# is a DETERMINISTIC blocker (see _DETERMINISTIC_BLOCKER_RE below), a task failing
+# on it can never be rescued by regeneration — every retry re-reads the same
+# understated number — so an understated budget here silently destroys tasks.
+# Keep these in sync with time_for_task_mins whenever that changes.
 PROFICIENCY_PROFILE: dict[str, tuple[str, int]] = {
-    "ADVANCED": ("6+ years", 25),
-    "INTERMEDIATE": ("3-5 years", 20),
-    "BASIC": ("1-2 years", 15),
+    "ADVANCED": ("6+ years", 45),
+    "INTERMEDIATE": ("3-5 years", 45),
+    "BASIC": ("1-2 years", 20),
 }
 
 
@@ -248,6 +257,7 @@ def run_evaluations(
     task_data: Dict,
     persona: Optional[str] = None,
     scenarios: Optional[list[str]] = None,
+    preinstalled: Optional[set] = None,
 ) -> Dict:
     """Run the LLM-based eval critics on the task and code.
 
@@ -293,6 +303,7 @@ def run_evaluations(
         task_data.get("description", ""),
         openai_client,
         persona=persona,
+        preinstalled=preinstalled,
     )
 
     # Preserve every field the critic emitted so the retry loop can feed

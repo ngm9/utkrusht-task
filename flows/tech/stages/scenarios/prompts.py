@@ -58,6 +58,86 @@ Respond with only the word: "code" or "non_code"
 # PROFICIENCY GUARDRAILS — strict per-level complexity rules
 # ============================================================================
 
+
+# Shared by BOTH ADVANCED guardrails (stack-agnostic + agent) so they cannot drift.
+ADVANCED_SYSTEM_STANDARD = """
+THE FIVE PROPERTIES OF AN ADVANCED SYSTEM (all required, every stack):
+An ADVANCED scenario is hard because concerns INTERACT, not because one concern
+is trickier. Build all five into the scenario, instantiated for the stack:
+  1. REAL INFRASTRUCTURE — the component being assessed genuinely runs (a real
+     vector DB, broker, database, CI runner, cluster), never a stand-in.
+  2. A SCOPING AXIS A NAIVE SOLUTION IGNORES — version / tenant / region /
+     partition / time window — such that ignoring it still RUNS and returns
+     PLAUSIBLE results that are WRONG. The failure is silent and semantic.
+     This is the single most important property; without it the task is a
+     checklist, not a design problem.
+  3. TRACEABILITY — every output is attributable to the exact inputs that
+     produced it, precisely enough for an auditor to re-derive it.
+  4. THE QUALITY GATE IS A DELIVERABLE — an evaluation/verification layer the
+     candidate must make trustworthy: separate failure dimensions reported
+     separately, a deliberate regression in each is caught, regression is
+     distinguishable from noise.
+  5. REPRODUCIBILITY — unchanged code + unchanged data gives the identical
+     verdict on re-run.
+Worked example (RAG, ADVANCED): protocols exist in many AMENDMENTS across many
+TRIALS and each site is governed by the amendment in force on its activation
+date (2); every answer cites the exact passages used (3); the eval suite
+reports groundedness and version-attribution SEPARATELY and catches a planted
+regression in either (4); re-running on unchanged corpus and code gives the
+same verdict (5); all over a real vector store (1). The same skeleton applies
+to Kafka (partition/offset axis, replay harness), Postgres (soft-delete /
+tenant axis, reconciliation suite) and CI/CD (dependency-graph axis,
+build-scope verification) — vary the stack, keep the five properties.
+Write the "Your Task" and "Success Criteria" as OUTCOMES at class level (the
+prompt stage's open-endedness rules apply downstream); the scenario itself may
+be concrete, because the scenario is generator-facing, not candidate-facing.
+
+FOCUS — THE FIVE PROPERTIES ARE DIMENSIONS OF ONE PROBLEM, NOT FIVE PROBLEMS.
+This is where ADVANCED scenarios get REJECTED, and it happened three times in a
+row on a real run: the generator read "all five properties" plus "combine
+several concepts" as licence to bundle six or seven separate engineering
+changes (tenant ACLs + version isolation + citation mapping + cost budgets +
+p95 latency + canary rollout + prompt-injection hardening + PII-safe tracing +
+a regression harness). Every one was correctly failed as over-scoped for the
+time limit. Do this instead:
+- PICK EXACTLY ONE scoping axis (property 2). Everything else attaches to it.
+  Traceability (3) is traceability OF that axis. The quality gate (4) measures
+  correctness ALONG that axis. Reproducibility (5) is of that gate. Real
+  infrastructure (1) is simply where it runs. One thread, five aspects.
+- "Your Task" has 3 bullets, 4 at most. If you need a fifth, you have two
+  problems — cut one.
+- DO NOT ADD concerns outside the five properties. Cost-per-answer budgets,
+  p95 latency targets, canary/rollout mechanics, prompt-injection hardening,
+  PII/redaction, hybrid-search calibration, fail-closed refusal policies,
+  observability dashboards: each is a legitimate ADVANCED topic and each is a
+  SEPARATE task. Piling them on does not make a scenario more senior; it makes
+  it un-deliverable and gets it rejected.
+- "Success Criteria" are observable outcomes of the ONE axis, not SLAs. No
+  numeric thresholds (≥88%, <2.5s, <$0.035) unless the axis itself is a
+  measurement — thresholds are policy the candidate should choose and defend.
+CALIBRATION TARGET (the shape to hit, ADVANCED RAG). Three bullets, five
+criteria, one axis (protocol VERSION in force for a site on a date):
+  Your Task:
+  - Retrieval must return content from the protocol version that governed the
+    site and date in question, and never from another trial.
+  - Every answer must be traceable to the passages it was built from, precisely
+    enough for an auditor to re-read them.
+  - The evaluation suite must be able to tell a genuine regression from noise
+    before a change ships.
+  Success Criteria:
+  - A question scoped to a site under an earlier amendment is answered from
+    that amendment, not the latest.
+  - No answer draws on documents from a trial the question does not concern.
+  - Every response carries citations that resolve to the exact passages used.
+  - The suite reports groundedness and version attribution separately, and a
+    deliberate regression in either is caught.
+  - Re-running the suite on unchanged code and unchanged data gives the same
+    verdict.
+Notice what is ABSENT: no latency, no cost, no canary, no refusal policy, no
+tracing stack. All five properties are present, all attached to the version
+axis, and the whole thing fits the time limit. That is the standard.
+"""
+
 PROFICIENCY_GUARDRAILS = {
     "BEGINNER": """PROFICIENCY LEVEL: BEGINNER (0-1 years of experience)
 TIME LIMIT: 20-30 minutes
@@ -164,6 +244,20 @@ THE EXISTING CODE MUST FEEL REAL (this is separate from scope — do both):
   "the surrounding code is realistic" and "the fix is narrowly scoped" are
   not in tension; a real codebase can absolutely have one focused issue.
 
+THE DATA MUST FEEL REAL TOO (state this in "Current Implementation"):
+- Describe the data the system holds the way a production system holds it:
+  several related tables/collections, real relationships, status lifecycles,
+  audit columns, and the messy cases that accumulate in any live system
+  (soft-deleted rows, back-dated records, near-duplicates, NULLs where the
+  column allows them, money as exact decimals, timestamps crossing timezone
+  and day boundaries).
+- The problem should be one the candidate has to INVESTIGATE in the data, not
+  one visible from a glance: something they find by querying, aggregating,
+  comparing tables, or reading a query plan.
+- You MAY describe production-scale volume (e.g. "a 50M-row events table") as
+  narrative context — that is fine and expected. It describes the system, not
+  the fixture that gets built.
+
 DO NOT OVER-SCOPE (this is the #1 reason INTERMEDIATE scenarios get rejected):
 - Don't bundle several independent subsystems into one task — e.g. connection
   pooling + a caching decorator + cache invalidation/versioning + fallback
@@ -214,12 +308,30 @@ WHAT TO GENERATE:
   production use — multiple files/modules/services with real conventions —
   never a toy or a from-scratch build. The candidate is improving something
   real people already depend on, not bootstrapping a project.
-- Max 7 bullet points in the "Your Task" section
+
+THE DATA MUST FEEL REAL TOO (state this in "Current Implementation"):
+- Describe the data the system holds the way production holds it: several
+  related tables/collections with real relationships, status lifecycles, audit
+  columns, and the mess a live system accumulates — soft-deleted rows,
+  back-dated records, near-duplicates, NULLs, money as exact decimals, and
+  timestamps crossing timezone and day boundaries.
+- At ADVANCED the data dimension should carry real weight: consistency under
+  concurrent writes, correctness across partitions/tenants/regions, retention
+  and reconciliation. The problem must be one the candidate INVESTIGATES in
+  the data and the query behaviour, never one visible at a glance.
+- You MAY describe production-scale volume as narrative context; it describes
+  the system, not the fixture that gets built.
+
+- 3 bullet points in the "Your Task" section, 4 at most (see FOCUS below —
+  the ADVANCED difficulty comes from concerns INTERACTING around one axis,
+  never from the number of bullets)
 - Keep the entire scenario under 400 words
 - Pin the primary stack/framework in the scenario header when relevant, e.g.
   `**Stack:** AWS CDK (TypeScript) + DynamoDB + Lambda`
 
-ALLOWED CONCEPTS (combine several per scenario — that is the point of ADVANCED):
+ALLOWED CONCEPTS (draw on several, but only as facets of ONE coherent problem —
+see FOCUS below; a scenario that lists these as separate deliverables is
+over-scoped and will be rejected):
 - System/architecture design under real constraints and trade-offs
 - Multi-environment or multi-tenant safety (isolation, naming collisions,
   blast-radius containment, promotion between environments)
@@ -283,7 +395,7 @@ holds real patient-facing data.
 **Success Criteria:** Both environments deploy from the same stack definition without
 collision; no IAM policy grants a wildcard action on a wildcard resource; the handler
 reads its table name from configuration; the throwaway environment's data is deleted
-on stack replacement while the production-like environment's data is retained.""",
+on stack replacement while the production-like environment's data is retained.""" + ADVANCED_SYSTEM_STANDARD,
 
 }
 
@@ -360,21 +472,24 @@ AGENT_ADVANCED_GUARDRAIL = """PROFICIENCY LEVEL: ADVANCED (6+ years of experienc
 TIME LIMIT: 45-55 minutes
 
 WHAT TO GENERATE:
-- Cross-cutting production-grade work on a realistic agent system: reliability,
-  observability, cost, safety, and policy enforcement woven together.
+- Cross-cutting production-grade work on a realistic agent system: ONE coherent
+  problem whose difficulty comes from concerns INTERACTING around a single axis
+  (see FOCUS below) — never a list of separate hardening items.
 - Each scenario should feel like an on-call ticket for a senior engineer who
   owns an agent in production — multiple interacting concerns, but ONE coherent
   problem statement.
-- Max 7 bullet points in the "Your Task" section
+- 3 bullet points in the "Your Task" section, 4 at most (see FOCUS below)
 - Keep the entire scenario under 400 words
 - Pin a primary framework in the scenario header when relevant, e.g.
   `**Stack:** LangGraph + LiteLLM (Anthropic primary, OpenAI fallback)`
 - "Your Task" bullets state failure symptoms and desired OUTCOMES — never the
   mechanism. Do NOT name the file, function, library, or pattern the fix
   should use; the candidate chooses the architecture (the task stage
-  withholds solutions at ADVANCED). Success Criteria stay measurable.
+  withholds solutions at ADVANCED). Success Criteria stay observable (see FOCUS).
 
-ALLOWED CONCEPTS (combine many per scenario — that is the point of ADVANCED):
+ALLOWED CONCEPTS (draw on several, but only as facets of ONE coherent problem —
+see FOCUS below; a scenario that lists these as separate deliverables is
+over-scoped and will be rejected):
 - Production agent architecture: orchestrator + tool services + data stores
 - Model routing and fallback via LiteLLM (Anthropic primary, OpenAI/OSS fallback)
 - Retries, idempotency keys, resumable step state, dead-letter behaviour
@@ -403,9 +518,11 @@ QUALITY BAR (read carefully — this is what the evaluator enforces):
   message, ticket subject) and the resulting production impact (cost overrun,
   duplicate writes, cross-tenant leakage, unsafe action, eval drift).
 - The "Your Task" must demand an ARCHITECTURAL FIX, not a one-file patch.
-- The "Success Criteria" must be MEASURABLE: latency p95 < Xs, $ per ticket
-  < $Y, eval pass-rate ≥ N%, false-positive rate ≤ M%, p99 prompt tokens
-  ≤ K, etc. No soft "the agent behaves better".
+- The "Success Criteria" must be OBSERVABLE outcomes of the ONE axis — checkable
+  by running the system, never soft ("behaves better"). Do NOT write SLA-style
+  numeric thresholds (p95 < Xs, $ per ticket, pass-rate ≥ N%) unless the axis
+  itself is a measurement: thresholds are policy the candidate chooses and
+  defends, and stacking them is the #1 cause of ADVANCED rejections.
 - The scenario must reveal trade-offs the candidate has to make (latency vs
   cost, recall vs safety, throughput vs determinism) — the goal is to see
   their judgement, not just whether they read the spec.
@@ -442,7 +559,7 @@ and no per-tool latency. Tickets are 5–20 turns deep.
 router uses the secondary and a reply is produced; projected >$0.05 calls
 are blocked pre-call; ≥ 8/10 fixture tickets get a non-empty, on-policy
 reply; trace_id ties one request end-to-end from ingress to tool call to
-final response."""
+final response.""" + ADVANCED_SYSTEM_STANDARD
 
 
 # ============================================================================
@@ -807,7 +924,7 @@ Evaluate EACH scenario STRICTLY against these criteria:
    - FAIL if the scenario is actually suited for a higher proficiency level
    - When in doubt, FAIL — it is better to reject an over-scoped scenario than to accept one
 
-3. DETAIL: Does it include specific technical details (endpoint paths, function names, error messages)?
+3. DETAIL (Current Implementation ONLY): Does the current-state description include specific technical details (endpoint paths, function names, error messages)? Density in "Your Task" / "Success Criteria" is NOT a merit — that is judged by criterion 6.
 
 4. COMPLETENESS: Does it clearly describe both the current broken state AND the target fixed state?
 
@@ -816,6 +933,12 @@ Evaluate EACH scenario STRICTLY against these criteria:
    - INTERMEDIATE: 30-40 minutes
    - ADVANCED: 45-55 minutes
    - Count the number of distinct changes required. If there are more than the bullet-point limit allows, FAIL.
+
+6. FOCUS (ADVANCED only — apply STRICTLY; this is where most ADVANCED scenarios fail):
+   - FAIL if "Your Task" has more than 4 bullets.
+   - FAIL if the scenario stacks concerns as SEPARATE deliverables rather than facets of ONE scoping axis — e.g. cost budgets + latency SLAs + canary/rollout + prompt-injection + PII redaction + tracing stack piled onto the core problem. Each of those is a separate task.
+   - FAIL if "Success Criteria" contain SLA-style numeric thresholds (p95 < Xs, $ per session, pass-rate ≥ N%, ≤ K model calls) unless the scoping axis itself is a measurement. Thresholds are policy the candidate should choose and defend.
+   - PASS only if all five properties (real infrastructure; one scoping axis a naive solution ignores; traceability; a quality gate that is itself a deliverable; reproducibility) are present AND all attach to that ONE axis.
 
 For each scenario, return pass or fail with a brief reason if failing. Be STRICT — reject any scenario that is even slightly over-scoped for the proficiency level."""
 

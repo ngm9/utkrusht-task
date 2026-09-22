@@ -1024,11 +1024,24 @@ def create_task(
             # domain not present in the scenarios pool. For agent competencies
             # the scenario is free-form (generator-invented), so we pass None
             # and Criterion 6 passes vacuously; non-agent tasks keep the pool.
+            # Tell the code-eval critic which packages the resolved template's
+            # image pre-installs (same set _strip_preinstalled_pins removed from
+            # requirements.txt above) so it doesn't flag their imports as
+            # unresolvable under Criterion 5 — the false-positive that blocked
+            # utkrusht-python-ai LLM tasks (openai/litellm/… stripped, then the
+            # critic saw `from openai import ...` with no pin).
+            _eval_template_id = (
+                (template.template_id if template else None)
+                or (match.template_id if match else None)
+            )
+            _preinstalled_spec = _TEMPLATE_PREINSTALLED_PINS.get(_eval_template_id or "")
+            _preinstalled = set(_preinstalled_spec[1]) if _preinstalled_spec else None
             with trace_stage("eval"):
                 candidate_eval = run_evaluations(
                     candidate,
                     persona=eval_persona,
                     scenarios=None if agent_freeform else scenarios,
+                    preinstalled=_preinstalled,
                 )
 
             # Deterministic trace-fixture consistency check (static; no run, no
