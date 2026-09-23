@@ -339,6 +339,14 @@ class GeneratePromptSignature(dspy.Signature):
             3-4 bullets max (fewer, tighter is better).
           – Helpful Tips:  4-5 bullets max.
           – How to Verify: 3-5 bullets max.
+          – OPENER DIVERSITY (applies to every bulleted section — Objectives,
+            Helpful Tips, How to Verify): within one section, at most TWO
+            bullets may start with the same first word; three or more
+            identical openers is a defect. Vary the leading verb ('Keep…',
+            'Make…', 'Ensure…', 'Leave…' — not 'Keep…' four times). The
+            approved reference sets below already model this (Keep/Make
+            alternating); match that variety, don't copy one opener down
+            the list.
 
       • Per-section framing rules the generated prompt MUST include:
           – Objectives (PROFICIENCY-CONDITIONAL — branch on the `proficiency`
