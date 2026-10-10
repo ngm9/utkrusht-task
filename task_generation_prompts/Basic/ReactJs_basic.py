@@ -23,12 +23,13 @@ INPUT REAL-WORLD SCENARIOS FOR TASK INSPIRATION:
 
 
 CRITICAL TASK GENERATION REQUIREMENTS:
-- You MUST draw inspiration from ONE of the real-world scenarios provided above to create the task
-- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario
-- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies
-- Ensure the candidate can realistically complete the task in the allocated time
-- Select a different real-world scenario each time to ensure variety in task generation
-- The task must reflect authentic challenges that would be encountered in the role described in the role context
+- You MUST base the task on ONE of the real-world scenarios provided above.
+- FIDELITY (most important): you must PRESERVE the core mechanic and deliverable type of the selected scenario. If the scenario is a form task (create/edit/submit some information), the generated task MUST remain a form task; if it is a specific bug fix, list-rendering, filtering, or state-sync task, it MUST remain that same kind of task. You may adapt surface details (product name, domain, field labels), but you MUST NOT swap the scenario for a different feature or interaction (e.g. do not turn an add-a-record form into a filter/sort/toggle task). When exactly ONE scenario is provided, treat it as a locked specification, not loose inspiration.
+- The task scenario should closely align with the business context, technical requirements, and domain described in the selected real-world scenario.
+- The task complexity must be appropriate for the given skill level and years of experience indicated in the competencies.
+- Ensure the candidate can realistically complete the task in the allocated time.
+- When MULTIPLE scenarios are provided, you may pick a different one each time for variety — but variety comes from WHICH scenario you pick, never from reshaping the chosen scenario's core mechanic.
+- The task must reflect authentic challenges that would be encountered in the role described in the role context.
 
 Before we proceed to the detailed task generation instructions, please confirm your understanding by answering:
 
@@ -100,7 +101,7 @@ Based on real-world scenarios, create a React task that:
 ## REQUIRED OUTPUT JSON STRUCTURE
 {{
   "name": "task-name-in-kebab-case",
-  "question": "Short description of the scenario and specific ask from the candidate — what needs to be fixed/implemented?",
+  "question": "Full candidate-facing task description written as flowing PLAIN PROSE — a short real-world scenario paragraph followed by a direct imperative ask. The candidate view renders this as plain text, so: NO structural labels ('Current Implementation:', 'Required Changes:'), NO Markdown (no **bold**, no `backticks`, no code fences), and NO numbered spec-list. MUST NOT leak the answer: no file names or paths (e.g. src/App.js), no component/function/hook names (e.g. onChange handler, useState), and no solution statements ('the bug is in...', 'you should change...', 'change line N'). Describe who the candidate is, what the app is, the observable symptom they will see in the running app, and what must work correctly once done — the candidate must locate WHERE and WHAT is wrong by reading the code, never be told. 120–1500 characters.",
   "code_files": {{
     "README.md": "Candidate-facing README following structure below",
     ".gitignore": "Comprehensive React/Node.js exclusions",
@@ -112,8 +113,8 @@ Based on real-world scenarios, create a React task that:
     "additional_file_2.js": "Utility or helper files"
   }},
   "outcomes": "Bullet-point list in simple language. Expected results after completion.",
-  "short_overview": "Bullet-point list in simple language describing: (1) the business context and problem, (2) the specific implementation goal, and (3) the expected outcome.",
-  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
+  "short_overview": "EXACTLY three plain-language bullets, one sentence each, no glyph/Markdown prefixes and NO file names or paths in any bullet: (1) what the system is, who it serves, and its one-line situation today (context, not a defect list); (2) the current situation/problem stated in natural prose (NOT an imperative instruction); (3) what the work must achieve plus the expected outcome.",
+  "pre_requisites": "Exactly 2–3 bullets of ASSUMED PRIOR KNOWLEDGE the candidate already brings, written as DECLARATIVE capability phrases only ('Comfort with React functional components and hooks', 'Familiarity with browser and React DevTools'). NEVER imperative setup/verify steps ('Run…', 'Install…', 'Configure…', 'Test…') — those are README content, not prerequisites. Each bullet ≤ 120 chars.",
   "answer": "High-level solution approach",
   "hints": "Single line suggesting focus area. Must NOT give away the answer, but gently nudge the candidate in the right direction.",
   "definitions": {{
@@ -185,9 +186,16 @@ Verification approaches after implementation:
 10. **Select a different real-world scenario** each time for variety
 """
 PROMPT_REGISTRY = {
+    # The competency name in Supabase is "ReactJs", so the resolved lookup key
+    # is "ReactJs (BASIC)". Keep "React (BASIC)" as an alias.
+    "ReactJs (BASIC)": [
+        PROMPT_REACT_BASIC_CONTEXT,
+        PROMPT_REACT_BASIC_INPUT_AND_ASK,
+        PROMPT_REACT_BASIC,
+    ],
     "React (BASIC)": [
         PROMPT_REACT_BASIC_CONTEXT,
         PROMPT_REACT_BASIC_INPUT_AND_ASK,
         PROMPT_REACT_BASIC,
-    ]
+    ],
 }

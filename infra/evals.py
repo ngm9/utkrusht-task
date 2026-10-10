@@ -738,13 +738,22 @@ def llm_task_eval(task_json, proficiency, yoe, time_constraint, openai_client, m
         return _eval_failure(f"Evaluation error: {str(e)}")
 
 def llm_code_eval(code_data, task_description, openai_client, model=None,
-                  persona: str | None = None):
+                  persona: str | None = None,
+                  preinstalled: set[str] | None = None):
     """
     Evaluate code files using the Responses API with gpt-5-nano for efficient evaluation.
     Note: model parameter is ignored, using EVAL_MODEL constant for evals.
 
     When ``persona`` is supplied, the matching persona prompt is prepended to
     the generic checklist (see ``llm_task_eval`` for details).
+
+    ``preinstalled`` is the set of package names the resolved template's runtime
+    image already provides (e.g. ``openai``/``litellm``/``anthropic`` for
+    ``utkrusht-python-ai``). The pipeline strips these from ``requirements.txt``
+    so the gate's ``pip install`` can't hit a version conflict — but that means
+    the code eval critic would otherwise flag their imports as unresolvable
+    under Criterion 5. Naming them here tells the critic those imports resolve
+    at runtime even when absent from ``requirements.txt``.
     """
     # Handle both possible structures: direct files dict or nested under 'files' key
     if isinstance(code_data, dict):
@@ -758,7 +767,18 @@ def llm_code_eval(code_data, task_description, openai_client, model=None,
 
     # Static system message — identical for the same persona, cached by OpenAI.
     system_content = _persona_prefix(persona) + CODE_EVAL_SYSTEM_PROMPT
-    user_content = CODE_EVAL_USER_TEMPLATE.format(
+    runtime_note = ""
+    if preinstalled:
+        pkgs = ", ".join(sorted(preinstalled))
+        runtime_note = (
+            "RUNTIME-PROVIDED PACKAGES (pre-installed by the target image): "
+            f"{pkgs}.\nThese are available at runtime even though they are "
+            "intentionally ABSENT from requirements.txt (the pipeline strips "
+            "them to avoid version conflicts with the image). Do NOT raise a "
+            "Criterion 5 blocker because an import of one of these packages is "
+            "not listed in requirements.txt — such imports resolve.\n\n"
+        )
+    user_content = runtime_note + CODE_EVAL_USER_TEMPLATE.format(
         code_files=json.dumps(files_content, indent=2),
         task_description=task_description,
     )

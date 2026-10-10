@@ -268,10 +268,11 @@ def upload_files_to_github(repo: str, code_data: Dict) -> None:
 def create_answer_github_repo(base_name: str) -> str:
     """Create a new GitHub repository for the answer/solution files.
 
-    Public repo so the solution can be referenced; named ``<base>-answers``.
+    Private repo — it holds the full solution, so it must never be reachable
+    by candidates; named ``<base>-answers``.
     """
     slugified_base = slugify(base_name)
-    return create_github_repo(slugified_base + "-answers", is_public=True)
+    return create_github_repo(slugified_base + "-answers", is_public=False)
 
 
 def upload_answer_files_to_repo(repo_name: str, answer_code_data: Dict) -> None:

@@ -76,16 +76,18 @@ the three sub-keys are for.
         "services up, row counts, API codes+bodies, baseline test line"
       ],
       "issues": [                        // one per broken thing
-        {"summary": "plain sentence, no jargon",
+        {"id": "issue-1",                // stable id — what_was_solved entries point back at it
+         "summary": "plain sentence, no jargon",
          "detail": "the technical cause",
-         "observed": "the runtime evidence that proves it (actual error/response)"}
+         "observed": "the runtime evidence that proves it (actual error/response, BEFORE the fix)"}
       ]
     },
     "objectives": ["what the task asked, restated plainly — one per item"],
-    "what_was_solved": [                 // one per fix
-      {"summary": "what now works",
+    "what_was_solved": [                 // one per fix — each MUST close the loop on an issue/objective
+      {"fixes_issue": "issue-1",         // the issues[].id this fix addresses (or "objective: <text>" if it implements a missing feature rather than fixing a defect)
+       "summary": "what now works",
        "detail": "file + exact change + why",
-       "verified": "the runtime evidence the fix holds"}
+       "verified": "the runtime evidence the fix holds AFTER the change — the same probe that produced issues[].observed, re-run, now showing the good outcome (e.g. 'POST /orders was 500 → now 201 with body {…}'; 'test_pickup 5 failed → all 5 pass')"}
     ],
     "verdict_note": "one-line justification for the verdict"
   },
@@ -105,6 +107,9 @@ the three sub-keys are for.
     "steps": [                           // one per tour step walked, in order; [] when n/a
       {"section": "<section title>", "label": "<step label>",
        "type": "command|link|markdown", "result": "pass|warn|fail",
+       "instruction": "what the tour tells the candidate at this step (the command / link / claim, condensed)",
+       "tested_by": "what YOU actually did to verify it — the exact command/request run (e.g. 'logged in to the db console with the tour's creds via psql -U app_user')",
+       "evidence": "the observed proof — actual output/status (e.g. 'HTTP 200', 'psql returned 1 row', '5/5 tests failed as promised')",
        "note": "why (required for warn/fail; short 'runs clean, output matches' for pass)"}
     ]
   },
@@ -151,15 +156,39 @@ Render these FROM the filled `result.json` — same facts, human layout. Keep th
 - **`summary.md`** — a `# <title>` H1 and a one-line **Overall: PASS/FAIL/INCONCLUSIVE**
   banner, then `## Current Implementation` (the `overview`, a `### Verified by running it`
   list, and one layered bullet per `issues[]` entry: bold `summary` + `Detail:` +
-  `Observed:`), `## Objectives`, `## What Was Solved` (one layered bullet per fix: bold
-  `summary` + `Detail:` + `Verified:`), and `## Verdict` (`verdict` + `grade_signal` +
-  `verdict_note`).
+  `Observed:` — the *before* evidence), `## Objectives`, `## What Was Solved` (one
+  layered block per fix, mirroring the tour-step format):
+
+  ```markdown
+  ### issue-1 — <issue summary>
+  - **Issue:** <what was broken> — *observed:* <the before evidence>
+  - **Solved:** <file + exact change + why>
+  - **Evidence:** <the after evidence — same probe re-run, now good (500 → 201, 5 failed → 5 passed)>
+  ```
+
+  and `## Verdict` (`verdict` + `grade_signal` + `verdict_note`). Every issue named
+  under Current Implementation must reappear here as fixed (or be explicitly called
+  out as left unfixed and why).
 - **`notes.md`** — `## Think-aloud` (the prose) then `## Task-quality` (one bullet per
   `task_quality[]`: bold `summary` + indented `detail`; "none" if empty).
-- **`tour.md`** — a header line with the resolved sandbox/env, then one line per
-  `tour.steps[]` entry (`✅ pass` / `⚠️ warn: <note>` / `❌ fail: <note>`, grouped by
-  `section`), and a footer with the counts + `tour_verdict`. When `n/a`: a single line
-  "No tour on this task (checked both envs)."
+- **`tour.md`** — a header line with the resolved sandbox/env, then one **layered
+  block per `tour.steps[]` entry**, grouped by `section`:
+
+  ```markdown
+  ## <section>
+
+  ### ✅ Step 3 — <label>   (command)
+  - **Step:** <instruction — what the tour tells the candidate here>
+  - **Tested by:** <tested_by — what was actually performed, e.g. "logged in with the
+    tour's stated credentials (app_user / …) via psql inside the sandbox">
+  - **Evidence:** <evidence — the observed output, e.g. "HTTP 200", "select 1 → 1 row">
+  - **Note:** <note — only for warn/fail>
+  ```
+
+  (`✅` pass / `⚠️` warn / `❌` fail on the step heading.) A reader must be able to see,
+  for every step, *what the tour asked*, *what was done to check it*, and *the proof it
+  passed* — never just a bare "pass". Footer: the counts + `tour_verdict`. When `n/a`:
+  a single line "No tour on this task (checked both envs)."
 
 ## Variables
 
@@ -317,6 +346,24 @@ lacks, that gap is the task.
 task-quality defect; production grades most tasks by LLM judge over the diff, so
 shipping no tests is a normal task shape.
 
+**The issue → fix → evidence chain (required):** the summary must read like the tour
+steps do — for every broken thing, three linked parts, each with proof:
+
+1. **What the issue was** — `issues[]` entry with an `id` and the `observed` runtime
+   evidence of the failure *before* any edit (the actual error, wrong status code,
+   failing test names — captured in STEP 3.2b/3.3).
+2. **What you solved** — a `what_was_solved[]` entry whose `fixes_issue` names that
+   issue's id (or the objective it implements), with the file + exact change.
+3. **The evidence** — that entry's `verified`: re-run the SAME probe that demonstrated
+   the issue and show the after-state (e.g. "`curl POST /orders` was 500 'null ctx' →
+   now 201 with the created order"; "baseline `5 failed` → `5 passed`").
+
+Consistency checks before writing `result.json`: every `issues[].id` is referenced by
+some `what_was_solved[].fixes_issue` (or the notes say explicitly why it was left
+unfixed — e.g. out of task scope); every `what_was_solved[]` entry has a non-empty
+`verified` with *actual observed output*, not "works now". A fix without before/after
+evidence doesn't count toward `solvable`.
+
 When grading by `inspection`, the bar is **runtime evidence, not your opinion**:
 say what you ran and what it returned (endpoint responses, DB state, script
 output) showing the behaviour the problem statement asked for now holds. Do not
@@ -370,7 +417,60 @@ that steps promising the solved state hold — reuse the SAME sandbox:
 |---|---|---|
 | `command` | run it — **in the sandbox** via `$H run --sandbox "$SANDBOX" --cmd "<command>"` (infra), or **locally** in `$WORK` (non-infra). Commands are **stateful + ordered** (`up -d` → `ps` → `init` → …) — run them top-to-bottom, never reordered. | **fail** = the mechanics break (command/tool not found, service unreachable, non-zero for an infra reason). **warn** = it runs but the real output doesn't match the step's promised `expected_output`. **pass** = runs clean and output matches. |
 | `link` | `is_sandbox_surface: true` → reachability-check the resolved e2b URL (e.g. `curl -sS -o /dev/null -w '%{http_code}' <url>` — expect it to answer, not hang/refuse). `repo.url` → the private starter repo (auth-gated; a plain 404 from an unauth'd curl is expected — confirm the repo exists via the authed clone you already did in STEP 2). | **fail** = sandbox surface refuses/times out, or the URL still has an unresolved `{{var}}` (see `unresolved_variables`). **pass** = answers. |
-| `markdown` | no execution — sanity-read the claim against reality (e.g. "LocalStack on 4566" ⇒ 4566 is in `expected_ports`). | **warn** if the prose asserts something false. |
+| `markdown` | no execution — sanity-read the claim against reality (e.g. "LocalStack on 4566" ⇒ 4566 is in `expected_ports`). **Exception: credentials — see the credential rule below; those must be exercised, not just read.** | **warn** if the prose asserts something false. |
+
+**The credential rule (important):** whenever a tour step hands the candidate
+credentials — a DB console login (`inspect-database` sections carry a markdown line
+with the user/password/db read from docker-compose), an HTTP basic-auth pair, an API
+key, a Redis password — reachability is NOT enough. **Actually authenticate with
+exactly the values the tour states**, in the same sandbox:
+
+- **DB login** → connect to the real database with the tour's creds, e.g.
+  `$H run --sandbox "$SANDBOX" --cmd "cd /app/task && docker-compose exec -T <db-svc> env PGPASSWORD='<tour-pw>' psql -U <tour-user> -d <tour-db> -c 'select 1'"`
+  (mysql/mongosh equivalents for other engines). If the tour links a web db-console
+  (`sandbox.db_console_url`), also confirm the console itself accepts them when it
+  exposes a scriptable login (e.g. Adminer: POST the login form and expect a
+  redirect/2xx *without* the "Invalid credentials" marker); if the console can't be
+  driven non-interactively, the direct DB auth check above is the authoritative test.
+- **HTTP auth / API key** → make one real authed request
+  (`curl -u user:pass` / `-H 'Authorization: …'`) and expect a non-401/403.
+- **Cross-check the source of truth**: the stated creds must match what the repo
+  actually configures (docker-compose `environment:`, `.env`, config files). A
+  mismatch is a defect even if some default happens to work.
+
+Grade it on the step that *states* the credentials: **fail** = the service rejects
+the tour's credentials, or they don't exist in the repo config; **warn** = they work
+but differ from what the repo config declares (drift); **pass** = login succeeds with
+exactly the stated values. Record the auth attempt (command + outcome) in the step's
+`note`. Never skip this because the link curl came back 200 — a reachable console
+with wrong credentials is precisely the defect a candidate will hit.
+
+**The candidate-safety rule (important):** a tour orients the candidate — it must
+never hand them the answer. For EVERY step regardless of type, read the step's
+`instruction`/label/markdown text and check for:
+- **A specific file to edit/fix named or implied** — "edit `services/api/Dockerfile`",
+  "fix the healthcheck in `docker-compose.yml`", "the problem is in
+  `api-entrypoint.sh`". Pointing at *where the repo lives* or *how to run it*
+  (`git clone`, `docker compose up`, "explore the repository") is fine — pointing at
+  *which file has the defect* is not.
+- **Full or substantial file contents pasted into the tour** — a code block that
+  reproduces real file content (a whole Dockerfile, a whole compose service block, a
+  whole function body) rather than a short illustrative snippet the candidate could
+  have typed themselves (e.g. the exact curl command to hit an endpoint is fine; a
+  20-line YAML block copied from `docker-compose.yml` is not).
+- **Naming the specific defect or fix mechanism** — "the depends_on condition is
+  missing", "change `service_started` to `service_healthy`" — mirrors the same
+  candidate-safety rule the tour's own generation-time judge enforces (see
+  `flows/tech/stages/generate/tour.py`'s `_JUDGE_PROMPT`); verification must catch
+  what the judge missed, not just what the judge caught.
+
+Grade the offending step **fail** with a `note` quoting the leaked reference — this is
+a task-quality defect exactly like a broken command or wrong credentials, and it
+matters MORE, because a working-but-answer-revealing tour still ships a broken
+assessment. Orientation steps (explore-code-base, clone-repo, access-terminal,
+build-and-run, run-tests) are expected to reference the repo/run commands generically
+— fail them only if they go further and single out the specific file or line the fix
+lives in.
 
 **The starter-vs-solved rule (important):** some tour commands promise the *solved*
 outcome (e.g. `terraform plan` → "0 to destroy"), which won't hold on the unsolved
@@ -381,7 +481,11 @@ repo is in the state the step assumes. Never fail a tour step just because a
 solved-state output didn't appear on the unsolved starter.
 
 **Record** the tour into `result.json`'s `tour` block: one entry per step in
-`tour.steps[]` (`section`, `label`, `type`, `result` = `pass`/`warn`/`fail`, and a
+`tour.steps[]` (`section`, `label`, `type`, `result` = `pass`/`warn`/`fail`,
+**`instruction`** = what the tour told the candidate, **`tested_by`** = the exact
+action you performed to verify it — e.g. "authenticated to the db console with the
+tour's stated creds", **`evidence`** = the observed output that proves the result —
+e.g. "HTTP 200", "psql select 1 → 1 row" — and a
 `note` — required for warn/fail), plus `counts` and the overall `tour_verdict`
 (`ok` | `defects` | `n/a`). Then render **`tour.md`** from that block (per **Markdown
 renderings**). A tour with any `fail` is a **task-quality defect** — the task can be

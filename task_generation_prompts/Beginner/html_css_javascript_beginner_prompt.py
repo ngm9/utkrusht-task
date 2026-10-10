@@ -147,7 +147,7 @@ Based on real-world scenarios, create an HTML/CSS/JavaScript task that:
 {{
   "name": "task-name-in-kebab-case",
   "title": "Human-readable task title in '<action verb> <subject>' format, 50-80 characters. Describes what the candidate will do in plain English. Examples: 'Fix Budget Status Conditional in Wallet Dashboard', 'Build Patient Initials Badge for Clinic Intake Form', 'Fix Product Size Rendering Loop on E-Commerce Page'. The title should clearly convey the action (implement, fix, build, refactor, optimize, debug) and the subject (what system/feature/component). This is used for display purposes — 'name' is the kebab-case GitHub repo name, 'title' is the readable display name.",
-  "question": "Structured task description. MUST include: (1) Current Implementation — exact buggy/incomplete state the starter code implements (what we give). (2) Required Changes — specific fixes or features the candidate must implement. Keep concise but unambiguous so starter code can perfectly match Current Implementation and candidate knows exactly what to do.",
+  "question": "Full candidate-facing task description written as flowing PLAIN PROSE — a short real-world scenario paragraph followed by a direct imperative ask. The candidate view renders this as plain text, so: NO structural labels ('Current Implementation:', 'Required Changes:'), NO Markdown (no **bold**, no `backticks`, no code fences), and NO numbered spec-list. MUST NOT leak the answer: no file names or paths, no function/method names (e.g. toggleGuide()), no CSS selectors or ids, and no solution statements ('the bug is in...', 'you should change...', 'change line N'). Describe who the candidate is, what the small site is, the observable symptom they will see in the browser, and what must work correctly once done — the candidate must locate WHERE and WHAT is wrong by reading the code, never be told. 120–1500 characters.",
   "code_files": {{
     "README.md": "Candidate-facing README following structure below",
     ".gitignore": "Web project exclusions (IDE configs, OS files)",
@@ -156,8 +156,8 @@ Based on real-world scenarios, create an HTML/CSS/JavaScript task that:
     "app.js": "JavaScript file with starter logic (or logic needing fixes)"
   }},
   "outcomes": "Bullet-point list in simple language. Expected results after completion.",
-  "short_overview": "Bullet-point list in simple language describing: (1) the business context and problem, (2) the specific implementation goal, and (3) the expected outcome.",
-  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
+  "short_overview": "EXACTLY three plain-language bullets, one sentence each, no glyph/Markdown prefixes and NO file names or paths in any bullet: (1) what the system is, who it serves, and its one-line situation today (context, not a defect list); (2) the current situation/problem stated in natural prose (NOT an imperative instruction); (3) what the work must achieve plus the expected outcome.",
+  "pre_requisites": "Exactly 2–3 bullets of ASSUMED PRIOR KNOWLEDGE the candidate already brings, written as DECLARATIVE capability phrases only ('Comfort reading HTML, CSS and vanilla JavaScript', 'Familiarity with browser DevTools'). NEVER imperative setup/verify steps ('Run…', 'Install…', 'Configure…', 'Test…') — those are README content, not prerequisites. Each bullet ≤ 120 chars.",
   "answer": "High-level solution approach",
   "hints": "Single line suggesting focus area. Must NOT give away the answer, but gently nudge the candidate in the right direction.",
   "definitions": {{

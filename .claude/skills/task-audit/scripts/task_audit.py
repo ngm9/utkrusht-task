@@ -47,6 +47,20 @@ SETUP_RE = re.compile(
     r"\.env\b|see the readme|refer to the readme)",
     re.I,
 )
+# question must not leak a code-level reference (file path, function/method call) or
+# state the answer outright — the candidate must diagnose the defect themselves
+FUNC_CALL_RE = re.compile(
+    r"\b([a-z][a-zA-Z0-9]*[A-Z][a-zA-Z0-9]*|[a-z0-9]+(?:_[a-z0-9]+)+)\s*\([^)]*\)"
+)
+# require >=2 slashes (3+ path segments) to avoid false positives on ordinary
+# English word/word pairs ("either/or", "client/server")
+DIR_PATH_RE = re.compile(r"\b[\w-]+/[\w-]+/[\w-]+(?:/[\w-]+)*\b")
+ANSWER_LEAK_RE = re.compile(
+    r"(the (bug|defect|issue|root cause) is (in|caused by|located)|"
+    r"the fix is to|you should change|simply change|just modify|"
+    r"change (the )?line \d+|on line \d+)",
+    re.I,
+)
 
 QUESTION_MIN, QUESTION_MAX = 120, 1500
 PREREQ_MIN, PREREQ_MAX, PREREQ_LEN = 2, 3, 120
@@ -134,6 +148,14 @@ def check_question(blob: dict):
         problems.append("structural label leaked in")
     if SETUP_RE.search(q):
         problems.append("setup/install instructions leaked in")
+    if FILENAME_RE.search(q):
+        problems.append(f"file name/path leaked in ({FILENAME_RE.search(q).group(0)!r})")
+    if DIR_PATH_RE.search(q):
+        problems.append(f"directory path leaked in ({DIR_PATH_RE.search(q).group(0)!r})")
+    if FUNC_CALL_RE.search(q):
+        problems.append(f"function/method reference leaked in ({FUNC_CALL_RE.search(q).group(0)!r})")
+    if ANSWER_LEAK_RE.search(q):
+        problems.append("direct answer/solution leaked in")
     if problems:
         return FAIL, "; ".join(problems)
     return PASS, f"{n} chars, plain prose"

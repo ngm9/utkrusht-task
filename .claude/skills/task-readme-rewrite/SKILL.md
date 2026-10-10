@@ -1,6 +1,6 @@
 ---
 name: task-readme-rewrite
-description: Use when a task README (repo README.md + Supabase readme_content + gist) reveals the planted defects, the fix, the rules the candidate is meant to derive, or enumerates the instances they are meant to discover (the third leak — name the class, never the members), or when two sibling tasks share the same objectives — to reframe it open-ended in the style that matches the task's shape (team observations for repair tasks; plain goal statements plus probe-style verification for design/build tasks), produce a before/after review doc in the Utkrusht house style, and, once approved, push the rewrite to all five targets (repo README, Supabase readme_content, gist, task_blob.question, and task_blob.short_overview). Also use when a task's in-product description (question) or Problem Statement card (short_overview) states the requirements or mechanisms rather than the outcome, or when a candidate-facing surface is already open-ended and non-leaking but is not in the shape/framing this skill prescribes (e.g. per-line Objectives instead of one shared class-level vocabulary, an Overview that isn't the four-sentence scenario structure, a short_overview whose third bullet doesn't state evaluation criteria) and should be reframed to match the house style anyway, or in scan mode to find which tasks across dev/prod have README leaks and need the same treatment.
+description: Use when a task README (repo README.md + Supabase readme_content + gist) reveals the planted defects, the fix, the rules the candidate is meant to derive, or enumerates the instances they are meant to discover (the third leak — name the class, never the members), or when two sibling tasks share the same objectives — to reframe it open-ended in the style that matches the task's shape and level (plain goal statements at INTERMEDIATE/ADVANCED for every shape; team observations only for BASIC repair tasks; probe-style verification for design/build tasks), produce a before/after review doc in the Utkrusht house style, and, once approved, push the rewrite to all five targets (repo README, Supabase readme_content, gist, task_blob.question, and task_blob.short_overview). Also use when a task's in-product description (question) or Problem Statement card (short_overview) states the requirements or mechanisms rather than the outcome, or when a candidate-facing surface is already open-ended and non-leaking but is not in the shape/framing this skill prescribes (e.g. per-line Objectives instead of one shared class-level vocabulary, an Overview that isn't the four-sentence scenario structure, a short_overview whose third bullet doesn't state evaluation criteria) and should be reframed to match the house style anyway, or in scan mode to find which tasks across dev/prod have README leaks and need the same treatment.
 ---
 
 # Task README Rewrite Skill
@@ -74,7 +74,7 @@ something that does not exist yet?**
 |---|---|---|
 | Starter ships | working system + planted defects | a naive or absent implementation |
 | Candidate does | find the cause, fix it | design the thing to a standard |
-| Objectives style | **team observations** — what someone noticed | **plain goal statements** — what must be true |
+| Objectives style | **team observations** — what someone noticed (BASIC only; INTERMEDIATE/ADVANCED use goal statements, see below) | **plain goal statements** — what must be true |
 | How to Verify style | **what should be true afterwards** | **probes** — what to try and where to look |
 | Reference | `5b6549db`, `379f0c07` | `cca98c38` |
 
@@ -106,13 +106,14 @@ After (goal statement — states the goal, 10 words):
 Mood is not the lever; **specificity is**. A vague instruction hides more than a precise
 observation.
 
-**ADVANCED tasks take the goal-statement style whatever their shape (reviewer decision,
-2026-09-15).** On `35bd49ee` (`clinical-safety-agent-repair`, Multi-Agent / Tool Use /
-Production Agent Engineering, ADVANCED) a team-observation draft was rejected as "not
-proper — the change is not working"; the reviewer asked for the same style as the RAG
-tasks. The observation style stays for INTERMEDIATE/BASIC repair tasks. At ADVANCED, every
-section is framed as below — **this is the reference README; frame every section like
-this.**
+**INTERMEDIATE and ADVANCED tasks take the goal-statement style whatever their shape
+(reviewer decisions, 2026-09-15 and 2026-09-18).** On `35bd49ee`
+(`clinical-safety-agent-repair`, Multi-Agent / Tool Use / Production Agent Engineering,
+ADVANCED) a team-observation draft was rejected as "not proper — the change is not
+working"; the reviewer asked for the same style as the RAG tasks, and on 2026-09-18
+extended the rule to INTERMEDIATE as well. The observation style stays for BASIC repair
+tasks only. At INTERMEDIATE and ADVANCED, every section is framed as below — **this is
+the reference README; frame every section like this.**
 
 #### Reference README — `35bd49ee`, approved and pushed 2026-09-15
 
@@ -253,10 +254,12 @@ patient-safety and regulatory problem, not a cosmetic one.
 No component names (cache, evaluation layer, retrieval, index), no "reproduced bug", no
 "your work is to harden…" closer — the Objectives carry the ask.
 
-### Objectives (repair tasks) — one observation per planted defect
+### Objectives (BASIC repair tasks only) — one observation per planted defect
 
-Each bullet is **one or two short sentences**: which team was doing what, and what they
-noticed. Nothing else.
+**This branch applies only to BASIC repair tasks** — at INTERMEDIATE and ADVANCED, repair
+tasks use the goal-statement style (see the rule above, extended to INTERMEDIATE
+2026-09-18). Each bullet is **one or two short sentences**: which team was doing what, and
+what they noticed. Nothing else.
 
 ```
 - The finance team was reconciling last week's payouts and noticed that one customer had been refunded twice for a single order. This should not happen.

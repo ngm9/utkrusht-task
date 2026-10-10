@@ -48,6 +48,11 @@ from infra.logger_config import logger
 # names in _clients.py: `openai_via_portkey` IS the OpenAI/GPT client;
 # `openai_client` is Anthropic-via-Portkey (only used here if someone
 # overrides TOUR_MODEL to a claude-* id).
+# gpt-5.5 (not -nano): the nano tier can't reliably ground tour commands in the
+# repo or apply the judge's grounding/candidate-safety rules — it flags fixed
+# boilerplate it's told to ignore and emits self-contradictory critiques, which
+# is what shipped most infra tasks with tour=NULL. The stronger model produces
+# coherent, actionable verdicts and grounded tours. Override via env if needed.
 TOUR_MODEL = os.getenv("TOUR_MODEL", "gpt-5.5")
 TOUR_JUDGE_MODEL = os.getenv("TOUR_JUDGE_MODEL", "gpt-5.5")
 MAX_TOUR_EVAL_RETRIES = int(os.getenv("MAX_TOUR_EVAL_RETRIES", "3"))
@@ -55,8 +60,11 @@ _MAX_TOKENS = 4000
 
 # Hard size cap: a tour is orientation, not documentation. Fewer is fine;
 # more fails validation and regenerates (never silently trimmed).
-MAX_TOUR_SECTIONS = 7
-_MIDDLE_BUDGET = {"sandbox": 3, "local": 4}
+# Sandbox budget is 4 so a full infra task can carry build-and-run + run-tests +
+# test-endpoints + seed-data without the judge's completeness demands colliding
+# with the section cap (an unwinnable loop). Head(3)+tail(1)+middle(4) = 8.
+MAX_TOUR_SECTIONS = 8
+_MIDDLE_BUDGET = {"sandbox": 4, "local": 4}
 
 # Prompt-size bounds for the file blob.
 PER_FILE_CHAR_CAP = 8000
@@ -228,6 +236,26 @@ def render_code_files(code_files: Dict[str, Any]) -> str:
     return "\n".join(parts)
 
 
+def detect_task_dir(code_files: Dict[str, Any]) -> str:
+    """Pick the working directory the tour should use so it matches the repo's
+    OWN scripts LITERALLY (a weak judge won't honour "these paths are aliases").
+
+    ``/home/user/task`` is the canonical sandbox clone path; ``/root/task`` is a
+    symlink alias created in BOTH the deploy runtime (``sandbox_manager``) and the
+    E2B gate (``sandbox_eval``), so either works at runtime. Some generated repos
+    hardcode ``/root/task`` in ``run.sh`` / invariants; when they do, the tour
+    must use the same path or the judge flags a (spurious) groundedness mismatch.
+    Prefer what ``run.sh`` uses; fall back to the canonical default."""
+    blob = ""
+    for p, c in (code_files or {}).items():
+        name = str(p).rsplit("/", 1)[-1].lower()
+        if name in ("run.sh", "kill.sh") or name.endswith(".sh"):
+            blob += _as_text(c) + "\n"
+    if "/root/task" in blob and "/home/user/task" not in blob:
+        return "/root/task"
+    return _TASK_DIR
+
+
 # ------------------------------------------------------------- surfaces
 
 def surfaces_block(meta: Dict[str, Any]) -> str:
@@ -269,28 +297,50 @@ A step is one of:
 - command:  {"type": "command", "label": "<short label>", "command": "<shell command>", "output": {"type": "markdown", "body": "<=3 lines, grounded in the repo's real values>"}}  (output optional)'''
 
 _KIND_INTRO = {
-    "sandbox": f"The candidate works in a deployed sandbox at {_TASK_DIR}.",
+    "sandbox": f"The candidate works in an ALREADY-DEPLOYED sandbox: the repo is cloned at {_TASK_DIR} and the "
+               f"platform has already run the project's boot script, so its services (DB container, app process, etc.) "
+               f"are ALREADY UP before the candidate arrives. `{_TASK_DIR}` and `/root/task` are the SAME directory "
+               f"(the latter is a symlink alias); commands may use either. Do NOT tell the candidate to bring the "
+               f"environment up from scratch — orient them to what is already running and how to re-apply their own "
+               f"changes.",
     "local": "The candidate clones the repo to their OWN machine and works locally (no sandbox).",
 }
 
 _MIDDLE_GUIDANCE = {
-    "sandbox": f"""Pick only the sections THIS repo needs, in this order, using these EXACT ids —
-and AT MOST {_MIDDLE_BUDGET['sandbox']} sections total (fewer is better; keep the ones the candidate cannot succeed
-without, in this priority: build-and-run > run-tests > seed-data > one inspection section):
-- `build-and-run` — the SETUP step ONLY: bring the environment up, nothing else. For a docker-compose app START with
-  `cd {_TASK_DIR} && docker-compose up -d --build`, then `docker-compose ps`, then `docker-compose logs --tail=50 <service>`
-  (real service name). If the app is NOT itself a docker service, ALSO start it with its real command. Do NOT run the
-  test suite or seed scripts here. NEVER use `run.sh` (the platform's internal boot script).
-- `run-tests` — ONLY if the task is verified by a test suite: the real test command, shown FAILING first, with a
-  one-line note to re-run after the fix.
-- `seed-data` — ONLY if the repo has a seed script that populates the data layer: run it AFTER the services are up.
+    "sandbox": f"""GROUND EVERY COMMAND IN THE REPO'S OWN `run.sh` AND `docker-compose.yml`. The environment is
+already deployed and running (see the intro); read `run.sh` to learn EXACTLY how this repo brings its services up —
+mirror its Compose invocation form, its service names, its ports, and its paths. Do NOT guess or use a generic recipe.
+
+Use Docker Compose v2 syntax — `docker compose` (a space), never the legacy `docker-compose` hyphen binary — UNLESS the
+repo's own `run.sh` uses the hyphen form, in which case match the repo. Reference ONLY services that actually appear in
+`docker-compose.yml`: if Compose defines only a datastore (e.g. just `postgres`) and the app runs as a host process,
+do NOT invent an app service or tail app logs from Compose — start/inspect the app the way `run.sh` does.
+
+Pick only the sections THIS repo needs, in this order, using these EXACT ids — and AT MOST {_MIDDLE_BUDGET['sandbox']}
+sections total (fewer is better; keep the ones the candidate cannot succeed without, in this priority:
+build-and-run > run-tests > seed-data > one inspection section):
+- `build-and-run` — keep this MINIMAL and trivially grounded. The stack is ALREADY UP, so this section only orients
+  the candidate and lets them confirm it: ONE markdown line saying the environment is already running, plus ONE
+  status/health check that is unambiguously in the repo — `docker compose ps`, or a `curl` on the app's REAL health
+  route/port. If a Compose service needs a nudge after a change, `docker compose restart <real-service>` (real service
+  name from `docker-compose.yml`) is fine. Do NOT reconstruct a host process's start command, its `PYTHONPATH`/port/
+  env exports, or any PID-file kill/restart logic — that is the boot script's job and any guess will be ungrounded.
+  Do NOT tell the candidate to run `run.sh` itself, do NOT bring the whole stack up from scratch, and do NOT run the
+  test suite or seed scripts here.
+- `run-tests` — REQUIRED whenever the repo ships ANY test/verification material (a test suite, `invariants/`,
+  `verification_*.sql`, a `validate.sh`, etc.): the repo's REAL verification command, shown in its current FAILING
+  state first, with a one-line note to re-run after the fix. Do NOT name which individual tests/checks fail.
+- `seed-data` — ONLY if the repo ships an EXPLICIT seed script the candidate must run themselves. If the data layer is
+  seeded automatically at boot (e.g. `init_database.sql` mounted into the DB container, or a seed run by the boot
+  script), the sandbox has ALREADY loaded it — do NOT add a seed-data section; at most note it in one line elsewhere.
 - `inspect-database` — ONLY if the repo has a real SQL/Mongo database AND `{{{{sandbox.db_console_url}}}}` is an available
   surface. LINK-ONLY: the db-console link PLUS one markdown line with the real login read from docker-compose env.
   No psql/mongosh commands.
-- `open-redis` — ONLY if the repo uses Redis: `cd {_TASK_DIR} && docker-compose exec <SERVICE> redis-cli` (real service
+- `open-redis` — ONLY if the repo uses Redis: `cd {_TASK_DIR} && docker compose exec <SERVICE> redis-cli` (real service
   name), then a few orienting commands (`DBSIZE`, `SCAN 0 MATCH <real-prefix>:* COUNT 100`).
-- `test-endpoints` — ONLY if the repo exposes HTTP routes AND `{{{{sandbox.preview_url}}}}` is an available surface.
-  Lead with a docs link (`{{{{sandbox.preview_url}}}}/docs` for Swagger/OpenAPI) or a real route; may add one short curl check.
+- `test-endpoints` — REQUIRED whenever the repo exposes HTTP routes AND `{{{{sandbox.preview_url}}}}` is an available
+  surface. Lead with a docs link (`{{{{sandbox.preview_url}}}}/docs` for Swagger/OpenAPI) or a real route; may add one
+  short curl check against a REAL route on the app's REAL port. Never invent a route, a port, or a response field.
 If the deliverable is a design doc (e.g. DESIGN.md) rather than running code, emit a single `write-design` section instead.
 Commands run in the sandbox at {_TASK_DIR}; use the real service names/ports/db/tables/files/endpoints from the repo.
 The ONLY placeholders you may use are `{{{{sandbox.db_console_url}}}}` and `{{{{sandbox.preview_url}}}}`.""",
@@ -303,27 +353,26 @@ The commands MUST match this repo's tech stack, read from its own manifest files
   (`uvicorn app.main:app`, `python main.py`); `pytest` only if tests exist.
 - pom.xml / build.gradle → `mvn spring-boot:run` / `./gradlew bootRun`; `mvn test` / `./gradlew test`.
 - go.mod → `go run .`; `go test ./...`.
-Commands run LOCALLY in the cloned folder — NOT {_TASK_DIR}, and never docker-compose unless the repo ships it.
+Commands run LOCALLY in the cloned folder — NOT {_TASK_DIR}, and never `docker compose` unless the repo ships it.
 Use NO `sandbox.*` placeholders.""",
 }
 
 # Compact shape examples (kept tiny — the guidance above carries the rules).
 _MIDDLE_EXAMPLES = {
     "sandbox": json.dumps([{
-        "id": "build-and-run", "title": "Build & run the app", "steps": [
-            {"type": "markdown", "body": "FastAPI + Postgres run with docker-compose (api:8000, db:5432). Rebuild after each change."},
-            {"type": "command", "label": "Rebuild & restart (run after each change)",
-             "command": f"cd {_TASK_DIR} && docker-compose up -d --build",
-             "output": {"type": "markdown", "body": "[+] Running 2/2\n ✔ Container task-db-1   Healthy\n ✔ Container task-api-1  Started"}},
-            {"type": "command", "label": "View the app logs",
-             "command": "docker-compose logs --tail=50 api",
-             "output": {"type": "markdown", "body": "task-api-1  | Uvicorn running on http://0.0.0.0:8000"}}]},
+        "id": "build-and-run", "title": "Run the app", "steps": [
+            {"type": "markdown", "body": "The stack is already up (Postgres in Compose; the app runs as a host process). Re-apply your changes with the repo's own commands."},
+            {"type": "command", "label": "Restart the app after a change",
+             "command": f"cd {_TASK_DIR} && docker compose restart <real-service>",
+             "output": {"type": "markdown", "body": "[+] Restarting 1/1\n ✔ Container task-db-1  Started"}},
+            {"type": "command", "label": "Check services are healthy",
+             "command": f"cd {_TASK_DIR} && docker compose ps"}]},
         {"id": "run-tests", "title": "Run the test suite", "steps": [
-            {"type": "markdown", "body": "Your fix is verified by the test suite. Run it to see the current (failing) state first."},
+            {"type": "markdown", "body": "Your work is verified by the repo's test suite. Run it to see the current (failing) state first."},
             {"type": "command", "label": "Run the tests",
              "command": f"cd {_TASK_DIR} && python -m pytest -q",
              "output": {"type": "markdown", "body": "5 failed, 2 passed in 1.42s"}},
-            {"type": "markdown", "body": "Make the failing tests pass, then re-run after each change."}]},
+            {"type": "markdown", "body": "Re-run after each change until the suite is green."}]},
     ], indent=1),
     "local": json.dumps([{
         "id": "run-project", "title": "Run the project", "steps": [
@@ -336,11 +385,19 @@ _MIDDLE_EXAMPLES = {
 
 
 def build_middle_prompt(kind: str, meta: Dict[str, Any], repo_text: str,
-                        critique: Optional[str] = None) -> str:
+                        critique: Optional[str] = None,
+                        task_dir: str = _TASK_DIR) -> str:
     """Prompt for ONLY the dynamic middle sections (a JSON array); the fixed
     head/tail are assembled in code. ``critique`` carries the previous
-    attempt's failure (judge verdict or the failing command's output)."""
+    attempt's failure (judge verdict or the failing command's output).
+    ``task_dir`` is the working directory the tour must use (matched to the
+    repo's own ``run.sh``; see ``detect_task_dir``)."""
     surfaces = ("\n\n" + surfaces_block(meta)) if kind == "sandbox" else ""
+    task_dir_line = (
+        f"\n\n## Working directory\nRun every sandbox command from `{task_dir}` — this is the path THIS repo's own "
+        f"`run.sh` uses. Use it verbatim and consistently; do NOT use any other task path.\n"
+        if kind == "sandbox" else ""
+    )
     critique_block = (
         f"\n\n## Your previous attempt FAILED verification — fix exactly this\n{critique}"
         if critique else ""
@@ -353,18 +410,28 @@ A JSON ARRAY of section objects — nothing else (no prose, no markdown fences).
 {_STEP_SCHEMA}
 
 ## What to emit
-{_MIDDLE_GUIDANCE[kind]}{surfaces}
+{_MIDDLE_GUIDANCE[kind]}{surfaces}{task_dir_line}
 
 ## Rules
 - Do NOT emit any boilerplate section (explore-code-base, access-code-editor, access-terminal, clone-repo, submit) —
   those are added for you.
 - No "understand/explore/review the codebase" filler — every section is a concrete action.
+- GROUND EVERY COMMAND, PATH, SERVICE NAME, AND PORT IN THE REPO'S OWN `run.sh` / `docker-compose.yml` / manifests.
+  If you cannot point to where a command/service/port comes from in the repo files below, do not emit it. Mirror the
+  repo's Compose form (`docker compose` unless its `run.sh` uses the hyphen) and its working directory exactly.
 - Outputs are OPTIONAL and SHORT (<=3 lines), grounded in the repo's real values. NEVER invent package counts or
-  reproduce install warnings / log dumps.
-- Keep it tight: one short sentence per markdown body, few steps per section. Never invent a DB, endpoints, or
-  services the repo lacks.
-- NEVER reveal the solution: do not name the specific bugs, the exact lines/functions to change, or which tests fail
-  and why. Orient only — how to run the project and see its current (failing) state, not what to fix.
+  reproduce install warnings / log dumps. Do NOT assert a specific response body, JSON field, row count, or metric
+  value unless the repo SEEDS it deterministically — describe WHAT to check, not the exact value you expect back.
+- Keep it tight: one short sentence per markdown body, few steps per section. Never invent a DB, endpoints, ports, or
+  services the repo lacks; reference only services that actually appear in `docker-compose.yml`.
+- NEVER reveal the solution or point at the fix. Do NOT name the specific bug, the exact line/function/file to change,
+  which individual tests or checks fail (or why), or tell the candidate "fix <file>" / "make <test> pass". Showing the
+  test suite FAILING IN AGGREGATE is fine; naming the failing tests/checks or the file that must be edited is a LEAK.
+  Naming the general CLASS of files already disclosed by the task's own problem statement is fine ("the defects are in
+  the Docker layer") — narrowing to ONE specific file/section is not. Orient only: how to run it and see its current
+  failing state, never what to change. NEVER paste full or substantial file contents (a whole file or a large chunk of one) — short illustrative
+  commands/snippets the candidate could type themselves are fine. Orient only — how to run the project and see its
+  current (failing) state, not what to fix.
 
 ## Example MIDDLE sections (shape + tone — adapt to THIS repo, do not copy specifics)
 {_MIDDLE_EXAMPLES[kind]}
@@ -426,11 +493,20 @@ def parse_middle(raw: str, kind: str) -> List[Dict[str, Any]]:
     return middle
 
 
-def assemble_tour(kind: str, middle: List[Dict[str, Any]]) -> Dict[str, Any]:
+def assemble_tour(kind: str, middle: List[Dict[str, Any]],
+                  task_dir: str = _TASK_DIR) -> Dict[str, Any]:
     """Wrap the middle in the fixed head/tail and enforce the global rules:
     total-section cap, variable allowlist, and the kind guard (no sandbox.*
-    vars in a local tour — they would hang the candidate app's tour panel)."""
+    vars in a local tour — they would hang the candidate app's tour panel).
+
+    ``task_dir`` normalises EVERY task path in the assembled tour (head/tail
+    boilerplate included) to the one the repo's own ``run.sh`` uses, so the
+    whole tour is path-consistent and matches the repo literally."""
     sections = _clone(TOUR_HEAD[kind]) + middle + _clone(TOUR_TAIL[kind])
+    if kind == "sandbox" and task_dir != _TASK_DIR:
+        # Distinctive path strings — a plain rewrite over the serialized tour
+        # normalises boilerplate + model output + any stray alias in one pass.
+        sections = json.loads(json.dumps(sections).replace(_TASK_DIR, task_dir))
     if len(sections) > MAX_TOUR_SECTIONS:
         raise ValueError(
             f"tour exceeds the {MAX_TOUR_SECTIONS}-section cap ({len(sections)} sections)"
@@ -528,7 +604,7 @@ def check_against_manifests(tour: Dict[str, Any], code_files: Dict[str, Any]) ->
 # REPL-style lines (DBSIZE, SCAN 0 MATCH ..., INFO keyspace) — these run inside
 # redis-cli, not a shell; executing them verbatim would fail or hang.
 _REPL_RE = re.compile(r"^[A-Z][A-Z0-9_]*(\s|$)")
-_REDIS_EXEC_RE = re.compile(r"docker-compose\s+exec\s+(?:-T\s+)?(\S+)\s+redis-cli\s*$")
+_REDIS_EXEC_RE = re.compile(r"docker[- ]compose\s+exec\s+(?:-T\s+)?(\S+)\s+redis-cli\s*$")
 
 _BUILD_TIMEOUT_S = int(os.getenv("TOUR_SANDBOX_BUILD_TIMEOUT_S", "600"))
 _CMD_TIMEOUT_S = int(os.getenv("TOUR_SANDBOX_CMD_TIMEOUT_S", "120"))
@@ -594,7 +670,7 @@ def run_tour_in_sandbox(tour: Dict[str, Any], sandbox, meta: Dict[str, Any]) -> 
                 repl_open = _REDIS_EXEC_RE.search(cmd)
                 if repl_open:
                     svc = repl_open.group(1)
-                    probe = f"cd {_TASK_DIR} && docker-compose exec -T {svc} redis-cli ping"
+                    probe = f"cd {_TASK_DIR} && docker compose exec -T {svc} redis-cli ping"
                     code, out, err = _run(sandbox, probe, _CMD_TIMEOUT_S)
                     if code != 0:
                         problems.append(
@@ -673,25 +749,47 @@ _JUDGE_PROMPT = """You are a strict reviewer of candidate-facing assessment tour
 and COMPLETE for this repository.
 
 What the kinds mean (do NOT flag behaviour that IS the kind's design):
-- kind=sandbox: the task is pre-deployed in a browser sandbox at /home/user/task. The candidate never clones.
+- kind=sandbox: the task is pre-deployed in a browser sandbox and the platform has ALREADY run the boot script, so the
+  services are ALREADY UP. The candidate never clones. `/home/user/task` and `/root/task` are the SAME directory (the
+  latter is a symlink alias) — treat them as equivalent and NEVER flag a `/root/task` vs `/home/user/task` mismatch,
+  nor flag one because the repo's `run.sh` uses the other. A tour that shows how to RE-APPLY changes (restart a service
+  / re-run the host process) is CORRECT — do NOT require it to bring the whole stack up from scratch.
 - kind=local: the candidate accepts a GitHub collaborator invite, CLONES the repo to their OWN machine, works there,
   and pushes to submit. The explore/invite and clone-repo steps are CORRECT for this kind — never flag them.
+
+`docker compose` (v2, a space) and `docker-compose` (v1, a hyphen) are EQUIVALENT invocations — do NOT flag one merely
+because the repo's `run.sh` uses the other form; only flag a Compose command if the SERVICE it names is absent from
+`docker-compose.yml`.
 
 The sections with ids explore-code-base, access-code-editor, access-terminal, clone-repo, and submit are FIXED
 code-owned boilerplate — assume they are correct and do NOT judge them. Judge ONLY the other (task-specific) sections.
 
 Fail the tour if ANY of these hold in the task-specific sections:
-- a command, service name, port, file path, DB name, or login does not exist in the repo (groundedness)
-- the repo has a test suite but the tour has no run-tests section; a seed script but no seed-data; HTTP routes plus an
-  available preview surface but no test-endpoints (completeness)
-- a section covers a capability the repo lacks — a DB section with no DB, endpoints with no HTTP surface (over-promising)
-- kind mismatch per the definitions above — e.g. a local tour running things in /home/user/task or via docker-compose
-  the repo doesn't ship; a sandbox tour telling the candidate to clone (kind fit)
+- a command, service name, port, file path, DB name, or login does not exist in the repo (groundedness). NB: a path
+  difference between `/root/task` and `/home/user/task`, or `docker compose` vs `docker-compose`, is NOT groundedness.
+- the repo has a test/verification suite (test files, `invariants/`, `verification_*.sql`, `validate.sh`) but the tour
+  has no run-tests section; HTTP routes plus an available preview surface but no test-endpoints (completeness). Do NOT
+  require a seed-data section when the data is seeded automatically at boot (e.g. `init_database.sql` mounted into the
+  DB, or a boot-script seed) — in a pre-deployed sandbox that data is ALREADY loaded and the candidate does not re-seed.
+- a section covers a capability the repo lacks — a DB section with no DB, endpoints with no HTTP surface, a Compose
+  service the repo does not define, or a predicted response field/value the repo does not deterministically produce
+  (over-promising)
+- kind mismatch: a local tour running things in a sandbox path or via `docker compose` the repo doesn't ship; a
+  sandbox tour telling the candidate to clone, OR telling them to bring up / manually start services that the boot
+  script already started (kind fit)
 - commands don't match the tech stack's own manifests (stack fit)
 - a section adds no real value — padding (compactness)
-- the tour reveals the SOLUTION: naming the specific bugs, the exact lines/functions to change, or which tests fail and
-  why. Orientation (how to run, how to see the current failing state, which general area to explore) is fine and
-  expected (candidate-safety)
+- the tour reveals the SOLUTION or points at the fix: naming the specific bug, the exact line/function to change,
+  which individual tests or checks fail (or why), telling the candidate to "fix <file>" / "make <test> pass", a
+  SPECIFIC file the defect lives in or must be edited (e.g. "the problem is in docker-compose.yml's healthcheck"
+  or "edit api-entrypoint.sh"), or pasting full/substantial file contents (a code block reproducing a whole file or a
+  large chunk of one) instead of a short illustrative command/snippet the candidate could type themselves. Showing the
+  test suite failing IN AGGREGATE (e.g. "5 failed, 2 passed") is fine; listing the failing test/check names is a LEAK.
+  Naming the
+  general CLASS of files already disclosed by the task's own problem statement is fine (e.g. "fix the bugs in
+  docker-compose.yml and the Dockerfiles" when the question already says the defects are in the Docker layer) —
+  naming or narrowing to ONE specific file/section within that class is not. Orientation (how to run, how to see the
+  current failing state, which general area to explore) is fine and expected (candidate-safety)
 
 Tour kind: {kind}
 
@@ -770,15 +868,16 @@ def generate_tour(
         return None
 
     repo_text = render_code_files(code_files)
+    task_dir = detect_task_dir(code_files)
     call_llm = llm or _default_llm
     call_judge = judge or (lambda t, r, k: eval_tour(t, r, k))
 
     critique: Optional[str] = None
     for attempt in range(1, MAX_TOUR_EVAL_RETRIES + 1):
         try:
-            raw = call_llm(build_middle_prompt(kind, meta, repo_text, critique))
+            raw = call_llm(build_middle_prompt(kind, meta, repo_text, critique, task_dir))
             middle = parse_middle(raw, kind)
-            tour = assemble_tour(kind, middle)
+            tour = assemble_tour(kind, middle, task_dir)
         except (ValueError, json.JSONDecodeError) as exc:
             critique = f"your output failed validation: {exc}"
             logger.warning("tour attempt %d/%d: validation failed: %s",

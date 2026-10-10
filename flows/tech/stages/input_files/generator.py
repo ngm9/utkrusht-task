@@ -279,9 +279,18 @@ def generate_questions_prompt(client: openai.OpenAI, long_scope: str, name: str,
         ),
         "INTERMEDIATE": (
             "This is an intermediate proficiency, so somebody attempting this task has a few years of experience but is not an expert in these domains. "
-            "Ensure that tasks are around fundamentals, and candidates should be able to finish this within 20 minutes. "
+            "Ensure that tasks are around fundamentals, and candidates should be able to finish this within 45 minutes. "
             "Let there be multiple ways to achieve the correct outcome — the idea is to see what paths the candidate picks. "
             "Make the tasks subjective yet specific and clear in their expected outcomes."
+        ),
+        # ADVANCED was missing here, so .get() fell through to the BASIC text and
+        # every ADVANCED background file carried "finish within 15 minutes" —
+        # the prompt-stage reviewer flagged it as a scope contradiction.
+        "ADVANCED": (
+            "This is an advanced proficiency, so somebody attempting this task has 6+ years of experience and owns production systems. "
+            "Tasks are design/build/hardening problems where concerns interact around one scoping axis, not checklists; "
+            "candidates should be able to finish this within 45 minutes. "
+            "Make the expected outcomes clear but leave the approach entirely to the candidate."
         ),
     }
     timing_instruction = TIMING_AND_COMPLEXITY_INSTRUCTIONS.get(proficiency, TIMING_AND_COMPLEXITY_INSTRUCTIONS["BASIC"])
