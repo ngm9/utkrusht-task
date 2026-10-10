@@ -149,7 +149,7 @@ Based on the real-world scenarios provided in following conversations, create an
 {{
   "name": "task-name-in-kebab-case",
   "title": "Human-readable task title in '<action verb> <subject>' format, 50-80 characters. Describes what the candidate will do in plain English. Examples: 'Build Responsive Appointment Card Layout with Toggle Notes', 'Fix Filter Logic and Restyle Search Results Page', 'Refactor Checkout Form with Semantic HTML and Validation'. The title should clearly convey the action (implement, fix, build, refactor, optimize, debug) and the subject (what system/feature/component). This is used for display purposes — 'name' is the kebab-case GitHub repo name, 'title' is the readable display name.",
-  "question": "Short description of the scenario and specific ask from the candidate — what needs to be fixed or implemented across HTML, CSS, and JavaScript",
+  "question": "Full candidate-facing task description written as flowing PLAIN PROSE — a short real-world scenario paragraph followed by a direct imperative ask. The candidate view renders this as plain text, so: NO structural labels ('Current Implementation:', 'Required Changes:'), NO Markdown (no **bold**, no `backticks`, no code fences), and NO numbered spec-list. MUST NOT leak the answer: no file names or paths, no function/method names, no CSS selectors or ids, and no solution statements ('the bug is in...', 'you should change...', 'change line N'). Describe who the candidate is, what the small site is, the observable symptom they will see in the browser, and what must work correctly once done — the candidate must locate WHERE and WHAT is wrong across the HTML, CSS, and JavaScript by reading the code, never be told. 120–1500 characters.",
   "code_files": {{
     "README.md": "Candidate-facing README following structure below",
     ".gitignore": "Web project exclusions",
@@ -159,8 +159,8 @@ Based on the real-world scenarios provided in following conversations, create an
     "additional_file": "Other source files as needed (e.g., data.js, components/)"
   }},
   "outcomes": "Bullet-point list in simple language. Must include expected results after completion and one bullet explicitly stating: 'Write production-level clean code with best practices including proper naming conventions, error handling, and code organization.'",
-  "short_overview": "Bullet-point list in simple language describing: (1) the high-level business or technical problem, (2) the specific implementation or fix goal, and (3) the expected outcome emphasizing correctness, structure, and maintainability.",
-  "pre_requisites": "Exactly 2–3 concise bullets. Each covers ONE item: (1) runtime/toolchain required, (2) repo/environment setup, (3) key domain knowledge if non-obvious. Each bullet ≤ 120 chars. No padding, no sub-lists.",
+  "short_overview": "EXACTLY three plain-language bullets, one sentence each, no glyph/Markdown prefixes and NO file names or paths in any bullet: (1) what the system is, who it serves, and its one-line situation today (context, not a defect list); (2) the current situation/problem stated in natural prose (NOT an imperative instruction); (3) what the work must achieve plus the expected outcome (emphasizing correctness, structure, and maintainability).",
+  "pre_requisites": "Exactly 2–3 bullets of ASSUMED PRIOR KNOWLEDGE the candidate already brings, written as DECLARATIVE capability phrases only ('Comfort reading HTML, CSS and vanilla JavaScript', 'Familiarity with browser DevTools'). NEVER imperative setup/verify steps ('Run…', 'Install…', 'Configure…', 'Test…') — those are README content, not prerequisites. Each bullet ≤ 120 chars.",
   "answer": "High-level solution approach describing main components and flow across HTML, CSS, and JS.",
   "hints": "Single line suggesting focus area. Example: 'Focus on connecting semantic HTML structure with responsive CSS layout and proper DOM event delegation in JavaScript'",
   "definitions": {{

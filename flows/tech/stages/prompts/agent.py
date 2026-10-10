@@ -633,6 +633,14 @@ class GeneratePromptSignature(dspy.Signature):
                          affected builds concurrently, and perform
                          main-line-only releases where the deployment target
                          comes from the secret store."
+                         NO ENUMERATION IN ANY FORM — not bullets, not inline
+                         numbering ("fix the pipeline to (1) ..., (2) ...,
+                         (3) ..."), not a chain of "fix A, fix B, fix C"
+                         clauses. Inline numbering is the same leak as a
+                         bullet list wearing prose clothing. And the ask's
+                         clause count must NOT mirror the planted-defect
+                         count: a `question` whose clauses map one-to-one
+                         onto the defects is the answer key in sentence form.
                          `question` and the README Objectives must be written
                          TOGETHER and checked against each other — this is the
                          field most likely to drift back down into mechanisms.
@@ -674,12 +682,35 @@ class GeneratePromptSignature(dspy.Signature):
                          final wording' — not 'Trace how evidence scope,
                          provenance, and cache identity move through the
                          layers' (each noun there is a pointer to a file).
-      "outcomes"       — 2-3 lines on measurable expected results, written at
+      "outcomes"       — up to 5 lines (never more) on measurable expected results, written at
                          the SAME altitude as the README Objectives (one line
                          per objective's class of concern, plus the standing
                          code-quality line) — never a list that enumerates the
                          seeded contexts or instances the candidate is meant
                          to discover.
+                         `outcomes` is CANDIDATE-VISIBLE: the product renders
+                         it as bullet points directly under the Problem
+                         Statement, right below `question` — so every
+                         `question` rule above (altitude, no mechanisms, the
+                         agent-paste test) applies to it in full.
+                         PROFICIENCY GATE (mirrors the OPEN vs SPECIFIED split
+                         in the proficiency-calibration constraint below):
+                         — INTERMEDIATE / ADVANCED: outcomes MUST be
+                           open-ended. HARD CAP: NO MORE THAN 5 entries. NEVER
+                           one entry per planted defect — an entry count that
+                           mirrors the defect count (or a long checklist that
+                           walks the solution step by step) is the answer key
+                           rendered on the task page; collapse to a few
+                           open-ended, class-level outcomes. NEVER the
+                           mechanism that satisfies an objective ("prevent
+                           leakage across splits", "report macro metrics",
+                           "select the threshold on validation data" are
+                           mechanisms; "results a reviewer can trust on data
+                           the model has not seen" is an outcome).
+                         — BASIC / BEGINNER: outcomes MAY read as a fuller,
+                           more explicit checklist of expected results (the
+                           SPECIFIED/closed branch), still without naming file
+                           paths or the literal fix.
       "pre_requisites" — bullet list of ASSUMED PRIOR KNOWLEDGE / skills the
                          candidate already brings. DECLARATIVE capability phrases
                          ONLY ("Python 3.11 proficiency", "Comfort with…",
@@ -744,7 +775,7 @@ class GeneratePromptSignature(dspy.Signature):
                          enumeration of the seeded defects.
 
     GOOD (matches curated style):
-      "outcomes": "Expected results after completion in 2-3 lines focusing on
+      "outcomes": "Expected results after completion in up to 5 lines focusing on
                    measurable performance improvements and optimized database
                    operations. Use simple english."
       "hints": "A single line hint on what a good intermediate-level approach
@@ -1189,9 +1220,10 @@ class GeneratePromptSignature(dspy.Signature):
           starter-stub docstrings MAY state the expected return shape / enum
           values, Objectives MAY read as an explicit checklist, Helpful Tips
           MAY nudge toward the solution shape, How to Verify MAY name the
-          exact cases, and policy constants (thresholds, retry/timeout
-          budgets, state/status enums) MAY be pre-set in config. The scenario
-          MAY have a single intended solution.
+          exact cases, the candidate-visible `outcomes` MAY read as a fuller
+          checklist of expected results, and policy constants (thresholds,
+          retry/timeout budgets, state/status enums) MAY be pre-set in config.
+          The scenario MAY have a single intended solution.
 
       (b) INTERMEDIATE / ADVANCED → OPEN / underspecified. The generated
           prompt MUST instruct the downstream task-gen LLM to WITHHOLD the
@@ -1212,6 +1244,9 @@ class GeneratePromptSignature(dspy.Signature):
               look, NEVER the shape of the fix.
             • How to Verify: describe the observable end-state only, NOT the
               exact fixtures / cases to feed.
+            • outcomes (candidate-visible, under the Problem Statement): a few
+              open-ended, class-level results — NO MORE THAN 5, never one per
+              planted defect, never the mechanism that satisfies an objective.
             • Definitions / hints: OMIT the solution's concepts; a hint may
               point at the symptom, never name the building blocks of the fix.
             • Problem design space: shape a scenario that admits SEVERAL
@@ -1371,6 +1406,18 @@ class VerifyPromptSignature(dspy.Signature):
          ({organization_background}, {role_context}, {competencies},
          {real_world_task_scenarios}), or wrong registry key format.
       4. SOLUTION LEAK: starter code or comments give away the solution.
+         Also REJECT when the `## REQUIRED OUTPUT JSON STRUCTURE` block's
+         `question` or `outcomes` descriptions would have the task-gen LLM
+         enumerate the planted defects or their fixing mechanisms in
+         candidate-visible text: the `question` description must demand
+         plain prose with NO numbered or bulleted enumeration of required
+         behaviours (inline "(1) ... (2) ..." counts as enumeration). The
+         `outcomes` check is PROFICIENCY-GATED — apply it only at INTERMEDIATE
+         and ADVANCED: there the `outcomes` description must demand no more
+         than 5 class-level lines — never one entry per planted defect (nor a
+         step-by-step checklist of the solution), never the mechanism that
+         satisfies an objective. At BASIC / BEGINNER a fuller outcomes
+         checklist is allowed — do NOT reject on the outcomes count there.
       5. STRUCTURAL DRIFT FROM CURATED REFERENCES: The INSTRUCTIONS prompt
          introduces invented top-level sections that don't appear in any
          curated reference, OR misses the canonical sections, OR uses wrong

@@ -1189,11 +1189,51 @@ def create_task(
         # Popped here rather than inside the retry loop: a re-scored
         # `reuse_candidate` has already been stripped, so popping per-attempt
         # would silently lose them.
-        hidden_tests = task_data.pop("hidden_tests", None) or {}
+        # The generator is SUPPOSED to emit hidden_tests as a {path: content}
+        # map. It does not always comply: an observed failure mode is a prose
+        # description string (or a bare path list) naming grading files it
+        # instead dropped into candidate-facing code_files under grading/. Left
+        # unhandled that both crashes here (dict.update on a str) and leaks the
+        # oracle. Tolerate the malformed shapes, then use the grading/ sweep as
+        # the real safety net.
+        hidden_tests_raw = task_data.pop("hidden_tests", None)
+        hidden_tests: dict = {}
+        if isinstance(hidden_tests_raw, dict):
+            hidden_tests = dict(hidden_tests_raw)
+        elif isinstance(hidden_tests_raw, list):
+            for item in hidden_tests_raw:
+                if isinstance(item, dict) and "path" in item and "content" in item:
+                    hidden_tests[item["path"]] = item["content"]
+            if not hidden_tests and hidden_tests_raw:
+                logger.warning(
+                    "hidden_tests was a non-mapping list (%d items); ignoring its "
+                    "declared shape and relying on the grading/ sweep to withhold "
+                    "grader files.", len(hidden_tests_raw))
+        elif hidden_tests_raw:
+            logger.warning(
+                "hidden_tests was a %s, not a {path: content} map; relying on the "
+                "grading/ sweep to withhold grader files.",
+                type(hidden_tests_raw).__name__)
+
+        # Safety net: a `grading/` directory is grader-only by convention. Move
+        # any candidate-facing file under grading/ into the withheld set so a
+        # generator that stashes the oracle there (instead of in hidden_tests)
+        # can never leak it to the candidate.
+        code_files = task_data.get("code_files", {})
+        graded_paths = [p for p in list(code_files)
+                        if p == "grading" or p.startswith("grading/")]
+        for p in graded_paths:
+            hidden_tests.setdefault(p, code_files.pop(p))
+        if graded_paths:
+            logger.warning(
+                "Moved %d grading/ file(s) out of candidate-facing code_files into "
+                "the withheld set (they would have leaked the answer): %s",
+                len(graded_paths), sorted(graded_paths))
+
         if hidden_tests:
             # Don't trust the generator: a path that also exists candidate-side
             # would leak by collision, so drop those.
-            collided = [p for p in hidden_tests if p in task_data.get("code_files", {})]
+            collided = [p for p in list(hidden_tests) if p in task_data.get("code_files", {})]
             for p in collided:
                 hidden_tests.pop(p, None)
             if collided:
